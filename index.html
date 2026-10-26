@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Central de Comando</title>
+<style>
+:root {
+  --bg: #f6f5f2; --surface: #ffffff; --ink: #1b1a17; --ink2: #5a5852; --line: #e3e1da;
+  --accent: #2a78d6; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b; --chip: #f0eee8;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141412; --surface: #1d1d1a; --ink: #f0efec; --ink2: #b9b7ae; --line: #33322e; --accent: #3987e5; --chip: #2a2925; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px; border-bottom: 1px solid var(--line); background: var(--surface); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 18px; margin: 0; flex: 1 1 auto; }
+main { max-width: 1280px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+section h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.count { font-size: 12px; background: var(--chip); border-radius: 999px; padding: 1px 8px; color: var(--ink2); }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.card + .card { margin-top: 10px; }
+.meta { font-size: 12px; color: var(--ink2); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.chip { background: var(--chip); border-radius: 6px; padding: 1px 7px; font-size: 12px; color: var(--ink); }
+.titulo { font-weight: 600; }
+.reco { font-size: 14px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+button, select, textarea, input { font: inherit; color: inherit; }
+button { min-height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+button.primario { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+textarea, select, input { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 8px 10px; }
+textarea { min-height: 70px; resize: vertical; }
+label { font-size: 13px; color: var(--ink2); display: block; margin-bottom: 4px; }
+.badge { display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid var(--line); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+.badge.good { border-color: var(--good); } .badge.warning { border-color: var(--warning); } .badge.critical { border-color: var(--critical); }
+.projetos { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+.vazio { color: var(--ink2); font-size: 14px; }
+.aviso { background: var(--chip); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.lista { list-style: none; margin: 0; padding: 0; }
+.lista li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.lista li:last-child { border-bottom: 0; }
+#login { max-width: 420px; margin: 80px auto; }
+.erro { color: var(--critical); font-size: 13px; }
+details summary { cursor: pointer; font-size: 13px; color: var(--ink2); margin-top: 12px; }
+</style>
+</head>
+<body>
+<div id="app"><p class="vazio" style="padding:16px">Carregando…</p></div>
+<script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
+<script src="app.js?v=2"></script>
+</body>
+</html>
