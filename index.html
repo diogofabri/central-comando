@@ -38,6 +38,8 @@ textarea, select, input { width: 100%; border: 1px solid var(--line); border-rad
 textarea { min-height: 70px; resize: vertical; }
 label { font-size: 13px; color: var(--ink2); display: block; margin-bottom: 4px; }
 .badge { display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid var(--line); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+.badge.compra { background: var(--good); border-color: var(--good); color: #fff; font-weight: 600; }
+.badge.venda { background: var(--critical); border-color: var(--critical); color: #fff; font-weight: 600; }
 .badge.good { border-color: var(--good); } .badge.warning { border-color: var(--warning); } .badge.critical { border-color: var(--critical); }
 .projetos { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .num { font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -57,6 +59,6 @@ details summary { cursor: pointer; font-size: 13px; color: var(--ink2); margin-t
 <div id="app"><p class="vazio" style="padding:16px">Carregando…</p></div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

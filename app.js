@@ -177,15 +177,35 @@ function htmlItemMonitor(i) {
     i.ativo && i.desde ? `<span>há ${duracao(i.desde)}</span>` : "",
     i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
   ].join("");
-  return `<li><span class="badge ${cls}">${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${esc(i.nome)}
+  const icone = i.fonte === "sites" ? `${iconeAtivo(i.item.split(":").pop())} ` : "";
+  return `<li><span class="badge ${cls}">${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${esc(i.nome)}
     <div class="meta">${extras}${i.detalhe ? `<span>${esc(i.detalhe)}</span>` : ""}</div></li>`;
+}
+
+// mesmo mapa de 05-monitor-lives/monitor_lives/instrumentos.py (icone_instrumento)
+const BANDEIRAS = { EUR: "🇪🇺", USD: "🇺🇸", GBP: "🇬🇧", JPY: "🇯🇵", CHF: "🇨🇭", AUD: "🇦🇺", NZD: "🇳🇿", CAD: "🇨🇦",
+  BRL: "🇧🇷", MXN: "🇲🇽", ZAR: "🇿🇦", TRY: "🇹🇷", SEK: "🇸🇪", NOK: "🇳🇴", SGD: "🇸🇬", HKD: "🇭🇰", CNH: "🇨🇳", PLN: "🇵🇱" };
+const ICONES = { XAUUSD: "🥇", XAGUSD: "🥈", XPTUSD: "⚪", XPDUSD: "⚪", USOIL: "🛢️", UKOIL: "🛢️", NGAS: "🔥",
+  COPPER: "🟠", DXY: "💵", NAS100: "🇺🇸📈", US30: "🇺🇸📈", US500: "🇺🇸📈", GER40: "🇩🇪📈", UK100: "🇬🇧📈",
+  JP225: "🇯🇵📈", FRA40: "🇫🇷📈", EU50: "🇪🇺📈", HK50: "🇭🇰📈", AUS200: "🇦🇺📈", IBOV: "🇧🇷📈", WIN: "🇧🇷📈",
+  WDO: "🇧🇷💵", BTCUSD: "₿", ETHUSD: "Ξ" };
+function iconeAtivo(sym) {
+  const t = String(sym || "").toUpperCase();
+  if (ICONES[t]) return ICONES[t];
+  if (t.startsWith("XAU")) return "🥇";
+  if (t.startsWith("XAG")) return "🥈";
+  if (t.length === 6 && BANDEIRAS[t.slice(0, 3)] && BANDEIRAS[t.slice(3)]) return BANDEIRAS[t.slice(0, 3)] + BANDEIRAS[t.slice(3)];
+  if (t.startsWith("BTC")) return "₿";
+  if (t.startsWith("ETH")) return "Ξ";
+  if (t.endsWith("USDT") || t.endsWith("USDC") || (t.endsWith("USD") && t.length > 6 && !BANDEIRAS[t.slice(0, -3)])) return "🪙";
+  return "📊";
 }
 
 function htmlSinal(s) {
   const venda = s.direcao === "venda";
   const ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : null;
-  return `<li><span class="badge ${venda ? "critical" : s.direcao === "compra" ? "good" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
-    <b>${esc(s.instrumento)}</b> · entrada ${esc(s.entrada ?? "—")} · SL ${esc(s.stop ?? "—")} · TP ${esc(s.alvos ?? "—")}
+  return `<li><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
+    <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span> <b>${esc(s.instrumento)}</b> · entrada ${esc(s.entrada ?? "—")} · SL ${esc(s.stop ?? "—")} · TP ${esc(s.alvos ?? "—")}
     <div class="meta"><span>${esc(s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
 }
 
