@@ -228,13 +228,32 @@ function htmlSinal(s) {
     <div class="meta"><span>${esc(s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
 }
 
+// filtro por ativo da seção Monitor de lives (vale para sinais ativos, pares dos sites e placar)
+let filtroAtivo = (() => { try { return localStorage.getItem("filtroAtivo") || ""; } catch (e) { return ""; } })();
+const ATALHOS_ATIVO = [["", "Todos"], ["XAUUSD", "🥇 Ouro"], ["XAGUSD", "🥈 Prata"]];
+const passaFiltro = (sym) => !filtroAtivo || String(sym || "").toUpperCase() === filtroAtivo;
+
+function htmlFiltroAtivo(e) {
+  const ativos = new Set([...(e.monitorSinais ?? []), ...(e.monitorResultados ?? [])].map((s) => String(s.instrumento || "").toUpperCase()));
+  ATALHOS_ATIVO.forEach(([sym]) => sym && ativos.add(sym));
+  const opcoes = [...ativos].filter(Boolean).sort();
+  const chip = ([sym, rotulo]) => `<button class="${filtroAtivo === sym ? "primario" : ""}" data-acao="filtro" data-ativo="${sym}">${rotulo}</button>`;
+  return `<div class="acoes" style="align-items:center;margin-bottom:12px">
+    <span class="meta">Ativo:</span>${ATALHOS_ATIVO.map(chip).join("")}
+    <select data-acao="filtro-lista" aria-label="Filtrar por ativo" style="width:auto;min-height:40px">
+      <option value="">Outro ativo…</option>${opcoes.map((s) => `<option value="${s}" ${filtroAtivo === s ? "selected" : ""}>${iconeAtivo(s)} ${s}</option>`).join("")}
+    </select>
+    ${filtroAtivo ? `<span class="meta">mostrando só <b>${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</b></span>` : ""}
+  </div>`;
+}
+
 const ROTULO_RESULTADO = { alvo: "✅ win", stop: "❌ loss", expirado: "⏱ expirou", nao_acionada: "⚪ não acionada", sem_dados: "… sem preço" };
 
 function htmlPlacar(e) {
   const resultados = e.monitorResultados ?? [];
   const pct = (w, l) => (w + l ? `${Math.round((100 * w) / (w + l))}%` : "—");
   const cartoes = Object.keys(FONTES).map((f) => {
-    const lista = resultados.filter((r) => r.fonte === f);
+    const lista = resultados.filter((r) => r.fonte === f && passaFiltro(r.instrumento));
     const w = lista.filter((r) => r.status === "alvo").length, l = lista.filter((r) => r.status === "stop").length;
     const outros = lista.length - w - l;
     const rs = lista.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number);
@@ -256,7 +275,7 @@ function htmlPlacar(e) {
     </div>`;
   });
   return `<section>
-    <h2>Placar dos sinais <span class="count">últimos 30 dias</span></h2>
+    <h2>Placar dos sinais <span class="count">últimos 30 dias</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
     <div class="projetos">${cartoes.join("")}</div>
     <p class="meta" style="margin-top:8px">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Sites: o resultado publicado pelo próprio site; lives e sureshotfx: velas de preço (Binance para cripto, Twelve Data para forex e ouro). Não é recomendação.</p>
   </section>`;
@@ -267,10 +286,12 @@ function htmlMonitor(e) {
     const info = e.monitorFontes.find((x) => x.fonte === f);
     const itens = e.monitorItens.filter((i) => i.fonte === f)
       .sort((a, b) => (ORDEM_ESTADO[a.estado] ?? 9) - (ORDEM_ESTADO[b.estado] ?? 9) || (b.espectadores ?? 0) - (a.espectadores ?? 0));
-    const sinais = (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now()));
+    const sinais = (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now())
+      && passaFiltro(s.instrumento));
     // item cujo sinal aberto já aparece em "Sinais ativos" (sites: um item por par) não se repete na lista
     const comSinal = new Set(sinais.map((s) => s.item));
-    const visiveis = itens.filter((i) => !(i.estado === "aberto" && comSinal.has(i.item)));
+    const visiveis = itens.filter((i) => !(i.estado === "aberto" && comSinal.has(i.item))
+      && (f !== "sites" || passaFiltro(i.item.split(":").pop())));
     const agora = visiveis.filter((i) => (ORDEM_ESTADO[i.estado] ?? 9) <= 2 || i.analisando);
     const resto = visiveis.filter((i) => !agora.includes(i));
     const atraso = info ? (Date.now() - new Date(info.atualizado_em)) / 6e4 : Infinity;
@@ -298,6 +319,7 @@ function htmlMonitor(e) {
       <span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length} sinais</span>
       ${(() => { const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
         return `<button style="margin-left:auto" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${algum ? "⏻ Desligar todos" : "▶ Ligar todos"}</button>`; })()}</h2>
+    ${htmlFiltroAtivo(e)}
     <div class="projetos">${fontes.join("")}</div>
     <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar.</p>
   </section>`;
@@ -368,6 +390,7 @@ document.addEventListener("click", (ev) => {
   if (acao === "ajustar") { ajustando = id; return render(); }
   if (acao === "cancelar-ajuste") { ajustando = null; return render(); }
   if (acao === "pausa") return agir(() => fonte.pausar(!estado.pausado));
+  if (acao === "filtro") return definirFiltro(b.dataset.ativo);
   if (acao === "monitor") {
     const fontes = b.dataset.fontes.split(","), ligar = b.dataset.ligar === "true";
     const nomes = fontes.map((f) => FONTES[f]).join(", ");
@@ -381,6 +404,16 @@ document.addEventListener("click", (ev) => {
     return agir(() => fonte.decidir(id, "ajustada", texto));
   }
   if (acao === "aprovada" || acao === "descartada") { b.disabled = true; return agir(() => fonte.decidir(id, acao)); }
+});
+
+function definirFiltro(sym) {
+  filtroAtivo = sym || "";
+  try { localStorage.setItem("filtroAtivo", filtroAtivo); } catch (e) { /* sem armazenamento: vale só nesta aba */ }
+  render();
+}
+
+document.addEventListener("change", (ev) => {
+  if (ev.target.matches("select[data-acao='filtro-lista']") && ev.target.value) definirFiltro(ev.target.value);
 });
 
 document.addEventListener("submit", (ev) => {
