@@ -34,7 +34,7 @@ function fonteSupabase(cfg) {
     demo: false,
     sb,
     async carregar() {
-      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, pausa, monitorFontes, monitorItens, monitorSinais, comandos] = await Promise.all([
+      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, pausa, monitorFontes, monitorItens, monitorSinais, comandos, monitorResultados] = await Promise.all([
         sb.from("v_estado_projetos").select("*").order("id").then(ok),
         sb.from("decisoes").select("*").eq("status", "pendente").order("impacto", { ascending: false }).order("prazo").then(ok),
         sb.from("decisoes").select("*").neq("status", "pendente").order("decidido_em", { ascending: false }).limit(10).then(ok),
@@ -46,9 +46,10 @@ function fonteSupabase(cfg) {
         sb.from("monitor_itens").select("*").order("nome").then(ok),
         sb.from("monitor_sinais").select("*").order("desde", { ascending: false }).then(ok),
         sb.from("controle").select("chave,valor").like("chave", "monitor:%").then(ok),
+        sb.from("monitor_resultados").select("*").order("resolvido_em", { ascending: false }).then(ok),
       ]);
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: pausa[0]?.valor === true,
-               monitorFontes, monitorItens, monitorSinais,
+               monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(comandos.map((c) => [c.chave.slice(8), c.valor !== false])) };
     },
     decidir: (id, status, resposta) =>
@@ -104,6 +105,11 @@ function fonteDemo() {
       { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
     ],
     monitorComando: { tiktok: true, sites: true },
+    monitorResultados: [
+      { fonte: "tiktok", sinal_id: 4, origem: "@mogotrading_off", instrumento: "XAUUSD", direcao: "venda", entrada: "4031–4034", status: "alvo", resultado_r: 2.1, resolvido_em: new Date(agora - 2 * h).toISOString() },
+      { fonte: "sites", sinal_id: 9, origem: "Foresignal", instrumento: "NZDUSD", direcao: "compra", entrada: "0.5682", status: "alvo", resultado_pontos: 12, resultado_unidade: "pips", resultado_fonte: "site", resolvido_em: new Date(agora - 1 * h).toISOString() },
+      { fonte: "sites", sinal_id: 10, origem: "CryptET", instrumento: "ADAUSDT", direcao: "venda", entrada: "0.2052", status: "stop", resultado_pontos: -12, resultado_unidade: "pontos", resultado_fonte: "site", resolvido_em: new Date(agora - 3 * h).toISOString() },
+    ],
     monitorSinais: [
       { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "@canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
       { fonte: "sites", sinal_id: 2, item: "foresignal:EURUSD", origem: "Foresignal", instrumento: "EURUSD", direcao: "compra", entrada: "1.117", stop: 1.1149, alvos: "1.1187", desde: new Date(agora - 1 * h).toISOString(), ate: new Date(agora + 7 * h).toISOString() },
@@ -222,6 +228,40 @@ function htmlSinal(s) {
     <div class="meta"><span>${esc(s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
 }
 
+const ROTULO_RESULTADO = { alvo: "✅ win", stop: "❌ loss", expirado: "⏱ expirou", nao_acionada: "⚪ não acionada", sem_dados: "… sem preço" };
+
+function htmlPlacar(e) {
+  const resultados = e.monitorResultados ?? [];
+  const pct = (w, l) => (w + l ? `${Math.round((100 * w) / (w + l))}%` : "—");
+  const cartoes = Object.keys(FONTES).map((f) => {
+    const lista = resultados.filter((r) => r.fonte === f);
+    const w = lista.filter((r) => r.status === "alvo").length, l = lista.filter((r) => r.status === "stop").length;
+    const outros = lista.length - w - l;
+    const rs = lista.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number);
+    const rMedio = rs.length ? (rs.reduce((a, b) => a + b, 0) / rs.length).toFixed(2) : null;
+    const porOrigem = {};
+    lista.forEach((r) => { const o = (porOrigem[r.origem] ??= { w: 0, l: 0 }); if (r.status === "alvo") o.w++; if (r.status === "stop") o.l++; });
+    const origens = Object.entries(porOrigem).sort((a, b) => (b[1].w + b[1].l) - (a[1].w + a[1].l));
+    const amostra = w + l < 10 ? `<span class="meta">amostra pequena (${w + l} decididas): não conclua nada ainda</span>` : "";
+    const resultado = (r) => r.resultado_pontos != null ? `${Number(r.resultado_pontos) > 0 ? "+" : ""}${r.resultado_pontos} ${esc(r.resultado_unidade ?? "")}`
+      : r.resultado_r != null ? `${Number(r.resultado_r) > 0 ? "+" : ""}${Number(r.resultado_r).toFixed(2)} R` : "";
+    return `<div class="card">
+      <div class="titulo">${FONTES[f]}</div>
+      <div class="meta"><span class="badge compra">${w} win</span><span class="badge venda">${l} loss</span>
+        <span>acerto <b class="num">${pct(w, l)}</b></span>${rMedio ? `<span>R médio <b class="num">${rMedio}</b></span>` : ""}
+        ${outros ? `<span>${outros} expirados/não acionados</span>` : ""}</div>
+      ${amostra}
+      ${origens.length ? `<ul class="lista">${origens.map(([o, c]) => `<li>${esc(o)}<div class="meta"><span>${c.w} win · ${c.l} loss</span><span>acerto ${pct(c.w, c.l)}</span></div></li>`).join("")}</ul>` : `<p class="vazio">Nenhum sinal resolvido ainda.</p>`}
+      ${lista.length ? `<details><summary>Últimos resultados</summary><ul class="lista">${lista.slice(0, 15).map((r) => `<li>${ROTULO_RESULTADO[r.status] ?? esc(r.status)} · ${iconeAtivo(r.instrumento)} <b>${esc(r.instrumento)}</b> ${esc((r.direcao || "").toUpperCase())} ${esc(r.entrada ?? "")}<div class="meta"><span>${esc(r.origem)}</span><span>${resultado(r)}</span><span>${quando(r.resolvido_em)}</span><span>${r.resultado_fonte === "site" ? "resultado do site" : "pelo preço"}</span></div></li>`).join("")}</ul></details>` : ""}
+    </div>`;
+  });
+  return `<section>
+    <h2>Placar dos sinais <span class="count">últimos 30 dias</span></h2>
+    <div class="projetos">${cartoes.join("")}</div>
+    <p class="meta" style="margin-top:8px">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Sites: o resultado publicado pelo próprio site; lives e sureshotfx: velas de preço (Binance para cripto, Twelve Data para forex e ouro). Não é recomendação.</p>
+  </section>`;
+}
+
 function htmlMonitor(e) {
   const fontes = Object.keys(FONTES).map((f) => {
     const info = e.monitorFontes.find((x) => x.fonte === f);
@@ -284,6 +324,7 @@ function render() {
         </details>
       </section>
       ${htmlMonitor(e)}
+      ${htmlPlacar(e)}
       <section>
         <h2>Projetos</h2>
         <div class="projetos">${e.projetos.map(htmlProjeto).join("")}</div>
