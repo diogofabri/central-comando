@@ -1,7 +1,13 @@
 // Central de comando: dashboard global (lê e escreve no mesmo banco que o Telegram e os agentes).
 // Sem config.js: modo demonstração com dados de exemplo em memória.
 
-const PROJETOS = { servicos: "Serviços", video: "Vídeo", produtos: "Produtos", cafe: "Café" };
+const PROJETOS = { servicos: "Serviços", video: "Vídeo", produtos: "Produtos", cafe: "Café", monitor: "Monitor de lives" };
+const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites" };
+// ordem na lista: o que está acontecendo agora primeiro
+const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, fila: 2, bloqueado: 3, executado: 4 };
+const ROTULO_ESTADO = { gravando: "gravando", analisando: "analisando", fila: "na fila", offline: "offline",
+  desconhecido: "desconhecido", aberto: "sinal aberto", executado: "encerrado", bloqueado: "bloqueado",
+  ao_vivo: "ao vivo", login_necessario: "pede login" };
 const RESULTADO = { aprovada: "Aprovada", ajustada: "Ajustada", descartada: "Descartada", expirada: "Expirou" };
 const TIPO_EVENTO = { acao: "ação", aprendizado: "aprendizado", alerta: "alerta", resumo: "resumo", erro: "erro" };
 
@@ -28,7 +34,7 @@ function fonteSupabase(cfg) {
     demo: false,
     sb,
     async carregar() {
-      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, pausa] = await Promise.all([
+      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, pausa, monitorFontes, monitorItens] = await Promise.all([
         sb.from("v_estado_projetos").select("*").order("id").then(ok),
         sb.from("decisoes").select("*").eq("status", "pendente").order("impacto", { ascending: false }).order("prazo").then(ok),
         sb.from("decisoes").select("*").neq("status", "pendente").order("decidido_em", { ascending: false }).limit(10).then(ok),
@@ -36,8 +42,11 @@ function fonteSupabase(cfg) {
         sb.from("eventos").select("*").order("criado_em", { ascending: false }).limit(25).then(ok),
         sb.from("cambio").select("*").order("data", { ascending: false }).limit(1).then(ok),
         sb.from("controle").select("valor").eq("chave", "pausa").then(ok),
+        sb.from("monitor_fontes").select("*").then(ok),
+        sb.from("monitor_itens").select("*").order("nome").then(ok),
       ]);
-      return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: pausa[0]?.valor === true };
+      return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: pausa[0]?.valor === true,
+               monitorFontes, monitorItens };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -78,6 +87,16 @@ function fonteDemo() {
     ],
     taxa: 5.0465,
     pausado: false,
+    monitorFontes: [
+      { fonte: "tiktok", ligado: true, vagas: "5 vagas", resumo: "1 gravando, 0 na fila, 1 em análise", atualizado_em: new Date(agora).toISOString() },
+      { fonte: "sites", ligado: true, vagas: "1 site(s)", resumo: "Foresignal: 1 sinais abertos em 2 pares", atualizado_em: new Date(agora).toISOString() },
+    ],
+    monitorItens: [
+      { fonte: "tiktok", item: "canal.fx", nome: "@canal.fx", estado: "gravando", ativo: true, analisando: true, espectadores: 87, desde: new Date(agora - 0.4 * h).toISOString(), chamadas_hoje: 2, detalhe: "XAUUSD ao vivo" },
+      { fonte: "tiktok", item: "outro", nome: "@outro", estado: "offline", ativo: false, analisando: false, chamadas_hoje: 0 },
+      { fonte: "sites", item: "foresignal:EURUSD", nome: "Foresignal · EUR/USD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 1 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · válido até 07:51" },
+      { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
+    ],
   };
   return {
     demo: true,
@@ -139,6 +158,48 @@ function htmlProjeto(p) {
   </div>`;
 }
 
+function duracao(iso) {
+  if (!iso) return "";
+  const min = Math.max(0, Math.round((Date.now() - new Date(iso)) / 6e4));
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
+}
+
+function htmlItemMonitor(i) {
+  const cls = i.ativo ? "good" : i.analisando || i.estado === "fila" ? "warning" : "";
+  const extras = [
+    i.analisando && i.estado !== "analisando" ? `<span class="badge warning">analisando</span>` : "",
+    i.espectadores != null ? `<span>${Number(i.espectadores).toLocaleString("pt-BR")} espectadores</span>` : "",
+    i.ativo && i.desde ? `<span>há ${duracao(i.desde)}</span>` : "",
+    i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
+  ].join("");
+  return `<li><span class="badge ${cls}">${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${esc(i.nome)}
+    <div class="meta">${extras}${i.detalhe ? `<span>${esc(i.detalhe)}</span>` : ""}</div></li>`;
+}
+
+function htmlMonitor(e) {
+  const fontes = Object.keys(FONTES).map((f) => {
+    const info = e.monitorFontes.find((x) => x.fonte === f);
+    const itens = e.monitorItens.filter((i) => i.fonte === f)
+      .sort((a, b) => (ORDEM_ESTADO[a.estado] ?? 9) - (ORDEM_ESTADO[b.estado] ?? 9) || (b.espectadores ?? 0) - (a.espectadores ?? 0));
+    const agora = itens.filter((i) => (ORDEM_ESTADO[i.estado] ?? 9) <= 2 || i.analisando);
+    const resto = itens.filter((i) => !agora.includes(i));
+    const atraso = info ? (Date.now() - new Date(info.atualizado_em)) / 6e4 : Infinity;
+    const status = !info ? { t: "sem dados", c: "" } : atraso > 3 ? { t: `sem sinal há ${duracao(info.atualizado_em)}`, c: "critical" }
+      : info.ligado ? { t: "no ar", c: "good" } : { t: "pausado", c: "critical" };
+    return `<div class="card">
+      <div class="titulo">${FONTES[f]} <span class="badge ${status.c}">${status.t}</span></div>
+      ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
+      <ul class="lista">${agora.map(htmlItemMonitor).join("") || `<li class="vazio">Nada ativo agora.</li>`}</ul>
+      ${resto.length ? `<details><summary>Outros ${resto.length} itens</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : ""}
+    </div>`;
+  });
+  return `<section>
+    <h2>Monitor de lives <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span></h2>
+    <div class="projetos">${fontes.join("")}</div>
+    <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar.</p>
+  </section>`;
+}
+
 function render() {
   const e = estado;
   document.getElementById("app").innerHTML = `
@@ -159,6 +220,7 @@ function render() {
           <ul class="lista">${e.resolvidas.map((d) => `<li>#${d.id} ${esc(d.titulo)}<div class="meta">${esc(RESULTADO[d.status] ?? d.status)} via ${esc(d.decidido_por)} · ${quando(d.decidido_em)}${d.resposta ? ` · “${esc(d.resposta)}”` : ""}</div></li>`).join("") || `<li class="vazio">Nenhuma ainda.</li>`}</ul>
         </details>
       </section>
+      ${htmlMonitor(e)}
       <section>
         <h2>Projetos</h2>
         <div class="projetos">${e.projetos.map(htmlProjeto).join("")}</div>
