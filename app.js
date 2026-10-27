@@ -1,7 +1,7 @@
 // Central de comando: dashboard global (lê e escreve no mesmo banco que o Telegram e os agentes).
 // Sem config.js: modo demonstração com dados de exemplo em memória.
 
-const PROJETOS = { servicos: "Serviços", video: "Vídeo", produtos: "Produtos", cafe: "Café", monitor: "Monitor de lives" };
+const PROJETOS = { servicos: "Serviços", video: "Vídeo", produtos: "Produtos", cafe: "Café", tortas: "Tortas Porto", monitor: "Monitor de lives" };
 const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites" };
 // ordem na lista: o que está acontecendo agora primeiro
 const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, fila: 2, bloqueado: 3, executado: 4 };
@@ -34,7 +34,7 @@ function fonteSupabase(cfg) {
     demo: false,
     sb,
     async carregar() {
-      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, pausa, monitorFontes, monitorItens] = await Promise.all([
+      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, pausa, monitorFontes, monitorItens, monitorSinais] = await Promise.all([
         sb.from("v_estado_projetos").select("*").order("id").then(ok),
         sb.from("decisoes").select("*").eq("status", "pendente").order("impacto", { ascending: false }).order("prazo").then(ok),
         sb.from("decisoes").select("*").neq("status", "pendente").order("decidido_em", { ascending: false }).limit(10).then(ok),
@@ -44,9 +44,10 @@ function fonteSupabase(cfg) {
         sb.from("controle").select("valor").eq("chave", "pausa").then(ok),
         sb.from("monitor_fontes").select("*").then(ok),
         sb.from("monitor_itens").select("*").order("nome").then(ok),
+        sb.from("monitor_sinais").select("*").order("desde", { ascending: false }).then(ok),
       ]);
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: pausa[0]?.valor === true,
-               monitorFontes, monitorItens };
+               monitorFontes, monitorItens, monitorSinais };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -96,6 +97,10 @@ function fonteDemo() {
       { fonte: "tiktok", item: "outro", nome: "@outro", estado: "offline", ativo: false, analisando: false, chamadas_hoje: 0 },
       { fonte: "sites", item: "foresignal:EURUSD", nome: "Foresignal · EUR/USD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 1 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · válido até 07:51" },
       { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
+    ],
+    monitorSinais: [
+      { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "@canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
+      { fonte: "sites", sinal_id: 2, item: "foresignal:EURUSD", origem: "Foresignal", instrumento: "EURUSD", direcao: "compra", entrada: "1.117", stop: 1.1149, alvos: "1.1187", desde: new Date(agora - 1 * h).toISOString(), ate: new Date(agora + 7 * h).toISOString() },
     ],
   };
   return {
@@ -176,11 +181,20 @@ function htmlItemMonitor(i) {
     <div class="meta">${extras}${i.detalhe ? `<span>${esc(i.detalhe)}</span>` : ""}</div></li>`;
 }
 
+function htmlSinal(s) {
+  const venda = s.direcao === "venda";
+  const ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : null;
+  return `<li><span class="badge ${venda ? "critical" : s.direcao === "compra" ? "good" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
+    <b>${esc(s.instrumento)}</b> · entrada ${esc(s.entrada ?? "—")} · SL ${esc(s.stop ?? "—")} · TP ${esc(s.alvos ?? "—")}
+    <div class="meta"><span>${esc(s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
+}
+
 function htmlMonitor(e) {
   const fontes = Object.keys(FONTES).map((f) => {
     const info = e.monitorFontes.find((x) => x.fonte === f);
     const itens = e.monitorItens.filter((i) => i.fonte === f)
       .sort((a, b) => (ORDEM_ESTADO[a.estado] ?? 9) - (ORDEM_ESTADO[b.estado] ?? 9) || (b.espectadores ?? 0) - (a.espectadores ?? 0));
+    const sinais = (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now()));
     const agora = itens.filter((i) => (ORDEM_ESTADO[i.estado] ?? 9) <= 2 || i.analisando);
     const resto = itens.filter((i) => !agora.includes(i));
     const atraso = info ? (Date.now() - new Date(info.atualizado_em)) / 6e4 : Infinity;
@@ -189,12 +203,15 @@ function htmlMonitor(e) {
     return `<div class="card">
       <div class="titulo">${FONTES[f]} <span class="badge ${status.c}">${status.t}</span></div>
       ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
+      <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
+        <ul class="lista">${sinais.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>
       <ul class="lista">${agora.map(htmlItemMonitor).join("") || `<li class="vazio">Nada ativo agora.</li>`}</ul>
       ${resto.length ? `<details><summary>Outros ${resto.length} itens</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : ""}
     </div>`;
   });
   return `<section>
-    <h2>Monitor de lives <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span></h2>
+    <h2>Monitor de lives <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
+      <span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length} sinais</span></h2>
     <div class="projetos">${fontes.join("")}</div>
     <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar.</p>
   </section>`;

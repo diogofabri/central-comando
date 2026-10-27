@@ -24,6 +24,7 @@ section h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: cent
 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
 .card + .card { margin-top: 10px; }
+.projetos .card + .card { margin-top: 0; }
 .meta { font-size: 12px; color: var(--ink2); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .chip { background: var(--chip); border-radius: 6px; padding: 1px 7px; font-size: 12px; color: var(--ink); }
 .titulo { font-weight: 600; }
@@ -41,6 +42,8 @@ label { font-size: 13px; color: var(--ink2); display: block; margin-bottom: 4px;
 .projetos { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .num { font-variant-numeric: tabular-nums; font-weight: 600; }
 .vazio { color: var(--ink2); font-size: 14px; }
+.sinais { background: var(--chip); border-radius: 8px; padding: 8px 10px; }
+.sinais .lista li { border-bottom-color: var(--line); }
 .aviso { background: var(--chip); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
 .lista { list-style: none; margin: 0; padding: 0; }
 .lista li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
@@ -54,6 +57,6 @@ details summary { cursor: pointer; font-size: 13px; color: var(--ink2); margin-t
 <div id="app"><p class="vazio" style="padding:16px">Carregando…</p></div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
