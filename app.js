@@ -34,7 +34,7 @@ function fonteSupabase(cfg) {
     demo: false,
     sb,
     async carregar() {
-      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, pausa, monitorFontes, monitorItens, monitorSinais] = await Promise.all([
+      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, pausa, monitorFontes, monitorItens, monitorSinais, comandos] = await Promise.all([
         sb.from("v_estado_projetos").select("*").order("id").then(ok),
         sb.from("decisoes").select("*").eq("status", "pendente").order("impacto", { ascending: false }).order("prazo").then(ok),
         sb.from("decisoes").select("*").neq("status", "pendente").order("decidido_em", { ascending: false }).limit(10).then(ok),
@@ -45,15 +45,20 @@ function fonteSupabase(cfg) {
         sb.from("monitor_fontes").select("*").then(ok),
         sb.from("monitor_itens").select("*").order("nome").then(ok),
         sb.from("monitor_sinais").select("*").order("desde", { ascending: false }).then(ok),
+        sb.from("controle").select("chave,valor").like("chave", "monitor:%").then(ok),
       ]);
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: pausa[0]?.valor === true,
-               monitorFontes, monitorItens, monitorSinais };
+               monitorFontes, monitorItens, monitorSinais,
+               monitorComando: Object.fromEntries(comandos.map((c) => [c.chave.slice(8), c.valor !== false])) };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
     instruir: (projeto, texto) =>
       sb.from("instrucoes").insert({ projeto_id: projeto || null, texto, origem: "dashboard" }).then(ok),
     pausar: (valor) => sb.from("controle").upsert({ chave: "pausa", valor }).then(ok),
+    // liga/desliga um monitor de lives (o monitor lê controle.monitor:<fonte> a cada 10 s)
+    comandarMonitor: (fontes, ligar) =>
+      sb.from("controle").upsert(fontes.map((f) => ({ chave: `monitor:${f}`, valor: ligar }))).then(ok),
     aoMudar(fn) {
       sb.channel("central")
         .on("postgres_changes", { event: "*", schema: "public" }, fn)
@@ -98,6 +103,7 @@ function fonteDemo() {
       { fonte: "sites", item: "foresignal:EURUSD", nome: "Foresignal · EUR/USD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 1 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · válido até 07:51" },
       { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
     ],
+    monitorComando: { tiktok: true, sites: true },
     monitorSinais: [
       { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "@canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
       { fonte: "sites", sinal_id: 2, item: "foresignal:EURUSD", origem: "Foresignal", instrumento: "EURUSD", direcao: "compra", entrada: "1.117", stop: 1.1149, alvos: "1.1187", desde: new Date(agora - 1 * h).toISOString(), ate: new Date(agora + 7 * h).toISOString() },
@@ -116,6 +122,13 @@ function fonteDemo() {
       s.instrucoes.unshift({ id: Date.now(), projeto_id: projeto || null, texto, origem: "dashboard", status: "nova", criado_em: new Date().toISOString() });
     },
     async pausar(valor) { s.pausado = valor; },
+    async comandarMonitor(fontes, ligar) {
+      fontes.forEach((f) => {
+        s.monitorComando[f] = ligar;
+        const info = s.monitorFontes.find((x) => x.fonte === f);
+        if (info) { info.ligado = ligar; info.resumo = ligar ? "voltando a checar" : "desligado pelo dashboard"; }
+      });
+    },
     aoMudar() {},
   };
 }
@@ -221,10 +234,17 @@ function htmlMonitor(e) {
     const agora = visiveis.filter((i) => (ORDEM_ESTADO[i.estado] ?? 9) <= 2 || i.analisando);
     const resto = visiveis.filter((i) => !agora.includes(i));
     const atraso = info ? (Date.now() - new Date(info.atualizado_em)) / 6e4 : Infinity;
+    const querLigado = e.monitorComando?.[f] !== false;  // sem comando = ligado
+    const desligado = info && !info.ligado && /desligado pelo dashboard/.test(info.resumo ?? "");
     const status = !info ? { t: "sem dados", c: "" } : atraso > 3 ? { t: `sem sinal há ${duracao(info.atualizado_em)}`, c: "critical" }
-      : info.ligado ? { t: "no ar", c: "good" } : { t: "pausado", c: "critical" };
+      : desligado ? { t: "desligado", c: "" } : info.ligado ? { t: "no ar", c: "good" } : { t: "pausado", c: "critical" };
+    // o comando leva até ~10 s para chegar e ~1 min para o estado voltar ao painel
+    const pendente = info && atraso <= 3 && querLigado === desligado;
+    const botao = `<button class="${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}">${querLigado ? "⏻ Desligar" : "▶ Ligar"}</button>`;
+    const aviso = pendente ? `<span class="badge warning">${querLigado ? "ligando…" : "desligando…"}</span>`
+      : atraso > 3 && info ? `<span class="meta">o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code></span>` : "";
     return `<div class="card">
-      <div class="titulo">${FONTES[f]} <span class="badge ${status.c}">${status.t}</span></div>
+      <div class="titulo" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${FONTES[f]} <span class="badge ${status.c}">${status.t}</span>${aviso}<span style="margin-left:auto">${botao}</span></div>
       ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
       <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
         <ul class="lista">${sinais.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>
@@ -234,7 +254,10 @@ function htmlMonitor(e) {
   });
   return `<section>
     <h2>Monitor de lives <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
-      <span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length} sinais</span></h2>
+
+      <span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length} sinais</span>
+      ${(() => { const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
+        return `<button style="margin-left:auto" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${algum ? "⏻ Desligar todos" : "▶ Ligar todos"}</button>`; })()}</h2>
     <div class="projetos">${fontes.join("")}</div>
     <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar.</p>
   </section>`;
@@ -304,6 +327,13 @@ document.addEventListener("click", (ev) => {
   if (acao === "ajustar") { ajustando = id; return render(); }
   if (acao === "cancelar-ajuste") { ajustando = null; return render(); }
   if (acao === "pausa") return agir(() => fonte.pausar(!estado.pausado));
+  if (acao === "monitor") {
+    const fontes = b.dataset.fontes.split(","), ligar = b.dataset.ligar === "true";
+    const nomes = fontes.map((f) => FONTES[f]).join(", ");
+    if (!ligar && !confirm(`Desligar o monitor (${nomes})? As gravações em andamento são encerradas e nada é capturado até ligar de novo.`)) return;
+    b.disabled = true;
+    return agir(() => fonte.comandarMonitor(fontes, ligar));
+  }
   if (acao === "confirmar-ajuste") {
     const texto = document.getElementById(`aj-${id}`).value.trim();
     if (!texto) return;
