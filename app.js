@@ -1,7 +1,7 @@
 // Central de comando: dashboard global (lê e escreve no mesmo banco que o Telegram e os agentes).
 // Sem config.js: modo demonstração com dados de exemplo em memória.
 
-const PROJETOS = { servicos: "Serviços", video: "Vídeo", produtos: "Produtos", cafe: "Café", tortas: "Tortas Porto", monitor: "Monitor de lives" };
+const PROJETOS = { servicos: "Serviços", video: "Vídeo", produtos: "Produtos", cafe: "Café", tortas: "Tortaria Mineira", monitor: "Monitor de lives" };
 const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites" };
 // ordem na lista: o que está acontecendo agora primeiro
 const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, fila: 2, bloqueado: 3, executado: 4 };
@@ -195,8 +195,11 @@ function htmlMonitor(e) {
     const itens = e.monitorItens.filter((i) => i.fonte === f)
       .sort((a, b) => (ORDEM_ESTADO[a.estado] ?? 9) - (ORDEM_ESTADO[b.estado] ?? 9) || (b.espectadores ?? 0) - (a.espectadores ?? 0));
     const sinais = (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now()));
-    const agora = itens.filter((i) => (ORDEM_ESTADO[i.estado] ?? 9) <= 2 || i.analisando);
-    const resto = itens.filter((i) => !agora.includes(i));
+    // item cujo sinal aberto já aparece em "Sinais ativos" (sites: um item por par) não se repete na lista
+    const comSinal = new Set(sinais.map((s) => s.item));
+    const visiveis = itens.filter((i) => !(i.estado === "aberto" && comSinal.has(i.item)));
+    const agora = visiveis.filter((i) => (ORDEM_ESTADO[i.estado] ?? 9) <= 2 || i.analisando);
+    const resto = visiveis.filter((i) => !agora.includes(i));
     const atraso = info ? (Date.now() - new Date(info.atualizado_em)) / 6e4 : Infinity;
     const status = !info ? { t: "sem dados", c: "" } : atraso > 3 ? { t: `sem sinal há ${duracao(info.atualizado_em)}`, c: "critical" }
       : info.ligado ? { t: "no ar", c: "good" } : { t: "pausado", c: "critical" };
@@ -205,7 +208,7 @@ function htmlMonitor(e) {
       ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
       <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
         <ul class="lista">${sinais.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>
-      <ul class="lista">${agora.map(htmlItemMonitor).join("") || `<li class="vazio">Nada ativo agora.</li>`}</ul>
+      ${agora.length ? `<ul class="lista">${agora.map(htmlItemMonitor).join("")}</ul>` : sinais.length ? "" : `<p class="vazio">Nada ativo agora.</p>`}
       ${resto.length ? `<details><summary>Outros ${resto.length} itens</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : ""}
     </div>`;
   });
