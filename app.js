@@ -379,7 +379,7 @@ function demoAgentes(agora) {
   ];
   mt.pontos_fracos = ["Self-learning em ajuste em GOLD: a versão atual não lucra fora da amostra.", "Self-learning em ajuste em US30: a versão atual não lucra fora da amostra."];
   mt.pontos_fortes = ["Os vetos da IA pouparam US$ 21,40 em 5 sinais.", "Melhor ativo: SILVER, US$ +38,10 em 3 operações."];
-  return { atualizado_em: new Date(agora - 0.05 * h).toISOString(), lote: 0.01, contratos_verificados: false,
+  return { atualizado_em: new Date(agora - 0.05 * h).toISOString(), lote: 0.01, contratos: "tamanhos da folha MT5 da Capital.com (30/10/2026); spread estimado",
     self_learning: { ligado: true, ultimo: new Date(agora - 2 * h).toISOString(), proximo: new Date(agora + 4 * h).toISOString(), cada_h: 6 },
     agentes: [cm, gk, mt] };
 }
@@ -1108,7 +1108,7 @@ function vistaAgentes(id) {
       <div class="bloco">
         <a class="voltar" href="#/monitor">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>Agentes de sinais</h1>
-        <p class="resumo">Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Os valores por contrato ainda não foram conferidos na corretora. Uso pessoal: não é recomendação.</p>
+        <p class="resumo">Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; o spread ainda é estimado. Uso pessoal: não é recomendação.</p>
         ${p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span></div>` : ""}
       </div>
       ${controleSelfLearning(p)}
