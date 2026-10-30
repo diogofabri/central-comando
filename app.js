@@ -1,6 +1,6 @@
 // Central de comando: dashboard global (lê e escreve no mesmo banco que o Telegram e os agentes).
 // Sem config.js: modo demonstração com dados de exemplo em memória.
-// Rotas: #/ (visão geral) · #/p/<projeto> (detalhe) · #/monitor (monitor de lives e placar).
+// Rotas: #/ (visão geral) · #/p/<projeto> (detalhe) · #/monitor (monitor de lives e placar) · #/agentes[/<id>] (agentes de sinais).
 
 const PROJETOS = {
   servicos: { nome: "Serviços", longo: "Serviços: agentes de IA e MCP para SaaS" },
@@ -185,7 +185,8 @@ function fonteSupabase(cfg) {
       const ctl = Object.fromEntries(controle.map((c) => [c.chave, c.valor]));
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados, monitorConsensos,
-               monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])) };
+               monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
+               agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -195,6 +196,8 @@ function fonteSupabase(cfg) {
     // liga/desliga um monitor de lives (o monitor lê controle.monitor:<fonte> a cada 10 s)
     comandarMonitor: (fontes, ligar) =>
       sb.from("controle").upsert(fontes.map((f) => ({ chave: `monitor:${f}`, valor: ligar }))).then(ok),
+    // liga/desliga o self-learning do executor dos agentes (lido a cada execução, a cada 5 min)
+    comandarSelfLearning: (ligar) => sb.from("controle").upsert({ chave: "agentes:self_learning", valor: ligar }).then(ok),
     aoMudar(fn) {
       sb.channel("central")
         .on("postgres_changes", { event: "*", schema: "public" }, fn)
@@ -291,8 +294,10 @@ function fonteDemo() {
       { fonte: "agentes", item: "GOLD", nome: "GOLD · XAUUSD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 0.5 * h).toISOString(), chamadas_hoje: 1, detalhe: "ATIVO 🟢 COMPRA · entrada 4010 · stop 4002 · alvos 4019.6 / 4026", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
       { fonte: "agentes", item: "US100", nome: "US100 · NAS100", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "PRÓXIMO 🔴 VENDA: falta ADX 14 baixo/deitado (lateral); novo cruzamento ou ADX virar para cima", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
       { fonte: "agentes", item: "CRUDEOIL", nome: "CRUDEOIL · USOIL", estado: "sem_sinal", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "SEM SINAL · lateral (ADX < 20) · ADX 15.2 · RSI 48 · fora da janela do ativo", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
+      { fonte: "agentes", item: "multi-tf-auto:GOLD", nome: "multi-tf-auto · GOLD · XAUUSD", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "self-learning v3 · em ajuste · PRÓXIMO · M5 tendência +0.12 · M15 tendência +0.41 · H1 tendência +0.62 · vela heikin_ashi", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.9 * h).toISOString() },
     ],
     monitorComando: { tiktok: true, sites: true, agentes: true },
+    agentesPainel: demoAgentes(agora), selfLearning: true,
     monitorConsensos: [{ criado_em: new Date(agora - 4.2 * h).toISOString(), instrumento: "XAUUSD", direcao: "compra", canais: ["@canal.fx", "@mogotrading_off", "▶️ Forex & Crypto Live"] }],
     monitorResultados: [
       { fonte: "tiktok", sinal_id: 5, origem: "Consenso de 3 canais", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", status: "alvo", resultado_r: 1.8, desde: new Date(agora - 4.2 * h).toISOString(), resolvido_em: new Date(agora - 3 * h).toISOString() },
@@ -327,9 +332,58 @@ function fonteDemo() {
         if (info) { info.ligado = ligar; info.resumo = ligar ? "voltando a checar" : "desligado pelo dashboard"; }
       });
     },
+    async comandarSelfLearning(ligar) { s.selfLearning = ligar; s.agentesPainel.self_learning.ligado = ligar; },
     aoMudar() {},
   };
 }
+
+// dados de exemplo da página #/agentes (modo demonstração): mesma forma do controle.agentes:painel
+function demoAgentes(agora) {
+  const h = 36e5;
+  let semente = 7;
+  const rnd = () => (semente = (semente * 9301 + 49297) % 233280) / 233280;
+  const met = (usds) => {
+    const g = usds.filter((x) => x > 0).reduce((s, x) => s + x, 0), p = -usds.filter((x) => x < 0).reduce((s, x) => s + x, 0);
+    let pico = 0, saldo = 0, dd = 0;
+    usds.forEach((x) => { saldo += x; pico = Math.max(pico, saldo); dd = Math.max(dd, pico - saldo); });
+    return { ops: usds.length, lucro_usd: Math.round(saldo * 100) / 100, acerto_pct: usds.length ? Math.round((1000 * usds.filter((x) => x > 0).length) / usds.length) / 10 : null,
+             fator_lucro: p ? Math.round((100 * g) / p) / 100 : null, r_total: Math.round(usds.reduce((s, x) => s + x / 12, 0) * 100) / 100, drawdown_usd: Math.round(dd * 100) / 100 };
+  };
+  const agente = (id, tipo, metodo, ativos, tfs, n, vies, extra = {}) => {
+    const ops = Array.from({ length: n }, (_, i) => ({ t: agora - (n - i) * 5 * h, ativo: ativos[i % ativos.length], lado: rnd() > 0.45 ? "compra" : "venda",
+      hora: Math.floor(rnd() * 14) + 6, usd: Math.round(((rnd() - 0.5 + vies) * 30) * 100) / 100 }));
+    ops.forEach((o) => { o.status = o.usd > 0 ? "alvo" : rnd() > 0.3 ? "stop" : "expirado"; });
+    let saldo = 0;
+    const grupo = (k) => Object.fromEntries([...new Set(ops.map(k))].map((v) => [v, met(ops.filter((o) => k(o) === v).map((o) => o.usd))]));
+    return { id, tipo, metodo, ligado: true, ativos, timeframes: tfs, self_learning: false, por_ativo_versao: false, revisao_ia: false,
+      ultima_execucao: new Date(agora - 0.4 * h).toISOString(), proxima_execucao: new Date(agora + 0.6 * h).toISOString(),
+      metricas: met(ops.map((o) => o.usd)), curva: ops.map((o) => [new Date(o.t).toISOString(), Math.round((saldo += o.usd) * 100) / 100]),
+      por_ativo: ativos.map((a) => ({ ativo: a, metricas: met(ops.filter((o) => o.ativo === a).map((o) => o.usd)), status: ["SEM SINAL", "PRÓXIMO", "ATIVO"][Math.floor(rnd() * 3)],
+        texto: "SEM SINAL · H1 tendência +0.41 · M15 lateral +0.08", auto: null, backtest: null })),
+      por_hora: grupo((o) => o.hora), por_lado: grupo((o) => o.lado), desfechos: grupo((o) => o.status), vetos: null, ciclos: [], trocas: [],
+      pontos_fracos: [], pontos_fortes: [], ...extra };
+  };
+  const cm = agente("cruzamento-medias", "skill", "EMA 9/21 + filtro H1", ["US30", "US100", "GOLD", "SILVER", "CRUDEOIL"], ["M15"], 26, 0.04);
+  cm.pontos_fracos = ["Perde em CRUDEOIL: US$ −18,40 em 5 operações.", "Pior horário: 13h UTC (US$ −22,10 em 4 operações)."];
+  cm.pontos_fortes = ["Melhor ativo: GOLD, US$ +41,20 em 6 operações.", "Fator de lucro 1,4: ganha 1,4× o que perde."];
+  const gk = agente("gk-sniper", "gk_sniper", "GK Sniper: ZLEMA 9/25, EMA 200, 1 print por tendência", ["GOLD"], ["M15", "H1"], 9, -0.06);
+  gk.pontos_fracos = ["Amostra pequena (9 operações resolvidas): nada conclusivo ainda.", "As vendas perdem enquanto as compras ganham: o lado importa neste agente."];
+  const mt = agente("multi-tf-auto", "multi_tf", "regime + indicadores H1/M15/M5, self-learning por ativo", ["US30", "US100", "GOLD", "SILVER", "CRUDEOIL"], ["M5", "M15", "H1"], 14, 0.08,
+    { self_learning: true, por_ativo_versao: true, revisao_ia: true, vetos: { ops: 5, lucro_usd: -21.4, acerto_pct: 20, fator_lucro: 0.3, r_total: -2, drawdown_usd: 25 } });
+  const estados = { US30: ["em ajuste", 0, -3.44, 8], US100: ["satisfeito", 1, 7.14, 14], GOLD: ["em ajuste", 0, -18.83, 11], SILVER: ["satisfeito", 2, 161.72, 10], CRUDEOIL: ["satisfeito", 0, 31.27, 4] };
+  mt.por_ativo.forEach((x) => { const [e, v, l, n] = estados[x.ativo]; x.auto = { versao: v, estado: e }; x.backtest = { ops: n, lucro_usd: l }; });
+  mt.trocas = [{ ativo: "SILVER", em: new Date(agora - 40 * h).toISOString(), versao: 2 }];
+  mt.ciclos = [
+    { ativo: "SILVER", em: new Date(agora - 40 * h).toISOString(), motivo: "20 operações desde o último ciclo", estado: "satisfeito", versao: 2, validacao_atual: { ops: 10, lucro_usd: 98.2 }, validacao_nova: { ops: 10, lucro_usd: 161.72 } },
+    { ativo: "GOLD", em: new Date(agora - 40 * h).toISOString(), motivo: "3.0 dias desde o último ciclo", estado: "em ajuste", versao: null, validacao_atual: { ops: 11, lucro_usd: -18.83 }, validacao_nova: null },
+  ];
+  mt.pontos_fracos = ["Self-learning em ajuste em GOLD: a versão atual não lucra fora da amostra.", "Self-learning em ajuste em US30: a versão atual não lucra fora da amostra."];
+  mt.pontos_fortes = ["Os vetos da IA pouparam US$ 21,40 em 5 sinais.", "Melhor ativo: SILVER, US$ +38,10 em 3 operações."];
+  return { atualizado_em: new Date(agora - 0.05 * h).toISOString(), lote: 0.01, contratos_verificados: false,
+    self_learning: { ligado: true, ultimo: new Date(agora - 2 * h).toISOString(), proximo: new Date(agora + 4 * h).toISOString(), cada_h: 6 },
+    agentes: [cm, gk, mt] };
+}
+
 
 // ---------- rotas ----------
 
@@ -338,6 +392,8 @@ function rotaAtual() {
   const m = h.match(/^#\/p\/(\w+)/);
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? { tipo: "monitor" } : { tipo: "projeto", id: m[1] };
   if (h.startsWith("#/monitor")) return { tipo: "monitor" };
+  const ag = h.match(/^#\/agentes(?:\/([\w-]+))?/);
+  if (ag) return { tipo: "agentes", id: ag[1] };
   return { tipo: "geral" };
 }
 const chaveRota = (r) => r.tipo + (r.id ?? "");
@@ -528,7 +584,8 @@ function htmlTopo(rota) {
       const pend = p?.decisoes_pendentes ?? 0;
       return aba(`#/p/${id}`, rota.tipo === "projeto" && rota.id === id, `<i class="ponto"></i>${esc(PROJETOS[id].nome)}${pend ? `<span class="count alerta">${pend}</span>` : ""}`, cor(id));
     }))
-    .concat(aba("#/monitor", rota.tipo === "monitor", `<i class="ponto"></i>Monitor${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length ? `<span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length}</span>` : ""}`, cor("monitor")));
+    .concat(aba("#/monitor", rota.tipo === "monitor", `<i class="ponto"></i>Monitor${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length ? `<span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length}</span>` : ""}`, cor("monitor")))
+    .concat(aba("#/agentes", rota.tipo === "agentes", `<i class="ponto"></i>Agentes`, cor("monitor")));
   return `<header class="topo">
     <div class="topo-linha">
       <div class="marca"><span class="logo">${ico("zap")}</span><div><h1>Central de comando</h1><small>${semana ? `Semana ${semana} do roteiro · ` : ""}${fonte.demo ? "modo demonstração" : "banco único"}</small></div></div>
@@ -699,8 +756,14 @@ function htmlContadores(i) {
   return partes.join("");
 }
 
+// motor em self-learning (agentes "-auto"): o monitor prefixa o detalhe com "self-learning v<n> · <estado> · "
+const RE_AUTO = /^self-learning v(\d+) · ([^·]+?) · ?/;
+const seloAuto = (texto) => `<span class="badge auto" title="parâmetros ajustados sozinhos pelo self-learning (lucro com lote 0,01)">${ico("bulb")}${esc(texto)}</span>`;
+
 function htmlItemMonitor(i) {
   const cls = i.ativo ? "good" : i.analisando || i.estado === "fila" ? "warning" : "muted";
+  const auto = i.fonte === "agentes" ? RE_AUTO.exec(i.detalhe ?? "") : null;
+  const detalhe = auto ? i.detalhe.slice(auto[0].length) : i.detalhe;
   const extras = [
     i.analisando && i.estado !== "analisando" ? `<span class="badge warning">analisando</span>` : "",
     i.espectadores != null ? `<span>${Number(i.espectadores).toLocaleString("pt-BR")} espectadores</span>` : "",
@@ -708,10 +771,11 @@ function htmlItemMonitor(i) {
     i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
     htmlContadores(i),
   ].join("");
+  const selo = auto ? ` ${seloAuto(`self-learning v${auto[1]} · ${auto[2].trim()}`)}` : "";
   const icone = i.fonte === "sites" ? `${iconeAtivo(i.item.split(":").pop())} ` : i.fonte === "agentes" ? `${iconeAtivo(i.nome.split("·").pop().trim())} ` : "";
   const vivo = i.ativo ? `<i class="ponto vivo" aria-hidden="true"></i>` : "";
-  return `<li><span class="badge ${cls}">${vivo}${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${linkCanal(i.fonte, i.item, i.nome)}
-    <div class="meta">${extras}${i.detalhe ? `<span>${esc(i.detalhe)}</span>` : ""}</div></li>`;
+  return `<li><span class="badge ${cls}">${vivo}${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${linkCanal(i.fonte, i.item, i.nome)}${selo}
+    <div class="meta">${extras}${detalhe ? `<span>${esc(detalhe)}</span>` : ""}</div></li>`;
 }
 
 // mesmo mapa de 05-monitor-lives/monitor_lives/instrumentos.py (icone_instrumento); são conteúdo, não ícones de interface
@@ -735,7 +799,7 @@ function htmlSinal(s) {
   const venda = s.direcao === "venda";
   const ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : null;
   return `<li><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
-    <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span> <b>${esc(s.instrumento)}</b> · entrada ${esc(s.entrada ?? "—")} · SL ${esc(s.stop ?? "—")} · TP ${esc(s.alvos ?? "—")}
+    <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span> <b>${esc(s.instrumento)}</b> · entrada ${esc(s.entrada ?? "—")} · SL ${esc(s.stop ?? "—")} · TP ${esc(s.alvos ?? "—")}${s.fonte === "agentes" && /-auto\b/.test(s.origem ?? "") ? ` ${seloAuto("self-learning")}` : ""}
     <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
 }
 
@@ -843,12 +907,13 @@ function htmlMonitor(e) {
     const rodada = periodica && info ? `<div class="meta">
         <span>último acionamento ${info.ultima_execucao ? `<b class="num" data-desde="${esc(info.ultima_execucao)}">${textoDesde(info.ultima_execucao)}</b>` : "<b>nunca</b>"}</span>
         ${info.proxima_execucao && info.ligado ? `<span>próximo em <b class="num" data-ate="${esc(info.proxima_execucao)}">${textoContador(info.proxima_execucao)}</b></span>` : ""}
-        ${info.intervalo_min ? `<span>a cada ${info.intervalo_min} min</span>` : ""}</div>` : "";
+        ${info.intervalo_min ? `<span>a cada ${info.intervalo_min} min</span>` : ""}</div>
+      ${f === "agentes" ? `<div class="meta">${controleSelfLearning(e.agentesPainel, { compacto: true })}<a href="#/agentes">Ver cada agente</a></div>` : ""}` : "";
     // o comando leva até ~10 s para chegar e ~1 min para o estado voltar ao painel
     const pendente = info && atraso <= 3 && querLigado === desligado;
     const botao = `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}">${ico(querLigado ? "power" : "play")} ${querLigado ? "Desligar" : "Ligar"}</button>`;
     const aviso = pendente ? `<span class="badge warning">${ico("loader")}${querLigado ? "ligando…" : "desligando…"}</span>`
-      : atraso > 3 && info ? `<span class="meta">${periodica ? "a sessão do Claude Code que roda os agentes parou: reabrir o loop (05-monitor-lives/docs/agentes.md)" : `o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code>`}</span>` : "";
+      : atraso > 3 && info ? `<span class="meta">${periodica ? "o executor dos agentes parou: conferir o launchd com.vinculo.agentes e o log em 05-monitor-lives/dados-agentes/logs/" : `o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code>`}</span>` : "";
     return `<div class="cartao">
       <div class="titulo" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${FONTES[f]} <span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span><span style="margin-left:auto">${botao}</span></div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
@@ -895,16 +960,198 @@ function vistaMonitor() {
   </main>`;
 }
 
+// ---------- agentes de sinais (#/agentes, #/agentes/<id>) ----------
+// Lê controle.agentes:painel (publicado pelo executor dos agentes a cada 5 min). Gesto da página: o eixo zero.
+// Todo ganho/perda é uma barra que sai de uma linha central (ganho à direita, perda à esquerda) com o valor escrito.
+
+const usd2 = (v) => { v = Number(v) || 0; return `${v < 0 ? "−" : v > 0 ? "+" : ""}US$ ${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
+const pct = (v) => v == null ? "—" : `${String(v).replace(".", ",")}%`;
+const ESTADO_AUTO = { satisfeito: "good", "em ajuste": "warning", aprendendo: "muted" };
+const STATUS_AGORA = { ATIVO: "good", "PRÓXIMO": "warning", "SEM SINAL": "muted", "SEM DADOS": "critical", ERRO: "critical" };
+const NOME_DESFECHO = { alvo: "alvo", stop: "stop", expirado: "expirou" };
+
+function barraZero(v, max, rotulo = usd2(v)) {
+  const n = Number(v) || 0, w = max > 0 ? Math.min(50, (50 * Math.abs(n)) / max) : 0;
+  const lado = n > 0 ? "ganho" : n < 0 ? "perda" : "zero";
+  return `<span class="zero ${lado}"><span class="trilho" aria-hidden="true"><i style="width:${w.toFixed(1)}%"></i></span><b class="num">${esc(rotulo)}</b></span>`;
+}
+
+function seloModo(a) {
+  const auto = a.por_ativo.find((x) => x.auto)?.auto;
+  const selos = [];
+  if (a.self_learning) selos.push(seloAuto(a.por_ativo_versao ? "self-learning por ativo" : `self-learning v${auto?.versao ?? 0}`));
+  if (a.revisao_ia) selos.push(`<span class="badge muted" title="o Sonnet aprova ou veta, o Opus confirma">${ico("check")}revisão por IA</span>`);
+  selos.push(a.ligado ? `<span class="badge good"><i class="ponto vivo" aria-hidden="true"></i>ligado</span>` : `<span class="badge muted">desligado</span>`);
+  return selos.join("");
+}
+
+function controleSelfLearning(p, { compacto = false } = {}) {
+  const sl = p?.self_learning ?? { ligado: estado.selfLearning };
+  const ligado = estado.selfLearning;
+  const pendente = p && sl.ligado !== ligado;
+  const prox = ligado && sl.proximo ? `próxima verificação em <b class="num" data-ate="${esc(sl.proximo)}">${textoContador(sl.proximo)}</b>` : "";
+  const texto = pendente ? `<span class="badge warning">${ico("loader")}${ligado ? "ligando…" : "desligando…"}</span>`
+    : `<span class="badge ${ligado ? "auto" : "muted"}">${ico("bulb")}self-learning ${ligado ? "ligado" : "desligado"}</span>`;
+  return `<div class="ctl-sl ${compacto ? "compacto" : ""}">${texto}
+    ${compacto ? "" : `<span class="meta">${prox || (ligado ? `verifica a cada ${numero(sl.cada_h ?? 6)} h` : "as rodadas continuam; só os ajustes param")}</span>`}
+    <button class="btn pequeno ${ligado ? "" : "primario"}" data-acao="self-learning" data-ligar="${!ligado}">${ico(ligado ? "pause" : "play")} ${ligado ? "Pausar self-learning" : "Retomar self-learning"}</button></div>`;
+}
+
+function svgSaldo(a) {
+  const pts = a.curva.map(([t, v]) => [new Date(t).getTime(), v]);
+  if (pts.length < 2) return `<p class="vazio">A curva aparece a partir de 2 operações resolvidas (${a.metricas.ops} até agora).</p>`;
+  const estreito = innerWidth < 560;
+  const W = estreito ? 360 : 640, H = estreito ? 180 : 210, L = 52, R = 12, T = 12, B = 26, w = W - L - R, h = H - T - B;
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+  let yMin = Math.min(0, ...pts.map((p) => p[1])), yMax = Math.max(0, ...pts.map((p) => p[1]));
+  const folga = (yMax - yMin || 1) * 0.12; yMin -= yMin < 0 ? folga : 0; yMax += folga;
+  const x = (t) => L + (w * (t - t0)) / Math.max(1, t1 - t0), y = (v) => T + h - (h * (v - yMin)) / (yMax - yMin);
+  const d = pts.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const area = `${d} L${x(t1).toFixed(1)},${y(0).toFixed(1)} L${x(t0).toFixed(1)},${y(0).toFixed(1)} Z`;
+  const ticks = [yMin, (yMin + yMax) / 2, yMax];
+  const trocas = (a.trocas ?? []).filter((m) => { const t = new Date(m.em).getTime(); return t >= t0 && t <= t1; });
+  const ult = pts[pts.length - 1];
+  const desc = `Saldo acumulado de ${a.id}: ${usd2(ult[1])} em ${a.metricas.ops} operações, de ${dataCurta(a.curva[0][0])} a ${dataCurta(a.curva[a.curva.length - 1][0])}. Queda máxima ${usd2(-a.metricas.drawdown_usd)}.`;
+  return `<div class="grafico saldo ${ult[1] < 0 ? "negativo" : ""}">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(desc)}"><title>${esc(desc)}</title>
+      ${ticks.map((t) => `<line class="grade" x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text x="${L - 6}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end">${usdCurto(t)}</text>`).join("")}
+      <path class="area" d="${area}"/>
+      <line class="eixo zero-linha" x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>
+      ${trocas.map((m) => `<line class="troca" x1="${x(new Date(m.em).getTime()).toFixed(1)}" x2="${x(new Date(m.em).getTime()).toFixed(1)}" y1="${T}" y2="${T + h}"/><text class="troca-rot" x="${(x(new Date(m.em).getTime()) + 3).toFixed(1)}" y="${T + 9}">v${m.versao}${m.ativo ? ` ${esc(m.ativo)}` : ""}</text>`).join("")}
+      <path class="linha-saldo" pathLength="1" d="${d}"/>
+      <circle class="ponto-real" cx="${x(ult[0]).toFixed(1)}" cy="${y(ult[1]).toFixed(1)}" r="4"/>
+      <text x="${L}" y="${H - 6}">${dataCurta(a.curva[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dataCurta(a.curva[a.curva.length - 1][0])}</text>
+    </svg>
+    <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}</div>
+  </div>`;
+}
+
+function htmlLeitura(a) {
+  const item = (t, tipo) => `<li class="leitura-${tipo}">${ico(tipo === "fraco" ? "alert" : "check")}<span>${esc(t)}</span></li>`;
+  return `<div class="leitura">
+    <h3>Pontos fracos</h3>
+    <ul class="lista compacta">${a.pontos_fracos.map((t) => item(t, "fraco")).join("") || `<li class="vazio">Nada que os números apontem por enquanto.</li>`}</ul>
+    <h3>Pontos fortes</h3>
+    <ul class="lista compacta">${a.pontos_fortes.map((t) => item(t, "forte")).join("") || `<li class="vazio">Ainda sem um ponto forte sustentado pelos números.</li>`}</ul>
+    ${a.vetos && a.vetos.ops ? `<p class="meta">Vetos da IA medidos: ${a.vetos.ops} sinais, que teriam dado ${usd2(a.vetos.lucro_usd)}.</p>` : ""}
+  </div>`;
+}
+
+function htmlAtuacao(a) {
+  const max = Math.max(1, ...a.por_ativo.map((x) => Math.abs(x.metricas.lucro_usd)), ...a.por_ativo.map((x) => Math.abs(x.backtest?.lucro_usd ?? 0)));
+  return `<div class="rolagem"><table class="tabela atuacao">
+    <thead><tr><th scope="col">Ativo</th><th scope="col">Agora</th><th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">Saldo real</th>${a.self_learning ? `<th scope="col">Versão</th><th scope="col" class="col-zero">Backtest fora da amostra</th>` : ""}</tr></thead>
+    <tbody>${a.por_ativo.map((x) => `<tr>
+      <td><span class="ativo-nome">${iconeAtivo(x.ativo)}${esc(x.ativo)}</span></td>
+      <td class="agora">${x.status ? `<span class="badge ${STATUS_AGORA[x.status] ?? "muted"}">${esc(x.status.toLowerCase())}</span>` : `<span class="vazio">—</span>`}${x.texto ? `<span class="detalhe" title="${esc(x.texto)}">${esc(x.texto.replace(/^[A-ZÁÉÍÓÚÃÕÇ ]+ · /, ""))}</span>` : ""}</td>
+      <td class="num">${x.metricas.ops}</td><td class="num">${pct(x.metricas.acerto_pct)}</td>
+      <td class="col-zero">${x.metricas.ops ? barraZero(x.metricas.lucro_usd, max) : `<span class="vazio">sem operações</span>`}</td>
+      ${a.self_learning ? `<td>${x.auto ? `<span class="badge ${ESTADO_AUTO[x.auto.estado] ?? "muted"}">v${x.auto.versao} · ${esc(x.auto.estado)}</span>` : "—"}</td>
+      <td class="col-zero">${x.backtest ? barraZero(x.backtest.lucro_usd, max, `${usd2(x.backtest.lucro_usd)} · ${x.backtest.ops} op.`) : `<span class="vazio">sem ciclo</span>`}</td>` : ""}
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
+function htmlRecortes(a) {
+  const horas = Object.entries(a.por_hora).map(([h, m]) => [Number(h), m]).sort((p, q) => p[0] - q[0]);
+  const lados = Object.entries(a.por_lado);
+  const max = Math.max(1, ...horas.map(([, m]) => Math.abs(m.lucro_usd)), ...lados.map(([, m]) => Math.abs(m.lucro_usd)));
+  const linha = (rot, m) => `<li><span class="rot">${rot}</span>${barraZero(m.lucro_usd, max)}<span class="meta">${m.ops} op. · ${pct(m.acerto_pct)}</span></li>`;
+  const des = a.desfechos, total = Object.values(des).reduce((s, m) => s + m.ops, 0);
+  return `<div class="recortes">
+    <div><h3>Por hora de abertura (UTC)</h3>${horas.length ? `<ul class="barras">${horas.map(([h, m]) => linha(`${String(h).padStart(2, "0")}h`, m)).join("")}</ul>` : `<p class="vazio">Sem operações resolvidas.</p>`}</div>
+    <div><h3>Por lado</h3>${lados.length ? `<ul class="barras">${lados.map(([l, m]) => linha(l === "compra" ? "compra" : "venda", m)).join("")}</ul>` : `<p class="vazio">Sem operações resolvidas.</p>`}
+      <h3>Como as operações terminam</h3>${total ? `<div class="desfechos" role="img" aria-label="${esc(Object.entries(des).map(([k, m]) => `${NOME_DESFECHO[k] ?? k}: ${m.ops}`).join(", "))}">
+        ${Object.entries(des).map(([k, m]) => `<span class="d-${k}" style="flex:${m.ops}">${NOME_DESFECHO[k] ?? k} ${m.ops}</span>`).join("")}</div>` : `<p class="vazio">—</p>`}</div>
+  </div>`;
+}
+
+function htmlCiclos(a) {
+  if (!a.self_learning) return "";
+  return `<details ${a.ciclos.length ? "" : "open"}><summary>${ico("chevron")}Ciclos do self-learning <span class="count">${a.ciclos.length}</span></summary>
+    ${a.ciclos.length ? `<div class="rolagem"><table class="tabela"><thead><tr><th scope="col">Quando</th>${a.por_ativo_versao ? `<th scope="col">Ativo</th>` : ""}<th scope="col">Gatilho</th><th scope="col">Validação da versão em vigor</th><th scope="col">Candidata</th><th scope="col">Resultado</th></tr></thead>
+      <tbody>${a.ciclos.map((c) => `<tr><td>${quando(c.em)}</td>${a.por_ativo_versao ? `<td>${esc(c.ativo ?? "—")}</td>` : ""}<td>${esc(c.motivo ?? "—")}</td>
+        <td class="num">${c.validacao_atual?.ops != null ? `${usd2(c.validacao_atual.lucro_usd)} · ${c.validacao_atual.ops} op.` : "—"}</td>
+        <td class="num">${c.validacao_nova ? `${usd2(c.validacao_nova.lucro_usd)} · ${c.validacao_nova.ops} op.` : "—"}</td>
+        <td>${c.versao ? `<span class="badge good">trocou para v${c.versao}</span>` : `<span class="badge ${ESTADO_AUTO[c.estado] ?? "muted"}">manteve · ${esc(c.estado ?? "")}</span>`}</td></tr>`).join("")}</tbody></table></div>
+      <p class="meta">Só troca com lucro fora da amostra, operações mínimas e mais lucro que a versão em vigor. Backtest, não recomendação.</p>`
+      : `<p class="vazio">Nenhum ciclo ainda: o primeiro roda na próxima verificação.</p>`}
+  </details>`;
+}
+
+function htmlAgente(a) {
+  const m = a.metricas;
+  const cel = (rot, valor, sub = "") => `<div><span class="rotulo">${rot}</span><span class="valor">${valor}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
+  return `<section class="painel agente" aria-labelledby="h-ag-${esc(a.id)}">
+    <h2 id="h-ag-${esc(a.id)}">${ico("radio")} ${esc(a.id)} <span class="selos">${seloModo(a)}</span></h2>
+    <div class="meta"><span>${esc(a.metodo)}</span><span>${a.ativos.map(esc).join(", ")}</span><span>${a.timeframes.join(" · ")}</span>
+      ${a.ultima_execucao ? `<span>última rodada ${quando(a.ultima_execucao)}</span>` : ""}${a.proxima_execucao && a.ligado ? `<span>próxima em <b class="num" data-ate="${esc(a.proxima_execucao)}">${textoContador(a.proxima_execucao)}</b></span>` : ""}</div>
+    <div class="faixa faixa-agente">
+      ${cel("Saldo real", `<span class="${m.lucro_usd < 0 ? "neg" : m.lucro_usd > 0 ? "pos" : ""}">${usd2(m.lucro_usd)}</span>`, `${m.ops} operações resolvidas`)}
+      ${cel("Acerto", pct(m.acerto_pct), m.ops < 10 ? "amostra pequena" : "")}
+      ${cel("Fator de lucro", m.fator_lucro == null ? "—" : String(m.fator_lucro).replace(".", ","), "ganhos ÷ perdas")}
+      ${cel("Queda máxima", usd2(-m.drawdown_usd), `R total ${String(m.r_total).replace(".", ",")}`)}
+    </div>
+    <div class="agente-grade">
+      <div><h3>Evolução do saldo</h3>${svgSaldo(a)}</div>
+      ${htmlLeitura(a)}
+    </div>
+    <h3>Onde atua</h3>
+    ${htmlAtuacao(a)}
+    ${htmlRecortes(a)}
+    ${htmlCiclos(a)}
+  </section>`;
+}
+
+function vistaAgentes(id) {
+  const p = estado.agentesPainel;
+  const cab = `<div class="cabecalho-proj" style="--cor:${cor("monitor")}">
+      <div class="bloco">
+        <a class="voltar" href="#/monitor">${ico("back")} Monitor</a>
+        <h1><i class="ponto" aria-hidden="true"></i>Agentes de sinais</h1>
+        <p class="resumo">Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Os valores por contrato ainda não foram conferidos na corretora. Uso pessoal: não é recomendação.</p>
+        ${p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span></div>` : ""}
+      </div>
+      ${controleSelfLearning(p)}
+    </div>`;
+  if (!p?.agentes?.length) {
+    return `<main class="uma">${erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : ""}${cab}
+      <div class="aviso neutro">${ico("radio")}<span>O resumo dos agentes ainda não chegou. Ele é publicado pelo executor (launchd <code>com.vinculo.agentes</code>) a cada 5 min; confira o log em <code>05-monitor-lives/dados-agentes/logs/</code>.</span></div></main>`;
+  }
+  const atual = p.agentes.find((a) => a.id === id) ?? p.agentes[0];
+  const max = Math.max(1, ...p.agentes.map((a) => Math.abs(a.metricas.lucro_usd)));
+  const comparacao = `<section class="painel" aria-labelledby="h-comp">
+      <h2 id="h-comp">${ico("target")} Comparação <span class="count">${p.agentes.length} agentes</span></h2>
+      <div class="rolagem"><table class="tabela comparacao">
+        <thead><tr><th scope="col">Agente</th><th scope="col">Modo</th><th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">Saldo real</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th></tr></thead>
+        <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
+          <td><a href="#/agentes/${esc(a.id)}">${esc(a.id)}</a></td>
+          <td>${a.self_learning ? seloAuto("self-learning") : `<span class="badge muted">fixo</span>`}</td>
+          <td class="num">${a.metricas.ops}</td><td class="num">${pct(a.metricas.acerto_pct)}</td>
+          <td class="col-zero">${barraZero(a.metricas.lucro_usd, max)}</td>
+          <td class="num">${a.metricas.fator_lucro == null ? "—" : String(a.metricas.fator_lucro).replace(".", ",")}</td>
+          <td class="num">${usd2(-a.metricas.drawdown_usd)}</td></tr>`).join("")}</tbody></table></div>
+    </section>`;
+  const abas = `<nav class="abas-agentes" aria-label="Agentes">${p.agentes.map((a) => `<a href="#/agentes/${esc(a.id)}" ${a.id === atual.id ? 'aria-current="page"' : ""}>${esc(a.id)}${a.self_learning ? ` ${ico("bulb")}` : ""}</a>`).join("")}</nav>`;
+  return `<main class="uma">
+    ${erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : ""}
+    ${cab}
+    ${comparacao}
+    ${abas}
+    ${htmlAgente(atual)}
+  </main>`;
+}
+
 // ---------- renderização e movimento ----------
 
 function render() {
   const rota = rotaAtual();
   const nova = chaveRota(rota) !== rotaRenderizada;
   rotaRenderizada = chaveRota(rota);
-  const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : vistaGeral();
+  const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor()
+    : rota.tipo === "agentes" ? vistaAgentes(rota.id) : vistaGeral();
   const app = document.getElementById("app");
   app.innerHTML = htmlTopo(rota) + corpo;
-  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : "Central de Comando";
+  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "agentes" ? "Agentes · Central de Comando" : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
     main.classList.add("entrada");
@@ -967,6 +1214,12 @@ document.addEventListener("click", (ev) => {
   if (acao === "pausa") { b.disabled = true; return agir(() => fonte.pausar(!estado.pausado)); }
   if (acao === "filtro") return definirFiltro(b.dataset.ativo);
   if (acao === "filtro-eventos") { filtroEventos = b.dataset.projeto; return render(); }
+  if (acao === "self-learning") {
+    const ligar = b.dataset.ligar === "true";
+    if (!ligar && !confirm("Pausar o self-learning? As rodadas dos agentes continuam; só param os ajustes automáticos de parâmetros até retomar.")) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarSelfLearning(ligar));
+  }
   if (acao === "monitor") {
     const fontes = b.dataset.fontes.split(","), ligar = b.dataset.ligar === "true";
     const nomes = fontes.map((f) => FONTES[f]).join(", ");

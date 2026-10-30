@@ -146,6 +146,7 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 .badge.warning { border-color: transparent; background: var(--warning-soft); color: var(--warning); }
 .badge.critical { border-color: transparent; background: var(--critical-soft); color: var(--critical); }
 .badge.muted { color: var(--ink-2); }
+.badge.auto { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
 .badge.compra { background: var(--good); border-color: var(--good); color: var(--estado-ink); font-weight: 600; }
 .badge.venda { background: var(--critical); border-color: var(--critical); color: var(--estado-ink); font-weight: 600; }
 .grade-cartoes { display: grid; gap: 0; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
@@ -303,10 +304,65 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 @keyframes surge { from { opacity: 0; transform: translateY(6px); } }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 180ms; }
 
+/* agentes de sinais (#/agentes): o eixo zero (ganho à direita, perda à esquerda, sempre com o valor escrito) */
+.zero { display: inline-flex; align-items: center; gap: 8px; }
+.zero .trilho { position: relative; width: 112px; height: 10px; flex: none; }
+.zero .trilho::before { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--ink-3); }
+.zero .trilho i { position: absolute; top: 0; bottom: 0; }
+.zero.ganho .trilho i { left: 50%; background: var(--good); border-radius: 0 3px 3px 0; transform-origin: left; }
+.zero.perda .trilho i { right: 50%; background: var(--critical); border-radius: 3px 0 0 3px; transform-origin: right; }
+.zero b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.zero.ganho b { color: var(--good); } .zero.perda b { color: var(--critical); } .zero.zero b { color: var(--ink-2); }
+.entrada .zero .trilho i { animation: cresce .7s var(--saida) both; }
+.rolagem { overflow-x: auto; }
+.tabela th.col-zero, .tabela td.col-zero, .tabela td.agora { text-align: left; }
+.tabela td.agora .detalhe { display: block; color: var(--ink-2); font-size: 12px; max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabela.comparacao tr[aria-current] td { background: var(--accent-soft); }
+.tabela.comparacao a { font-weight: 600; }
+.ativo-nome { display: inline-flex; align-items: center; gap: 6px; }
+.ctl-sl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cabecalho-proj .ctl-sl { flex: 0 1 auto; align-self: center; }
+.ctl-sl + a { margin-left: 4px; }
+.abas-agentes { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.abas-agentes a { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; font-weight: 500; }
+.abas-agentes a:hover { color: var(--ink); }
+.abas-agentes a[aria-current] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+section.agente > h2 .selos { display: inline-flex; gap: 6px; flex-wrap: wrap; font-size: 12px; font-weight: 500; }
+section.agente h3 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; color: var(--ink); text-transform: none; letter-spacing: -0.01em; }
+section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius: 0; border-left: 0; border-right: 0; background: transparent; }
+.cabecalho-proj .resumo, .leitura p { text-wrap: pretty; }
+.faixa .valor .pos { color: var(--good); } .faixa .valor .neg { color: var(--critical); }
+.agente-grade { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px 28px; }
+.leitura h3:first-child { margin-top: 20px; }
+.lista.compacta li { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; font-size: 13.5px; }
+.lista.compacta li .ico { flex: none; margin-top: 3px; }
+.leitura-fraco .ico { color: var(--critical); } .leitura-forte .ico { color: var(--good); }
+.recortes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; }
+.barras { list-style: none; margin: 0; padding: 0; }
+.barras li { display: grid; grid-template-columns: 4.2em auto 1fr; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; }
+.barras .rot { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.barras .meta { justify-content: flex-end; }
+.desfechos { display: flex; gap: 2px; border-radius: var(--raio-s); overflow: hidden; font-size: 12px; font-weight: 500; min-height: 30px; }
+.desfechos span { display: flex; align-items: center; padding: 0 10px; white-space: nowrap; min-width: fit-content; }
+.desfechos .d-alvo { background: var(--good-soft); color: var(--good); }
+.desfechos .d-stop { background: var(--critical-soft); color: var(--critical); }
+.desfechos .d-expirado, .desfechos .d-nao_acionada, .desfechos .d-sem_dados { background: var(--chip); color: var(--ink-2); }
+.grafico.saldo .linha-saldo { stroke: var(--accent); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.grafico.saldo .area { fill: var(--accent); opacity: .08; }
+.grafico.saldo.negativo .linha-saldo { stroke: var(--critical); } .grafico.saldo.negativo .area { fill: var(--critical); }
+.grafico.saldo .ponto-real { stroke: var(--accent); } .grafico.saldo.negativo .ponto-real { stroke: var(--critical); }
+.grafico .zero-linha { stroke: var(--ink-3); }
+.grafico .troca, .amostra-troca { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 2 3; }
+.grafico .troca-rot { fill: var(--ink-2); font-weight: 600; }
+.amostra-saldo { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
+.entrada .grafico .linha-saldo { stroke-dasharray: 1; stroke-dashoffset: 1; animation: traca .9s var(--saida) .15s both; }
+@media (max-width: 900px) { .agente-grade, .recortes { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .zero .trilho { width: 72px; } .barras li { grid-template-columns: 3.6em auto; } .barras li .meta { grid-column: 2; justify-content: flex-start; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .ponto.vivo { box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 30%, transparent); }
-  .entrada .grafico .linha-real { stroke-dasharray: none; }
+  .entrada .grafico .linha-real, .entrada .grafico .linha-saldo { stroke-dasharray: none; }
 }
 </style>
 </head>
@@ -350,6 +406,6 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=17"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>
