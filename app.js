@@ -11,12 +11,15 @@ const PROJETOS = {
   monitor:  { nome: "Monitor", longo: "Monitor de lives (uso pessoal)" },
 };
 const RENDA = ["servicos", "video", "produtos", "cafe", "tortas"];
-const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites" };
+const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites", agentes: "Agentes" };
+// fontes que não são contêiner: rodam na sessão do Claude Code a cada N min (monitor_fontes.proxima_execucao)
+const FONTES_PERIODICAS = new Set(["agentes"]);
 // ordem na lista: o que está acontecendo agora primeiro
-const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, fila: 2, bloqueado: 3, executado: 4 };
+const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, proximo: 1, fila: 2, bloqueado: 3, executado: 4, sem_sinal: 5, sem_dados: 6, erro: 6 };
 const ROTULO_ESTADO = { gravando: "gravando", analisando: "analisando", fila: "na fila", offline: "offline",
   desconhecido: "desconhecido", aberto: "sinal aberto", executado: "encerrado", bloqueado: "bloqueado",
-  ao_vivo: "ao vivo", login_necessario: "pede login" };
+  ao_vivo: "ao vivo", login_necessario: "pede login", proximo: "próximo", sem_sinal: "sem sinal", sem_dados: "sem dados",
+  erro: "erro" };
 const RESULTADO = { aprovada: "Aprovada", ajustada: "Ajustada", descartada: "Descartada", expirada: "Expirou" };
 const TIPO_EVENTO = { acao: "ação", aprendizado: "aprendizado", alerta: "alerta", resumo: "resumo", erro: "erro" };
 const MARCOS_PADRAO = { M1: 4, M3: 13, M6: 26, M12: 52 };
@@ -24,6 +27,34 @@ const INICIO_PADRAO = "2026-10-26";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const ico = (nome, cls = "") => `<svg class="ico ${cls}" aria-hidden="true"><use href="#i-${nome}"/></svg>`;
+// Página pública de cada site do monitor (05-monitor-lives/sites/<id>/site.yaml → url_inicial)
+const SITES_URL = { foresignal: "https://foresignal.com/pt/", cryptet: "https://cryptet.com/pt/", sureshotfx: "https://sureshotfx.com/live-signals" };
+// URL para abrir o canal/live/site a partir do item do monitor (TikTok: handle; YouTube: handle, UC… ou v=<id>; sites: <site>:<par>)
+function urlCanal(fonte, item) {
+  if (!item || item === "consenso") return null;
+  if (fonte === "tiktok") return `https://www.tiktok.com/@${encodeURIComponent(item.replace(/^@/, ""))}/live`;
+  if (fonte === "youtube") {
+    if (item.startsWith("v=")) return `https://www.youtube.com/watch?v=${encodeURIComponent(item.slice(2))}`;
+    if (/^UC[\w-]{20,}$/.test(item)) return `https://www.youtube.com/channel/${item}/live`;
+    return `https://www.youtube.com/@${encodeURIComponent(item.replace(/^@/, ""))}/live`;
+  }
+  if (fonte === "sites") return SITES_URL[item.split(":")[0]] ?? null;
+  return null;
+}
+// nome do canal como link que abre em outra aba (ou só o texto, quando não há URL)
+function linkCanal(fonte, item, nome) {
+  const url = urlCanal(fonte, item);
+  return url ? `<a class="canal" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Abrir em outra aba">${esc(nome)}${ico("external")}</a>` : esc(nome);
+}
+// origem (texto mostrado) → item, para o placar, que só guarda a origem
+function itemDaOrigem(fonte, origem, e) {
+  const achado = (e.monitorItens ?? []).find((i) => i.fonte === fonte && i.nome === origem)
+    ?? (e.monitorSinais ?? []).find((s) => s.fonte === fonte && s.origem === origem);
+  if (achado) return achado.item;
+  if (fonte === "tiktok" && /^@[\w.]+$/.test(origem)) return origem.slice(1);
+  if (fonte === "sites") { const id = Object.keys(SITES_URL).find((k) => origem.toLowerCase().startsWith(k)); return id ? `${id}:` : null; }
+  return null;
+}
 const inteiro = (v) => Math.round(Number(v) || 0).toLocaleString("pt-BR");
 const usd = (v) => `US$ ${inteiro(v)}`;
 const brl = (v, taxa) => `R$ ${inteiro((Number(v) || 0) * taxa)}`;
@@ -182,7 +213,7 @@ function fonteDemo() {
       { id: "produtos", nome: "Produtos digitais: templates → MCP pago", status: "ativo", fase: "Aguardando as primeiras demos", resumo: "", decisoes_pendentes: 0, instrucoes_novas: 0, lucro_7d_usd: 0, lucro_28d_usd: 0, investido_usd: 0, ultima_atividade: null },
       { id: "cafe", nome: "Loja Herança: Mercado Livre, TikTok, B2B", status: "ativo", fase: "Preparação para 11/01/2027", resumo: "Embalagens em orçamento com 3 gráficas.", decisoes_pendentes: 1, instrucoes_novas: 1, lucro_7d_usd: 0, lucro_28d_usd: -35, investido_usd: 990, ultima_atividade: new Date(agora - 5 * h).toISOString() },
       { id: "tortas", nome: "Tortaria Mineira: Uber Eats + Glovo (Porto)", status: "ativo", fase: "Preparação para abrir em dezembro de 2026", resumo: "Produção em casa (SIR); falta SIR na Câmara e início de atividade.", decisoes_pendentes: 0, instrucoes_novas: 0, lucro_7d_usd: 0, lucro_28d_usd: 0, investido_usd: 0, ultima_atividade: new Date(agora - 30 * h).toISOString() },
-      { id: "monitor", nome: "Monitor de lives (uso pessoal)", status: "ativo", fase: "TikTok, YouTube e sites em monitoramento", resumo: "Sinais só para o Diogo; nunca compartilhar.", decisoes_pendentes: 0, instrucoes_novas: 0, lucro_7d_usd: 0, lucro_28d_usd: 0, investido_usd: 0, ultima_atividade: null },
+      { id: "monitor", nome: "Monitor de lives (uso pessoal)", status: "ativo", fase: "TikTok, YouTube, sites e agentes em monitoramento", resumo: "Sinais só para o Diogo; nunca compartilhar.", decisoes_pendentes: 0, instrucoes_novas: 0, lucro_7d_usd: 0, lucro_28d_usd: 0, investido_usd: 0, ultima_atividade: null },
     ],
     pendentes: [
       { id: 7, projeto_id: "servicos", agente: "Propostas", titulo: "Enviar proposta \"MCP server for billing API\" (US$ 2.400)", contexto: "Cliente SaaS de faturamento, 4,9★, já contratou 12 freelancers. Pede MCP para a API REST deles.", recomendacao: "Enviar com o pacote MCP Server Sprint, prazo de 10 dias.", impacto: 5, prazo: new Date(agora + 30 * h).toISOString(), padrao_sem_resposta: "não enviar" },
@@ -249,14 +280,18 @@ function fonteDemo() {
     monitorFontes: [
       { fonte: "tiktok", ligado: true, vagas: "5 vagas", resumo: "1 gravando, 0 na fila, 1 em análise", atualizado_em: new Date(agora).toISOString() },
       { fonte: "sites", ligado: true, vagas: "3 site(s)", resumo: "Foresignal: 1 sinal aberto em 2 pares", atualizado_em: new Date(agora).toISOString() },
+      { fonte: "agentes", ligado: true, vagas: "5 ativos · cruzamento-medias", resumo: "1 sinal(is) aberto(s) · próxima rodada 10:30", atualizado_em: new Date(agora - 0.1 * h).toISOString(), ultima_execucao: new Date(agora - 0.1 * h).toISOString(), proxima_execucao: new Date(agora + 0.4 * h).toISOString(), intervalo_min: 30 },
     ],
     monitorItens: [
       { fonte: "tiktok", item: "canal.fx", nome: "@canal.fx", estado: "gravando", ativo: true, analisando: true, espectadores: 87, desde: new Date(agora - 0.4 * h).toISOString(), chamadas_hoje: 2, detalhe: "XAUUSD ao vivo", ultima_analise: new Date(agora - 0.07 * h).toISOString(), proxima_analise: new Date(agora + 0.03 * h).toISOString(), ciclo_fim: new Date(agora + 0.2 * h).toISOString() },
       { fonte: "tiktok", item: "outro", nome: "@outro", estado: "offline", ativo: false, analisando: false, chamadas_hoje: 0 },
       { fonte: "sites", item: "foresignal:EURUSD", nome: "Foresignal · EUR/USD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 1 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · válido até 07:51" },
       { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
+      { fonte: "agentes", item: "GOLD", nome: "GOLD · XAUUSD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 0.5 * h).toISOString(), chamadas_hoje: 1, detalhe: "ATIVO 🟢 COMPRA · entrada 4010 · stop 4002 · alvos 4019.6 / 4026", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
+      { fonte: "agentes", item: "US100", nome: "US100 · NAS100", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "PRÓXIMO 🔴 VENDA: falta ADX 14 baixo/deitado (lateral); novo cruzamento ou ADX virar para cima", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
+      { fonte: "agentes", item: "CRUDEOIL", nome: "CRUDEOIL · USOIL", estado: "sem_sinal", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "SEM SINAL · lateral (ADX < 20) · ADX 15.2 · RSI 48 · fora da janela do ativo", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
     ],
-    monitorComando: { tiktok: true, sites: true },
+    monitorComando: { tiktok: true, sites: true, agentes: true },
     monitorResultados: [
       { fonte: "tiktok", sinal_id: 4, origem: "@mogotrading_off", instrumento: "XAUUSD", direcao: "venda", entrada: "4031–4034", status: "alvo", resultado_r: 2.1, resolvido_em: new Date(agora - 2 * h).toISOString() },
       { fonte: "sites", sinal_id: 9, origem: "Foresignal", instrumento: "NZDUSD", direcao: "compra", entrada: "0.5682", status: "alvo", resultado_pontos: 12, resultado_unidade: "pips", resultado_fonte: "site", resolvido_em: new Date(agora - 1 * h).toISOString() },
@@ -266,6 +301,7 @@ function fonteDemo() {
     monitorSinais: [
       { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "@canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
       { fonte: "sites", sinal_id: 2, item: "foresignal:EURUSD", origem: "Foresignal", instrumento: "EURUSD", direcao: "compra", entrada: "1.117", stop: 1.1149, alvos: "1.1187", desde: new Date(agora - 1 * h).toISOString(), ate: new Date(agora + 7 * h).toISOString() },
+      { fonte: "agentes", sinal_id: 1, item: "GOLD", origem: "🤖 cruzamento-medias", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", stop: 4002, alvos: "4019.6 / 4026", condicoes: "EMA 9/21 cruzou no M15 (confirmação); H1 a favor; ADX 24; RSI 55", desde: new Date(agora - 0.5 * h).toISOString(), ate: new Date(agora + 11.5 * h).toISOString() },
     ],
   };
   return {
@@ -537,7 +573,7 @@ function htmlFaixaGeral(e) {
     ${bloco("inbox", "Decisões pendentes", `<span data-contar="${e.pendentes.length}" data-fmt="int">${e.pendentes.length}</span>`, e.pendentes.length ? `a mais urgente vence em ${prazoRelativo(e.pendentes[0].prazo).texto}` : "nada esperando por você")}
     ${bloco("list", "Pendências abertas", abertas ? `<span data-contar="${abertas.length}" data-fmt="int">${abertas.length}</span>` : "—", abertas ? `${doDiogo} dependem do Diogo` : "rode sincronizar_painel.py")}
     ${bloco("target", "Lucro 28 dias", `<span data-contar="${lucro28}" data-fmt="usd">${usd(lucro28)}</span>`, `meta realista desta semana ${usd(metaSemana)}`)}
-    ${bloco("radio", "Monitor de lives", `<span data-contar="${sinais}" data-fmt="int">${sinais}</span><small>sinais ativos</small>`, `${fontesNoAr} de ${Object.keys(FONTES).length} fontes no ar`)}
+    ${bloco("radio", "Monitor", `<span data-contar="${sinais}" data-fmt="int">${sinais}</span><small>sinais ativos</small>`, `${fontesNoAr} de ${Object.keys(FONTES).length} fontes no ar`)}
   </div>`;
 }
 
@@ -663,9 +699,9 @@ function htmlItemMonitor(i) {
     i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
     htmlContadores(i),
   ].join("");
-  const icone = i.fonte === "sites" ? `${iconeAtivo(i.item.split(":").pop())} ` : "";
+  const icone = i.fonte === "sites" ? `${iconeAtivo(i.item.split(":").pop())} ` : i.fonte === "agentes" ? `${iconeAtivo(i.nome.split("·").pop().trim())} ` : "";
   const vivo = i.ativo ? `<i class="ponto vivo" aria-hidden="true"></i>` : "";
-  return `<li><span class="badge ${cls}">${vivo}${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${esc(i.nome)}
+  return `<li><span class="badge ${cls}">${vivo}${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${linkCanal(i.fonte, i.item, i.nome)}
     <div class="meta">${extras}${i.detalhe ? `<span>${esc(i.detalhe)}</span>` : ""}</div></li>`;
 }
 
@@ -693,7 +729,7 @@ function htmlSinal(s) {
   const ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : null;
   return `<li><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
     <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span> <b>${esc(s.instrumento)}</b> · entrada ${esc(s.entrada ?? "—")} · SL ${esc(s.stop ?? "—")} · TP ${esc(s.alvos ?? "—")}
-    <div class="meta"><span>${esc(s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
+    <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
 }
 
 // filtro por ativo da seção Monitor de lives (vale para sinais ativos, pares dos sites e placar)
@@ -743,14 +779,14 @@ function htmlPlacar(e) {
         <span>acerto <b class="num">${pct(w, l)}</b></span>${rMedio ? `<span>R médio <b class="num">${rMedio}</b></span>` : ""}
         ${outros ? `<span>${outros} expirados/não acionados</span>` : ""}</div>
       ${amostra}
-      ${origens.length ? `<ul class="lista">${origens.map(([o, c]) => `<li>${esc(o)}<div class="meta"><span>${c.w} win · ${c.l} loss</span><span>acerto ${pct(c.w, c.l)}</span></div></li>`).join("")}</ul>` : `<p class="vazio">Nenhum sinal resolvido ainda.</p>`}
-      ${lista.length ? `<details><summary>${ico("chevron")}Últimos resultados</summary><ul class="lista">${lista.slice(0, 15).map((r) => `<li>${badgeResultado(r.status)} · ${iconeAtivo(r.instrumento)} <b>${esc(r.instrumento)}</b> ${esc((r.direcao || "").toUpperCase())} ${esc(r.entrada ?? "")}<div class="meta"><span>${esc(r.origem)}</span><span>${resultado(r)}</span><span>${quando(r.resolvido_em)}</span><span>${r.resultado_fonte === "site" ? "resultado do site" : "pelo preço"}</span></div></li>`).join("")}</ul></details>` : ""}
+      ${origens.length ? `<ul class="lista">${origens.map(([o, c]) => `<li>${linkCanal(f, itemDaOrigem(f, o, e), o)}<div class="meta"><span>${c.w} win · ${c.l} loss</span><span>acerto ${pct(c.w, c.l)}</span></div></li>`).join("")}</ul>` : `<p class="vazio">Nenhum sinal resolvido ainda.</p>`}
+      ${lista.length ? `<details><summary>${ico("chevron")}Últimos resultados</summary><ul class="lista">${lista.slice(0, 15).map((r) => `<li>${badgeResultado(r.status)} · ${iconeAtivo(r.instrumento)} <b>${esc(r.instrumento)}</b> ${esc((r.direcao || "").toUpperCase())} ${esc(r.entrada ?? "")}<div class="meta"><span>${linkCanal(f, itemDaOrigem(f, r.origem, e), r.origem)}</span><span>${resultado(r)}</span><span>${quando(r.resolvido_em)}</span><span>${r.resultado_fonte === "site" ? "resultado do site" : "pelo preço"}</span></div></li>`).join("")}</ul></details>` : ""}
     </div>`;
   });
   return `<section class="painel" aria-labelledby="h-placar">
     <h2 id="h-placar">${ico("target")} Placar dos sinais <span class="count">últimos 30 dias</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
     <div class="grade-cartoes">${cartoes.join("")}</div>
-    <p class="meta" style="margin-top:8px">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Sites: o resultado publicado pelo próprio site; lives e sureshotfx: velas de preço (Binance para cripto, Twelve Data para forex e ouro). Não é recomendação.</p>
+    <p class="meta" style="margin-top:8px">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Sites: o resultado publicado pelo próprio site; lives e sureshotfx: velas de preço (Binance para cripto, Twelve Data para forex e ouro); agentes: velas M15 do TradingView. Não é recomendação.</p>
   </section>`;
 }
 
@@ -767,19 +803,27 @@ function htmlMonitor(e) {
       && (f !== "sites" || passaFiltro(i.item.split(":").pop())));
     const agora = visiveis.filter((i) => (ORDEM_ESTADO[i.estado] ?? 9) <= 2 || i.analisando);
     const resto = visiveis.filter((i) => !agora.includes(i));
-    const atraso = info ? (Date.now() - new Date(info.atualizado_em)) / 6e4 : Infinity;
+    const periodica = FONTES_PERIODICAS.has(f);
+    // fonte periódica (agentes): está "no ar" enquanto a próxima rodada prevista não atrasar mais de 10 min
+    const atraso = !info ? Infinity : periodica ? (info.proxima_execucao ? (Date.now() - new Date(info.proxima_execucao)) / 6e4 - 10 : 0)
+      : (Date.now() - new Date(info.atualizado_em)) / 6e4;
     const querLigado = e.monitorComando?.[f] !== false;  // sem comando = ligado
     const desligado = info && !info.ligado && /desligado pelo dashboard/.test(info.resumo ?? "");
-    const status = !info ? { t: "sem dados", c: "muted" } : atraso > 3 ? { t: `sem sinal há ${duracao(info.atualizado_em)}`, c: "critical" }
+    const status = !info ? { t: "sem dados", c: "muted" } : atraso > 3 ? { t: periodica ? `rodada atrasada ${duracao(info.proxima_execucao)}` : `sem sinal há ${duracao(info.atualizado_em)}`, c: "critical" }
       : desligado ? { t: "desligado", c: "muted" } : info.ligado ? { t: "no ar", c: "good" } : { t: "pausado", c: "critical" };
+    const rodada = periodica && info ? `<div class="meta">
+        <span>último acionamento ${info.ultima_execucao ? `<b class="num" data-desde="${esc(info.ultima_execucao)}">${textoDesde(info.ultima_execucao)}</b>` : "<b>nunca</b>"}</span>
+        ${info.proxima_execucao && info.ligado ? `<span>próximo em <b class="num" data-ate="${esc(info.proxima_execucao)}">${textoContador(info.proxima_execucao)}</b></span>` : ""}
+        ${info.intervalo_min ? `<span>a cada ${info.intervalo_min} min</span>` : ""}</div>` : "";
     // o comando leva até ~10 s para chegar e ~1 min para o estado voltar ao painel
     const pendente = info && atraso <= 3 && querLigado === desligado;
     const botao = `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}">${ico(querLigado ? "power" : "play")} ${querLigado ? "Desligar" : "Ligar"}</button>`;
     const aviso = pendente ? `<span class="badge warning">${ico("loader")}${querLigado ? "ligando…" : "desligando…"}</span>`
-      : atraso > 3 && info ? `<span class="meta">o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code></span>` : "";
+      : atraso > 3 && info ? `<span class="meta">${periodica ? "a sessão do Claude Code que roda os agentes parou: reabrir o loop (05-monitor-lives/docs/agentes.md)" : `o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code>`}</span>` : "";
     return `<div class="cartao">
       <div class="titulo" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${FONTES[f]} <span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span>${aviso}<span style="margin-left:auto">${botao}</span></div>
       ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
+      ${rodada}
       <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
         <ul class="lista">${sinais.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>
       ${agora.length ? `<ul class="lista">${agora.map(htmlItemMonitor).join("")}</ul>` : sinais.length ? "" : `<p class="vazio">Nada ativo agora.</p>`}
@@ -788,7 +832,7 @@ function htmlMonitor(e) {
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
-    <h2 id="h-monitor">${ico("radio")} Monitor de lives <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
+    <h2 id="h-monitor">${ico("radio")} Monitor de lives e agentes <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
       <span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length} sinais</span>
       <span class="direita"><button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     ${htmlFiltroAtivo(e)}
@@ -896,7 +940,9 @@ document.addEventListener("click", (ev) => {
   if (acao === "monitor") {
     const fontes = b.dataset.fontes.split(","), ligar = b.dataset.ligar === "true";
     const nomes = fontes.map((f) => FONTES[f]).join(", ");
-    if (!ligar && !confirm(`Desligar o monitor (${nomes})? As gravações em andamento são encerradas e nada é capturado até ligar de novo.`)) return;
+    const soPeriodicas = fontes.every((f) => FONTES_PERIODICAS.has(f));
+    if (!ligar && !confirm(soPeriodicas ? `Desligar os agentes (${nomes})? As rodadas param (os sinais abertos continuam a ser conferidos) até ligar de novo.`
+      : `Desligar o monitor (${nomes})? As gravações em andamento são encerradas e nada é capturado até ligar de novo.`)) return;
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarMonitor(fontes, ligar));
   }
