@@ -166,7 +166,7 @@ function fonteSupabase(cfg) {
     demo: false,
     sb,
     async carregar() {
-      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, controle, monitorFontes, monitorItens, monitorSinais, monitorResultados, kpis, lancamentos] = await Promise.all([
+      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, controle, monitorFontes, monitorItens, monitorSinais, monitorResultados, kpis, lancamentos, monitorConsensos] = await Promise.all([
         sb.from("v_estado_projetos").select("*").order("id").then(ok),
         sb.from("decisoes").select("*").eq("status", "pendente").order("impacto", { ascending: false }).order("prazo").then(ok),
         sb.from("decisoes").select("*").neq("status", "pendente").order("decidido_em", { ascending: false }).limit(20).then(ok),
@@ -180,10 +180,11 @@ function fonteSupabase(cfg) {
         sb.from("monitor_resultados").select("*").order("resolvido_em", { ascending: false }).then(ok),
         sb.from("kpis").select("data,projeto_id,kpi,valor").order("data", { ascending: false }).limit(600).then(ok),
         sb.from("v_lancamentos_usd").select("data,projeto_id,tipo,valor,moeda,valor_usd,descricao").order("data", { ascending: false }).limit(600).then(ok),
+        sb.from("monitor_consensos").select("criado_em,instrumento,direcao,canais").gte("criado_em", new Date(Date.now() - 31 * 864e5).toISOString()).order("criado_em", { ascending: false }).limit(500).then(ok),
       ]);
       const ctl = Object.fromEntries(controle.map((c) => [c.chave, c.valor]));
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
-               painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
+               painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados, monitorConsensos,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])) };
     },
     decidir: (id, status, resposta) =>
@@ -292,7 +293,9 @@ function fonteDemo() {
       { fonte: "agentes", item: "CRUDEOIL", nome: "CRUDEOIL · USOIL", estado: "sem_sinal", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "SEM SINAL · lateral (ADX < 20) · ADX 15.2 · RSI 48 · fora da janela do ativo", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
     ],
     monitorComando: { tiktok: true, sites: true, agentes: true },
+    monitorConsensos: [{ criado_em: new Date(agora - 4.2 * h).toISOString(), instrumento: "XAUUSD", direcao: "compra", canais: ["@canal.fx", "@mogotrading_off", "▶️ Forex & Crypto Live"] }],
     monitorResultados: [
+      { fonte: "tiktok", sinal_id: 5, origem: "Consenso de 3 canais", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", status: "alvo", resultado_r: 1.8, desde: new Date(agora - 4.2 * h).toISOString(), resolvido_em: new Date(agora - 3 * h).toISOString() },
       { fonte: "tiktok", sinal_id: 4, origem: "@mogotrading_off", instrumento: "XAUUSD", direcao: "venda", entrada: "4031–4034", status: "alvo", resultado_r: 2.1, resolvido_em: new Date(agora - 2 * h).toISOString() },
       { fonte: "sites", sinal_id: 9, origem: "Foresignal", instrumento: "NZDUSD", direcao: "compra", entrada: "0.5682", status: "alvo", resultado_pontos: 12, resultado_unidade: "pips", resultado_fonte: "site", resolvido_em: new Date(agora - 1 * h).toISOString() },
       { fonte: "sites", sinal_id: 10, origem: "CryptET", instrumento: "ADAUSDT", direcao: "venda", entrada: "0.2052", status: "stop", resultado_pontos: -12, resultado_unidade: "pontos", resultado_fonte: "site", resolvido_em: new Date(agora - 3 * h).toISOString() },
@@ -537,18 +540,25 @@ function htmlTopo(rota) {
   </header>`;
 }
 
+// meta realista do projeto na semana de um marco (M1, M3, M6, M12)
+function metaNoMarco(c, marco) {
+  const p = c.cfg.projecao_usd_semana ? projecao(c.cfg.projecao_usd_semana, c.marcos, c.marcos[marco] ?? c.semAtual) : null;
+  return p ? p.realista : 0;
+}
+
 function htmlLinhaProjeto(p) {
   const c = calcularProjeto(p.id, estado);
   const pend = estado.painel ? `<span><b>${c.abertas.length}</b> pendências abertas</span>` : "";
   const st = c.status ? badgeStatus(c.status) : htmlBadge("muted", c.lanc.length ? "Sem projeção" : "Sem lançamentos", "clock");
   const fase = p.fase || c.cfg.status || "";
-  const bala = c.proj ? htmlBala({ valor: c.media4, meta: c.proj.realista, min: c.proj.pessimista, max: c.proj.otimista, corCss: cor(p.id), rotuloMeta: "realista",
-    esq: `média 4 sem. <b>${usd(c.media4)}</b>`, dir: `realista <b>${usd(c.proj.realista)}</b>` }) : `<div class="meta">${esc(c.cfg.trilho ?? "")}</div>`;
+  const bala = !c.proj ? `<div class="meta">${esc(c.cfg.trilho ?? "")}</div>`
+    : !c.lanc.length ? `<div class="meta"><span>ainda sem lançamentos</span><span>meta realista: <b>${usd(c.proj.realista)}</b>/sem. agora, <b>${usd(metaNoMarco(c, "M12"))}</b>/sem. no mês 12</span></div>`
+    : htmlBala({ valor: c.media4, meta: c.proj.realista, min: c.proj.pessimista, max: c.proj.otimista, corCss: cor(p.id), rotuloMeta: "realista",
+      esq: `média 4 sem. <b>${usd(c.media4)}</b>`, dir: `realista <b>${usd(c.proj.realista)}</b>` });
   return `<a class="proj" href="#/p/${p.id}" style="--cor:${cor(p.id)}" aria-label="${esc(PROJETOS[p.id]?.longo ?? p.nome)}">
-    <i class="barra" aria-hidden="true"></i>
     <div class="corpo">
       <div>
-        <div class="nome">${esc(PROJETOS[p.id]?.longo ?? p.nome)} ${st}</div>
+        <div class="nome"><i class="ponto" aria-hidden="true"></i>${esc(PROJETOS[p.id]?.longo ?? p.nome)} ${st}</div>
         <div class="fase">${esc(fase)}</div>
         <div class="numeros">${pend}<span><b>${p.decisoes_pendentes}</b> decisões</span><span><b>${p.instrucoes_novas}</b> instruções novas</span><span>atividade ${haQuanto(p.ultima_atividade)}</span></div>
       </div>
@@ -559,20 +569,19 @@ function htmlLinhaProjeto(p) {
 
 function htmlFaixaGeral(e) {
   const painel = e.painel;
-  const semana = painel ? Math.max(1, semanaDe(new Date(), new Date(painel.data_inicio + "T00:00:00"))) : null;
   const calc = RENDA.map((id) => calcularProjeto(id, e));
   const lucro28 = e.projetos.filter((p) => RENDA.includes(p.id)).reduce((a, p) => a + Number(p.lucro_28d_usd || 0), 0);
   const metaSemana = calc.reduce((a, c) => a + (c.proj?.realista ?? 0), 0);
+  const media4Total = calc.reduce((a, c) => a + (c.media4 || 0), 0);
   const abertas = painel ? painel.pendencias.filter((p) => !p.feito) : null;
   const doDiogo = abertas ? abertas.filter((p) => p.responsavel === "Diogo").length : 0;
   const sinais = (e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length;
   const fontesNoAr = (e.monitorFontes ?? []).filter((f) => f.ligado && (Date.now() - new Date(f.atualizado_em)) / 6e4 <= 3).length;
   const bloco = (icone, rotulo, valor, sub) => `<div><span class="rotulo">${ico(icone)}${rotulo}</span><span class="valor">${valor}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
   return `<div class="faixa">
-    ${bloco("flag", "Semana do roteiro", semana ? `<span data-contar="${semana}" data-fmt="int">${semana}</span><small>de 52</small>` : "—", painel ? `início em ${new Date(painel.data_inicio + "T00:00:00").toLocaleDateString("pt-PT")}` : "sem sincronização")}
     ${bloco("inbox", "Decisões pendentes", `<span data-contar="${e.pendentes.length}" data-fmt="int">${e.pendentes.length}</span>`, e.pendentes.length ? `a mais urgente vence em ${prazoRelativo(e.pendentes[0].prazo).texto}` : "nada esperando por você")}
     ${bloco("list", "Pendências abertas", abertas ? `<span data-contar="${abertas.length}" data-fmt="int">${abertas.length}</span>` : "—", abertas ? `${doDiogo} dependem do Diogo` : "rode sincronizar_painel.py")}
-    ${bloco("target", "Lucro 28 dias", `<span data-contar="${lucro28}" data-fmt="usd">${usd(lucro28)}</span>`, `meta realista desta semana ${usd(metaSemana)}`)}
+    ${bloco("target", "Lucro semanal (média 4 sem.)", `<span data-contar="${media4Total}" data-fmt="usd">${usd(media4Total)}</span>`, `meta realista desta semana ${usd(metaSemana)} · 28 dias ${usd(lucro28)}`)}
     ${bloco("radio", "Monitor", `<span data-contar="${sinais}" data-fmt="int">${sinais}</span><small>sinais ativos</small>`, `${fontesNoAr} de ${Object.keys(FONTES).length} fontes no ar`)}
   </div>`;
 }
@@ -586,16 +595,16 @@ function vistaGeral() {
       ${erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : ""}
       ${htmlFaixaGeral(e)}
       ${htmlSecaoDecisoes(e.pendentes, e.resolvidas)}
-      <section class="painel" aria-labelledby="h-projetos">
-        <h2 id="h-projetos">${ico("folder")} Projetos <span class="count">${renda.length}</span><span class="direita meta">clique para ver pendências, metas e gráfico</span></h2>
-        <div class="proj-lista">${renda.map(htmlLinhaProjeto).join("")}</div>
-      </section>
-    </div>
-    <div class="col">
       <section class="painel" aria-labelledby="h-instrucao">
         <h2 id="h-instrucao">${ico("send")} Nova instrução</h2>
         ${htmlFormInstrucao("")}
         ${htmlInstrucoes(e.instrucoes.slice(0, 8))}
+      </section>
+    </div>
+    <div class="col">
+      <section class="painel" aria-labelledby="h-projetos">
+        <h2 id="h-projetos">${ico("folder")} Projetos <span class="count">${renda.length}</span><span class="direita meta">clique para ver pendências, metas e gráfico</span></h2>
+        <div class="proj-lista">${renda.map(htmlLinhaProjeto).join("")}</div>
       </section>
       <section class="painel" aria-labelledby="h-atividade">
         <h2 id="h-atividade">${ico("activity")} Atividade dos agentes <span class="count">${e.eventos.length}</span></h2>
@@ -642,13 +651,13 @@ function vistaProjeto(id) {
         ${c.cfg.criterios_parada?.length ? `<details><summary>${ico("chevron")}Critérios de parada <span class="count">${c.cfg.criterios_parada.length}</span></summary>
           <ul class="lista">${c.cfg.criterios_parada.map((cr) => `<li>Semana ${cr.semana}: <code>${esc(cr.kpi)}</code> abaixo de ${numero(cr.minimo)} → ${esc(cr.acao)}</li>`).join("")}</ul></details>` : ""}
       </section>
+    </div>
+    <div class="col">
+      ${htmlSecaoDecisoes(pendentes, resolvidas, "Decisões deste projeto")}
       <section class="painel" aria-labelledby="h-pend">
         <h2 id="h-pend">${ico("list")} Pendências <span class="count ${c.abertas.length ? "alerta" : ""}">${c.abertas.length}</span></h2>
         ${htmlPendencias(c)}
       </section>
-    </div>
-    <div class="col">
-      ${htmlSecaoDecisoes(pendentes, resolvidas, "Decisões deste projeto")}
       <section class="painel" aria-labelledby="h-instrucao">
         <h2 id="h-instrucao">${ico("send")} Instrução para ${esc(PROJETOS[id].nome)}</h2>
         ${htmlFormInstrucao(id)}
@@ -706,23 +715,21 @@ function htmlItemMonitor(i) {
 }
 
 // mesmo mapa de 05-monitor-lives/monitor_lives/instrumentos.py (icone_instrumento); são conteúdo, não ícones de interface
-const BANDEIRAS = { EUR: "🇪🇺", USD: "🇺🇸", GBP: "🇬🇧", JPY: "🇯🇵", CHF: "🇨🇭", AUD: "🇦🇺", NZD: "🇳🇿", CAD: "🇨🇦",
-  BRL: "🇧🇷", MXN: "🇲🇽", ZAR: "🇿🇦", TRY: "🇹🇷", SEK: "🇸🇪", NOK: "🇳🇴", SGD: "🇸🇬", HKD: "🇭🇰", CNH: "🇨🇳", PLN: "🇵🇱" };
-const ICONES = { XAUUSD: "🥇", XAGUSD: "🥈", XPTUSD: "⚪", XPDUSD: "⚪", USOIL: "🛢️", UKOIL: "🛢️", NGAS: "🔥",
-  COPPER: "🟠", DXY: "💵", NAS100: "🇺🇸📈", US30: "🇺🇸📈", US500: "🇺🇸📈", GER40: "🇩🇪📈", UK100: "🇬🇧📈",
-  JP225: "🇯🇵📈", FRA40: "🇫🇷📈", EU50: "🇪🇺📈", HK50: "🇭🇰📈", AUS200: "🇦🇺📈", IBOV: "🇧🇷📈", WIN: "🇧🇷📈",
-  WDO: "🇧🇷💵", BTCUSD: "₿", ETHUSD: "Ξ" };
-function iconeAtivo(sym) {
+// classe do ativo → ícone do sistema (sem emoji nem bandeiras: um traço e um peso só)
+const MOEDAS = new Set(["EUR", "USD", "GBP", "JPY", "CHF", "AUD", "NZD", "CAD", "CNH", "CNY", "MXN", "ZAR", "SEK", "NOK", "SGD", "HKD", "TRY", "PLN", "BRL"]);
+const METAIS = /^(XAU|XAG|XPT|XPD|COPPER|GOLD|SILVER)/, ENERGIA = /^(USOIL|UKOIL|WTI|BRENT|CRUDEOIL|NGAS|NATGAS)/, CRIPTO = /^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|LTC|DOT|AVAX|LINK|MATIC|TRX|TON)/;
+const INDICES = /^(NAS100|US100|US30|US500|SPX|GER40|DAX|UK100|FTSE|JP225|NIKKEI|FRA40|EU50|HK50|AUS200|IBOV|WIN|WDO|DXY)/;
+function classeAtivo(sym) {
   const t = String(sym || "").toUpperCase();
-  if (ICONES[t]) return ICONES[t];
-  if (t.startsWith("XAU")) return "🥇";
-  if (t.startsWith("XAG")) return "🥈";
-  if (t.length === 6 && BANDEIRAS[t.slice(0, 3)] && BANDEIRAS[t.slice(3)]) return BANDEIRAS[t.slice(0, 3)] + BANDEIRAS[t.slice(3)];
-  if (t.startsWith("BTC")) return "₿";
-  if (t.startsWith("ETH")) return "Ξ";
-  if (t.endsWith("USDT") || t.endsWith("USDC") || (t.endsWith("USD") && t.length > 6 && !BANDEIRAS[t.slice(0, -3)])) return "🪙";
-  return "📊";
+  if (METAIS.test(t)) return "metal";
+  if (ENERGIA.test(t)) return "energia";
+  if (CRIPTO.test(t) || t.endsWith("USDT") || t.endsWith("USDC")) return "cripto";
+  if (INDICES.test(t)) return "indice";
+  if (t.length === 6 && MOEDAS.has(t.slice(0, 3)) && MOEDAS.has(t.slice(3))) return "forex";
+  return "ativo";
 }
+const NOME_CLASSE = { metal: "metal", energia: "energia", cripto: "cripto", indice: "índice", forex: "forex", ativo: "ativo" };
+function iconeAtivo(sym) { return ico(classeAtivo(sym), "ativo-ico"); }
 
 function htmlSinal(s) {
   const venda = s.direcao === "venda";
@@ -734,18 +741,18 @@ function htmlSinal(s) {
 
 // filtro por ativo da seção Monitor de lives (vale para sinais ativos, pares dos sites e placar)
 let filtroAtivo = (() => { try { return localStorage.getItem("filtroAtivo") || ""; } catch (e) { return ""; } })();
-const ATALHOS_ATIVO = [["", "Todos"], ["XAUUSD", "🥇 Ouro"], ["XAGUSD", "🥈 Prata"]];
+const ATALHOS_ATIVO = [["", "Todos"], ["XAUUSD", "Ouro"], ["XAGUSD", "Prata"]];
 const passaFiltro = (sym) => !filtroAtivo || String(sym || "").toUpperCase() === filtroAtivo;
 
 function htmlFiltroAtivo(e) {
   const ativos = new Set([...(e.monitorSinais ?? []), ...(e.monitorResultados ?? [])].map((s) => String(s.instrumento || "").toUpperCase()));
   ATALHOS_ATIVO.forEach(([sym]) => sym && ativos.add(sym));
   const opcoes = [...ativos].filter(Boolean).sort();
-  const chip = ([sym, rotulo]) => `<button class="btn" data-acao="filtro" data-ativo="${sym}" aria-pressed="${filtroAtivo === sym}">${rotulo}</button>`;
+  const chip = ([sym, rotulo]) => `<button class="btn" data-acao="filtro" data-ativo="${sym}" aria-pressed="${filtroAtivo === sym}">${sym ? iconeAtivo(sym) : ""}${rotulo}</button>`;
   return `<div class="filtros" style="align-items:center" role="group" aria-label="Filtrar por ativo">
     <span class="meta">Ativo:</span>${ATALHOS_ATIVO.map(chip).join("")}
     <select data-acao="filtro-lista" aria-label="Filtrar por ativo" style="width:auto;min-height:30px;padding:2px 8px;font-size:12.5px">
-      <option value="">Outro ativo…</option>${opcoes.map((s) => `<option value="${s}" ${filtroAtivo === s ? "selected" : ""}>${iconeAtivo(s)} ${s}</option>`).join("")}
+      <option value="">Outro ativo…</option>${opcoes.map((s) => `<option value="${s}" ${filtroAtivo === s ? "selected" : ""}>${s} (${NOME_CLASSE[classeAtivo(s)]})</option>`).join("")}
     </select>
     ${filtroAtivo ? `<span class="meta">mostrando só <b>${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</b></span>` : ""}
   </div>`;
@@ -754,6 +761,19 @@ function htmlFiltroAtivo(e) {
 const ROTULO_RESULTADO = { alvo: ["good", "win", "check"], stop: ["critical", "loss", "x"], expirado: ["muted", "expirou", "clock"],
   nao_acionada: ["muted", "não acionada", "clock"], sem_dados: ["muted", "sem preço", "loader"] };
 const badgeResultado = (st) => { const [cls, txt, icone] = ROTULO_RESULTADO[st] ?? ["muted", st, "clock"]; return htmlBadge(cls, txt, icone); };
+
+// canais que formaram um consenso: cruza o resultado com monitor_consensos (mesmo ativo e direção, criado até 3 min do sinal)
+function canaisDoConsenso(r, e) {
+  const t = new Date(r.desde).getTime();
+  const c = (e.monitorConsensos ?? []).find((x) => x.instrumento === r.instrumento && x.direcao === r.direcao && Math.abs(new Date(x.criado_em).getTime() - t) <= 3 * 6e4);
+  return c ? (Array.isArray(c.canais) ? c.canais : []) : [];
+}
+const ehConsenso = (r) => /^consenso/i.test(r.origem ?? "");
+// nome do canal do consenso como texto, com link quando dá (TikTok @handle)
+function nomeCanalConsenso(fonte, nome) {
+  const url = /^@[\w.]+$/.test(nome) ? `https://www.tiktok.com/${nome}/live` : null;
+  return url ? `<a class="canal" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Abrir em outra aba">${esc(nome)}${ico("external")}</a>` : esc(nome);
+}
 
 function htmlPlacar(e) {
   const resultados = e.monitorResultados ?? [];
@@ -767,6 +787,14 @@ function htmlPlacar(e) {
     const porOrigem = {};
     lista.forEach((r) => { const o = (porOrigem[r.origem] ??= { w: 0, l: 0 }); if (r.status === "alvo") o.w++; if (r.status === "stop") o.l++; });
     const origens = Object.entries(porOrigem).sort((a, b) => (b[1].w + b[1].l) - (a[1].w + a[1].l));
+    // canais nos consensos (TikTok e YouTube): cada canal recebe o resultado dos consensos de que participou
+    const porCanal = {};
+    // o consenso mistura canais do TikTok (@handle) e do YouTube (▶️ nome) e fica no cartão de quem avisou: cada cartão lista os canais da sua plataforma
+    if (f === "tiktok" || f === "youtube") resultados.filter((r) => (r.fonte === "tiktok" || r.fonte === "youtube") && ehConsenso(r) && passaFiltro(r.instrumento)).forEach((r) => canaisDoConsenso(r, e)
+      .filter((c) => (f === "tiktok") === c.startsWith("@")).forEach((c) => {
+        const o = (porCanal[c] ??= { w: 0, l: 0, n: 0 }); o.n++; if (r.status === "alvo") o.w++; if (r.status === "stop") o.l++;
+      }));
+    const canaisConsenso = Object.entries(porCanal).sort((a, b) => b[1].n - a[1].n);
     const amostra = w + l < 10 ? `<span class="meta">amostra pequena (${w + l} decididas): não conclua nada ainda</span>` : "";
     const resultado = (r) => r.resultado_pontos != null ? `${Number(r.resultado_pontos) > 0 ? "+" : ""}${r.resultado_pontos} ${esc(r.resultado_unidade ?? "")}`
       : r.resultado_r != null ? `${Number(r.resultado_r) > 0 ? "+" : ""}${Number(r.resultado_r).toFixed(2)} R` : "";
@@ -779,8 +807,9 @@ function htmlPlacar(e) {
         <span>acerto <b class="num">${pct(w, l)}</b></span>${rMedio ? `<span>R médio <b class="num">${rMedio}</b></span>` : ""}
         ${outros ? `<span>${outros} expirados/não acionados</span>` : ""}</div>
       ${amostra}
+      ${canaisConsenso.length ? `<div class="meta"><b>Canais nos consensos</b></div><ul class="lista">${canaisConsenso.map(([c, v]) => `<li>${nomeCanalConsenso(f, c)}<div class="meta"><span>${v.n} consenso${v.n > 1 ? "s" : ""}</span><span>${v.w} win · ${v.l} loss</span><span>acerto ${pct(v.w, v.l)}</span></div></li>`).join("")}</ul>` : ""}
       ${origens.length ? `<ul class="lista">${origens.map(([o, c]) => `<li>${linkCanal(f, itemDaOrigem(f, o, e), o)}<div class="meta"><span>${c.w} win · ${c.l} loss</span><span>acerto ${pct(c.w, c.l)}</span></div></li>`).join("")}</ul>` : `<p class="vazio">Nenhum sinal resolvido ainda.</p>`}
-      ${lista.length ? `<details><summary>${ico("chevron")}Últimos resultados</summary><ul class="lista">${lista.slice(0, 15).map((r) => `<li>${badgeResultado(r.status)} · ${iconeAtivo(r.instrumento)} <b>${esc(r.instrumento)}</b> ${esc((r.direcao || "").toUpperCase())} ${esc(r.entrada ?? "")}<div class="meta"><span>${linkCanal(f, itemDaOrigem(f, r.origem, e), r.origem)}</span><span>${resultado(r)}</span><span>${quando(r.resolvido_em)}</span><span>${r.resultado_fonte === "site" ? "resultado do site" : "pelo preço"}</span></div></li>`).join("")}</ul></details>` : ""}
+      ${lista.length ? `<details><summary>${ico("chevron")}Últimos resultados</summary><ul class="lista">${lista.slice(0, 15).map((r) => `<li>${badgeResultado(r.status)} · ${iconeAtivo(r.instrumento)} <b>${esc(r.instrumento)}</b> ${esc((r.direcao || "").toUpperCase())} ${esc(r.entrada ?? "")}<div class="meta"><span>${linkCanal(f, itemDaOrigem(f, r.origem, e), r.origem)}</span><span>${resultado(r)}</span><span>${quando(r.resolvido_em)}</span><span>${r.resultado_fonte === "site" ? "resultado do site" : "pelo preço"}</span></div>${ehConsenso(r) && canaisDoConsenso(r, e).length ? `<div class="meta"><span>canais: ${canaisDoConsenso(r, e).map((c) => nomeCanalConsenso(f, c)).join(", ")}</span></div>` : ""}</li>`).join("")}</ul></details>` : ""}
     </div>`;
   });
   return `<section class="painel" aria-labelledby="h-placar">
@@ -821,7 +850,8 @@ function htmlMonitor(e) {
     const aviso = pendente ? `<span class="badge warning">${ico("loader")}${querLigado ? "ligando…" : "desligando…"}</span>`
       : atraso > 3 && info ? `<span class="meta">${periodica ? "a sessão do Claude Code que roda os agentes parou: reabrir o loop (05-monitor-lives/docs/agentes.md)" : `o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code>`}</span>` : "";
     return `<div class="cartao">
-      <div class="titulo" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${FONTES[f]} <span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span>${aviso}<span style="margin-left:auto">${botao}</span></div>
+      <div class="titulo" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${FONTES[f]} <span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span><span style="margin-left:auto">${botao}</span></div>
+      ${aviso ? `<div class="meta">${aviso}</div>` : ""}
       ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
       ${rodada}
       <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
