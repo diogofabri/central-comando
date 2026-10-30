@@ -251,7 +251,7 @@ function fonteDemo() {
       { fonte: "sites", ligado: true, vagas: "3 site(s)", resumo: "Foresignal: 1 sinal aberto em 2 pares", atualizado_em: new Date(agora).toISOString() },
     ],
     monitorItens: [
-      { fonte: "tiktok", item: "canal.fx", nome: "@canal.fx", estado: "gravando", ativo: true, analisando: true, espectadores: 87, desde: new Date(agora - 0.4 * h).toISOString(), chamadas_hoje: 2, detalhe: "XAUUSD ao vivo" },
+      { fonte: "tiktok", item: "canal.fx", nome: "@canal.fx", estado: "gravando", ativo: true, analisando: true, espectadores: 87, desde: new Date(agora - 0.4 * h).toISOString(), chamadas_hoje: 2, detalhe: "XAUUSD ao vivo", ultima_analise: new Date(agora - 0.07 * h).toISOString(), proxima_analise: new Date(agora + 0.03 * h).toISOString(), ciclo_fim: new Date(agora + 0.2 * h).toISOString() },
       { fonte: "tiktok", item: "outro", nome: "@outro", estado: "offline", ativo: false, analisando: false, chamadas_hoje: 0 },
       { fonte: "sites", item: "foresignal:EURUSD", nome: "Foresignal · EUR/USD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 1 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · válido até 07:51" },
       { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
@@ -628,6 +628,32 @@ function vistaProjeto(id) {
 
 // ---------- monitor de lives ----------
 
+// contadores ao vivo (atualizados a cada segundo sem redesenhar a página)
+function textoContador(iso) {
+  const s = Math.round((new Date(iso) - Date.now()) / 1000);
+  if (s <= 0) return "agora";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), seg = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${seg}` : `${m}:${seg}`;
+}
+function textoDesde(iso) {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+  const hora = new Date(iso).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
+  return `${hora} (há ${s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`})`;
+}
+function atualizarContadores() {
+  document.querySelectorAll("[data-ate]").forEach((el) => { el.textContent = textoContador(el.dataset.ate); });
+  document.querySelectorAll("[data-desde]").forEach((el) => { el.textContent = textoDesde(el.dataset.desde); });
+}
+setInterval(atualizarContadores, 1000);
+
+function htmlContadores(i) {
+  const partes = [];
+  if (i.ultima_analise) partes.push(`<span>última análise <b class="num" data-desde="${esc(i.ultima_analise)}">${textoDesde(i.ultima_analise)}</b></span>`);
+  if (i.proxima_analise && i.proxima_analise !== i.ciclo_fim) partes.push(`<span>próxima leitura em <b class="num" data-ate="${esc(i.proxima_analise)}">${textoContador(i.proxima_analise)}</b></span>`);
+  if (i.ciclo_fim) partes.push(`<span>loop completo em <b class="num" data-ate="${esc(i.ciclo_fim)}">${textoContador(i.ciclo_fim)}</b></span>`);
+  return partes.join("");
+}
+
 function htmlItemMonitor(i) {
   const cls = i.ativo ? "good" : i.analisando || i.estado === "fila" ? "warning" : "muted";
   const extras = [
@@ -635,6 +661,7 @@ function htmlItemMonitor(i) {
     i.espectadores != null ? `<span>${Number(i.espectadores).toLocaleString("pt-BR")} espectadores</span>` : "",
     i.ativo && i.desde ? `<span>há ${duracao(i.desde)}</span>` : "",
     i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
+    htmlContadores(i),
   ].join("");
   const icone = i.fonte === "sites" ? `${iconeAtivo(i.item.split(":").pop())} ` : "";
   const vivo = i.ativo ? `<i class="ponto vivo" aria-hidden="true"></i>` : "";
