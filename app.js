@@ -15,8 +15,8 @@ const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites", agentes: 
 // fontes que não são contêiner: rodam na sessão do Claude Code a cada N min (monitor_fontes.proxima_execucao)
 const FONTES_PERIODICAS = new Set(["agentes"]);
 // ordem na lista: o que está acontecendo agora primeiro
-const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, proximo: 1, fila: 2, bloqueado: 3, executado: 4, sem_sinal: 5, sem_dados: 6, erro: 6 };
-const ROTULO_ESTADO = { gravando: "gravando", analisando: "analisando", fila: "na fila", offline: "offline",
+const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, proximo: 1, fila: 2, lido: 2, bloqueado: 3, executado: 4, sem_sinal: 5, sem_dados: 6, erro: 6 };
+const ROTULO_ESTADO = { gravando: "gravando", analisando: "analisando", fila: "na fila", lido: "lido na varredura", offline: "offline",
   desconhecido: "desconhecido", aberto: "sinal aberto", executado: "encerrado", bloqueado: "bloqueado",
   ao_vivo: "ao vivo", login_necessario: "pede login", proximo: "próximo", sem_sinal: "sem sinal", sem_dados: "sem dados",
   erro: "erro" };
@@ -946,8 +946,9 @@ function htmlMonitor(e) {
       ${rodada}
       <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
         <ul class="lista">${sinais.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>
-      ${agora.length ? `<ul class="lista">${agora.map(htmlItemMonitor).join("")}</ul>` : sinais.length ? "" : `<p class="vazio">Nada ativo agora.</p>`}
-      ${resto.length ? `<details><summary>${ico("chevron")}Outros ${resto.length} itens</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : ""}
+      <div class="fila"><div class="meta"><b>Fila de execução</b> <span class="count">${visiveis.length}</span></div>
+        ${agora.length ? `<ul class="lista">${agora.map(htmlItemMonitor).join("")}</ul>` : `<p class="vazio">Nada em execução agora.</p>`}
+        ${resto.length ? `<details><summary>${ico("chevron")}Outros ${resto.length} itens</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : ""}</div>
     </div>`;
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
@@ -1211,6 +1212,17 @@ function vistaAgentes(id) {
 
 // ---------- renderização e movimento ----------
 
+// o render troca o HTML inteiro a cada atualização (tempo real e a cada 30 s): sem isto, todo <details> volta ao padrão.
+// Chave = cartão + título do resumo sem números ("Outros 12 itens" → "Outros # itens") + ordem dentro do cartão.
+function detalhesComChave(raiz) {
+  const cartoes = [...raiz.querySelectorAll(".cartao")], vistos = {};
+  return [...raiz.querySelectorAll("details")].map((d) => {
+    const base = `${cartoes.indexOf(d.closest(".cartao"))}|${(d.querySelector("summary")?.textContent ?? "").replace(/\d+/g, "#").trim()}`;
+    vistos[base] = (vistos[base] ?? 0) + 1;
+    return [d, `${base}|${vistos[base]}`];
+  });
+}
+
 function render() {
   const rota = rotaAtual();
   const nova = chaveRota(rota) !== rotaRenderizada;
@@ -1218,7 +1230,9 @@ function render() {
   const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor()
     : rota.tipo === "agentes" ? vistaAgentes(rota.id) : vistaGeral();
   const app = document.getElementById("app");
+  const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
   app.innerHTML = htmlTopo(rota) + corpo;
+  abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
   document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "agentes" ? "Agentes · Central de Comando" : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
