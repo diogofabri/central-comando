@@ -292,7 +292,7 @@ function fonteDemo() {
       { fonte: "sites", item: "foresignal:EURUSD", nome: "Foresignal · EUR/USD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 1 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · válido até 07:51" },
       { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
       { fonte: "agentes", item: "GOLD", nome: "GOLD · XAUUSD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 0.5 * h).toISOString(), chamadas_hoje: 1, detalhe: "ATIVO 🟢 COMPRA · entrada 4010 · stop 4002 · alvos 4019.6 / 4026", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
-      { fonte: "agentes", item: "US100", nome: "US100 · NAS100", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "PRÓXIMO 🔴 VENDA: falta ADX 14 baixo/deitado (lateral); novo cruzamento ou ADX virar para cima", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
+      { fonte: "agentes", item: "cruzamento-medias:US100", nome: "cruzamento-medias · US100 · NAS100", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "PRÓXIMO 🔴 VENDA: falta ADX 14 baixo/deitado (lateral); novo cruzamento ou ADX virar para cima", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
       { fonte: "agentes", item: "CRUDEOIL", nome: "CRUDEOIL · USOIL", estado: "sem_sinal", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "SEM SINAL · lateral (ADX < 20) · ADX 15.2 · RSI 48 · fora da janela do ativo", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
       { fonte: "agentes", item: "multi-tf-auto:GOLD", nome: "multi-tf-auto · GOLD · XAUUSD", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "self-learning v3 · em ajuste · PRÓXIMO · M5 tendência +0.12 · M15 tendência +0.41 · H1 tendência +0.62 · vela heikin_ashi", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.9 * h).toISOString() },
     ],
@@ -759,6 +759,12 @@ function htmlContadores(i) {
 // motor em self-learning (agentes "-auto"): o monitor prefixa o detalhe com "self-learning v<n> · <estado> · "
 const RE_AUTO = /^self-learning v(\d+) · ([^·]+?) · ?/;
 const seloAuto = (texto) => `<span class="badge auto" title="parâmetros ajustados sozinhos pelo self-learning (lucro com lote 0,01)">${ico("bulb")}${esc(texto)}</span>`;
+const seloFixo = () => `<span class="badge muted" title="parâmetros fixos: o self-learning não mexe neste agente">fixo</span>`;
+// agente → tem self-learning? (do controle.agentes:painel; sem resumo, cai no sufixo "-auto" da convenção)
+function modoAgente(id) {
+  const a = estado.agentesPainel?.agentes?.find((x) => x.id === id);
+  return a ? a.self_learning : /-auto$/.test(id ?? "");
+}
 
 function htmlItemMonitor(i) {
   const cls = i.ativo ? "good" : i.analisando || i.estado === "fila" ? "warning" : "muted";
@@ -771,6 +777,7 @@ function htmlItemMonitor(i) {
     i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
     htmlContadores(i),
   ].join("");
+  // só o self-learning ganha selo no item; o "fixo" fica na lista "Modo de cada agente" (dito uma vez)
   const selo = auto ? ` ${seloAuto(`self-learning v${auto[1]} · ${auto[2].trim()}`)}` : "";
   const icone = i.fonte === "sites" ? `${iconeAtivo(i.item.split(":").pop())} ` : i.fonte === "agentes" ? `${iconeAtivo(i.nome.split("·").pop().trim())} ` : "";
   const vivo = i.ativo ? `<i class="ponto vivo" aria-hidden="true"></i>` : "";
@@ -798,8 +805,12 @@ function iconeAtivo(sym) { return ico(classeAtivo(sym), "ativo-ico"); }
 function htmlSinal(s) {
   const venda = s.direcao === "venda";
   const ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : null;
-  return `<li><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
-    <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span> <b>${esc(s.instrumento)}</b> · entrada ${esc(s.entrada ?? "—")} · SL ${esc(s.stop ?? "—")} · TP ${esc(s.alvos ?? "—")}${s.fonte === "agentes" && /-auto\b/.test(s.origem ?? "") ? ` ${seloAuto("self-learning")}` : ""}
+  const selo = s.fonte === "agentes" && modoAgente((s.origem ?? "").replace(/^\S+\s/, "")) ? seloAuto("self-learning") : "";
+  const nivel = (rotulo, valor) => `<div><dt>${rotulo}</dt><dd>${esc(valor ?? "—")}</dd></div>`;
+  return `<li class="sinal">
+    <div class="sinal-topo"><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
+      <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span><b>${esc(s.instrumento)}</b>${selo}</div>
+    <dl class="sinal-niveis">${nivel("Entrada", s.entrada)}${nivel("Stop", s.stop)}${nivel("Alvo", s.alvos)}</dl>
     <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
 }
 
@@ -902,13 +913,16 @@ function htmlMonitor(e) {
       : (Date.now() - new Date(info.atualizado_em)) / 6e4;
     const querLigado = e.monitorComando?.[f] !== false;  // sem comando = ligado
     const desligado = info && !info.ligado && /desligado pelo dashboard/.test(info.resumo ?? "");
+    // mercado fechado (sex 17:00 → dom 18:00 NY): o monitor para sozinho e volta na abertura (regra do Diogo, 30/10/2026)
+    const fimDeSemana = info && !info.ligado && /^fim de semana/.test(info.resumo ?? "");
     const status = !info ? { t: "sem dados", c: "muted" } : atraso > 3 ? { t: periodica ? `rodada atrasada ${duracao(info.proxima_execucao)}` : `sem sinal há ${duracao(info.atualizado_em)}`, c: "critical" }
-      : desligado ? { t: "desligado", c: "muted" } : info.ligado ? { t: "no ar", c: "good" } : { t: "pausado", c: "critical" };
+      : desligado ? { t: "desligado", c: "muted" } : fimDeSemana ? { t: "fim de semana", c: "muted" }
+      : info.ligado ? { t: "no ar", c: "good" } : { t: "pausado", c: "critical" };
     const rodada = periodica && info ? `<div class="meta">
         <span>último acionamento ${info.ultima_execucao ? `<b class="num" data-desde="${esc(info.ultima_execucao)}">${textoDesde(info.ultima_execucao)}</b>` : "<b>nunca</b>"}</span>
         ${info.proxima_execucao && info.ligado ? `<span>próximo em <b class="num" data-ate="${esc(info.proxima_execucao)}">${textoContador(info.proxima_execucao)}</b></span>` : ""}
         ${info.intervalo_min ? `<span>a cada ${info.intervalo_min} min</span>` : ""}</div>
-      ${f === "agentes" ? `<div class="meta">${controleSelfLearning(e.agentesPainel, { compacto: true })}<a href="#/agentes">Ver cada agente</a></div>` : ""}` : "";
+      ${f === "agentes" ? htmlModosAgentes(e) : ""}` : "";
     // o comando leva até ~10 s para chegar e ~1 min para o estado voltar ao painel
     const pendente = info && atraso <= 3 && querLigado === desligado;
     const botao = `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}">${ico(querLigado ? "power" : "play")} ${querLigado ? "Desligar" : "Ligar"}</button>`;
@@ -983,6 +997,26 @@ function seloModo(a) {
   if (a.revisao_ia) selos.push(`<span class="badge muted" title="o Sonnet aprova ou veta, o Opus confirma">${ico("check")}revisão por IA</span>`);
   selos.push(a.ligado ? `<span class="badge good"><i class="ponto vivo" aria-hidden="true"></i>ligado</span>` : `<span class="badge muted">desligado</span>`);
   return selos.join("");
+}
+
+// cartão Agentes do monitor: o modo de cada agente (self-learning ou fixo) e o botão, dizendo a quem se aplica
+function htmlModosAgentes(e) {
+  const ags = e.agentesPainel?.agentes ?? [];
+  if (!ags.length) return `<div class="meta">${controleSelfLearning(e.agentesPainel, { compacto: true })}<a href="#/agentes">Ver cada agente</a></div>`;
+  const auto = ags.filter((a) => a.self_learning);
+  const resumoAuto = (a) => {
+    if (!a.por_ativo_versao) { const v = a.por_ativo.find((x) => x.auto)?.auto; return `self-learning v${v?.versao ?? 0} · ${v?.estado ?? "aprendendo"}`; }
+    const n = (est) => a.por_ativo.filter((x) => x.auto?.estado === est).length;
+    return `self-learning por ativo · ${[["satisfeito", "satisfeitos"], ["em ajuste", "em ajuste"], ["aprendendo", "aprendendo"]].map(([k, r]) => n(k) ? `${n(k)} ${r}` : "").filter(Boolean).join(", ")}`;
+  };
+  return `<div class="modos-agentes">
+    <div class="meta"><b>Modo de cada agente</b></div>
+    <ul class="lista compacta">${ags.map((a) => `<li><a href="#/agentes/${esc(a.id)}">${esc(a.id)}</a>
+      ${a.self_learning ? seloAuto(resumoAuto(a)) : seloFixo()}${a.ligado ? "" : `<span class="badge muted">desligado</span>`}</li>`).join("")}</ul>
+    ${auto.length ? `${controleSelfLearning(e.agentesPainel, { compacto: true })}<div class="meta">O botão vale só para: ${auto.map((a) => esc(a.id)).join(", ")}. Os fixos não mudam.</div>`
+      : `<div class="meta">Nenhum agente com self-learning ligado.</div>`}
+    <a href="#/agentes">Ver cada agente</a>
+  </div>`;
 }
 
 function controleSelfLearning(p, { compacto = false } = {}) {
@@ -1109,7 +1143,7 @@ function vistaAgentes(id) {
         <a class="voltar" href="#/monitor">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>Agentes de sinais</h1>
         <p class="resumo">Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; o spread ainda é estimado. Uso pessoal: não é recomendação.</p>
-        ${p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span></div>` : ""}
+        ${p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
       ${controleSelfLearning(p)}
     </div>`;
