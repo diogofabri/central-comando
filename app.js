@@ -186,7 +186,8 @@ function fonteSupabase(cfg) {
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados, monitorConsensos,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
-               agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false };
+               agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
+               loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true } };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -198,6 +199,8 @@ function fonteSupabase(cfg) {
       sb.from("controle").upsert(fontes.map((f) => ({ chave: `monitor:${f}`, valor: ligar }))).then(ok),
     // liga/desliga o self-learning do executor dos agentes (lido a cada execução, a cada 5 min)
     comandarSelfLearning: (ligar) => sb.from("controle").upsert({ chave: "agentes:self_learning", valor: ligar }).then(ok),
+    // pede ao monitor que abra a janela de login da conta Google (a senha é digitada só no noVNC; nada de credencial passa por aqui)
+    pedirLogin: (f) => sb.from("controle").upsert({ chave: `login:${f}:pedido`, valor: true }).then(ok),
     aoMudar(fn) {
       sb.channel("central")
         .on("postgres_changes", { event: "*", schema: "public" }, fn)
@@ -298,6 +301,7 @@ function fonteDemo() {
     ],
     monitorComando: { tiktok: true, sites: true, agentes: true },
     agentesPainel: demoAgentes(agora), selfLearning: true,
+    loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
     monitorConsensos: [{ criado_em: new Date(agora - 4.2 * h).toISOString(), instrumento: "XAUUSD", direcao: "compra", canais: ["@canal.fx", "@mogotrading_off", "▶️ Forex & Crypto Live"] }],
     monitorResultados: [
       { fonte: "tiktok", sinal_id: 5, origem: "Consenso de 3 canais", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", status: "alvo", resultado_r: 1.8, desde: new Date(agora - 4.2 * h).toISOString(), resolvido_em: new Date(agora - 3 * h).toISOString() },
@@ -333,6 +337,7 @@ function fonteDemo() {
       });
     },
     async comandarSelfLearning(ligar) { s.selfLearning = ligar; s.agentesPainel.self_learning.ligado = ligar; },
+    async pedirLogin(f) { s.loginFonte[f] = { ...s.loginFonte[f], estado: "aguardando", atualizado_em: new Date().toISOString() }; },
     aoMudar() {},
   };
 }
@@ -931,6 +936,7 @@ function htmlMonitor(e) {
     return `<div class="cartao">
       <div class="titulo" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${FONTES[f]} <span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span><span style="margin-left:auto">${botao}</span></div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
+      ${f === "youtube" ? htmlLoginYoutube(e) : ""}
       ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
       ${rodada}
       <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
@@ -948,6 +954,28 @@ function htmlMonitor(e) {
     <div class="grade-cartoes">${fontes.join("")}</div>
     <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar.</p>
   </section>`;
+}
+
+// login da conta Google do monitor (YouTube): o estado vem do contêiner; a senha é digitada só no noVNC, nunca aqui
+function htmlLoginYoutube(e) {
+  const l = e.loginFonte?.youtube;
+  if (!l || (Date.now() - new Date(l.atualizado_em)) / 6e4 > 10) {
+    return `<div class="meta"><span>Login da conta Google: sem informação (o contêiner do YouTube está parado?)</span></div>`;
+  }
+  const botao = (texto, primario) => `<button class="btn pequeno ${primario ? "primario" : ""}" data-acao="login" data-fonte="youtube">${texto}</button>`;
+  if (l.estado === "logado") {
+    return `<div class="meta"><span class="badge good">${ico("check")}conta Google logada</span>${botao("Trocar conta", false)}</div>`;
+  }
+  if (l.estado === "aguardando") {
+    return `<div class="meta"><span class="badge warning">${ico("loader")}janela de login aberta</span>
+      <a class="btn pequeno primario" href="${esc(l.novnc)}" target="_blank" rel="noopener">${ico("external")} Abrir noVNC</a>
+      <span>Entre na conta lá (a senha é digitada só lá) e feche a janela do Chromium. O monitor volta sozinho.</span></div>`;
+  }
+  if (e.loginPedido?.youtube) {
+    return `<div class="meta"><span class="badge warning">${ico("loader")}abrindo a janela de login…</span><span>leva até ~10 s</span></div>`;
+  }
+  return `<div class="meta"><span class="badge critical">sem login na conta Google</span>${botao("Entrar", true)}
+    <span>Abre uma janela no noVNC; e-mail e senha são digitados só lá.</span></div>`;
 }
 
 function vistaMonitor() {
@@ -1253,6 +1281,10 @@ document.addEventListener("click", (ev) => {
     if (!ligar && !confirm("Pausar o self-learning? As rodadas dos agentes continuam; só param os ajustes automáticos de parâmetros até retomar.")) return;
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarSelfLearning(ligar));
+  }
+  if (acao === "login") {
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.pedirLogin(b.dataset.fonte));
   }
   if (acao === "monitor") {
     const fontes = b.dataset.fontes.split(","), ligar = b.dataset.ligar === "true";
