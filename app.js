@@ -16,7 +16,7 @@ const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites", agentes: 
 const FONTES_PERIODICAS = new Set(["agentes"]);
 // ordem na lista: o que está acontecendo agora primeiro
 const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, proximo: 1, fila: 2, lido: 2, bloqueado: 3, executado: 4, sem_sinal: 5, sem_dados: 6, erro: 6 };
-const ROTULO_ESTADO = { gravando: "gravando", analisando: "analisando", fila: "na fila", lido: "lido na varredura", offline: "offline",
+const ROTULO_ESTADO = { gravando: "capturando", analisando: "IA analisando", fila: "aguardando a vez", lido: "já analisado", offline: "offline",
   desconhecido: "desconhecido", aberto: "sinal aberto", executado: "encerrado", bloqueado: "bloqueado",
   ao_vivo: "ao vivo", login_necessario: "pede login", proximo: "próximo", sem_sinal: "sem sinal", sem_dados: "sem dados",
   erro: "erro" };
@@ -295,6 +295,8 @@ function fonteDemo() {
     monitorItens: [
       { fonte: "tiktok", item: "canal.fx", nome: "@canal.fx", estado: "gravando", ativo: true, analisando: true, espectadores: 87, desde: new Date(agora - 0.4 * h).toISOString(), chamadas_hoje: 2, detalhe: "XAUUSD ao vivo", ultima_analise: new Date(agora - 0.07 * h).toISOString(), proxima_analise: new Date(agora + 0.03 * h).toISOString(), ciclo_fim: new Date(agora + 0.2 * h).toISOString() },
       { fonte: "tiktok", item: "outro", nome: "@outro", estado: "offline", ativo: false, analisando: false, chamadas_hoje: 0 },
+      { fonte: "tiktok", item: "canal.b", nome: "@canal.b", estado: "lido", ativo: false, analisando: false, espectadores: 120, chamadas_hoje: 0, detalhe: "leitura 18:52: XAUUSD compra 4010", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.2 * h).toISOString(), ciclo_fim: new Date(agora + 0.22 * h).toISOString() },
+      { fonte: "tiktok", item: "canal.c", nome: "@canal.c", estado: "fila", ativo: false, analisando: false, espectadores: 64, chamadas_hoje: 0 },
       { fonte: "sites", item: "foresignal:EURUSD", nome: "Foresignal · EUR/USD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 1 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · válido até 07:51" },
       { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
       { fonte: "agentes", item: "GOLD", nome: "GOLD · XAUUSD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 0.5 * h).toISOString(), chamadas_hoje: 1, detalhe: "ATIVO 🟢 COMPRA · entrada 4010 · stop 4002 · alvos 4019.6 / 4026", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
@@ -776,8 +778,32 @@ function modoAgente(id) {
   return a ? a.self_learning : /-auto$/.test(id ?? "");
 }
 
+// TikTok e YouTube: em que ponto do loop (varredura e foco) cada live está, em grupos
+function htmlLoopLives(itens) {
+  const lendo = (i) => i.estado === "gravando" || i.estado === "analisando" || i.analisando;
+  const grupos = [
+    { t: "Analisando agora", d: "live aberta, prints sendo lidos", f: lendo },
+    { t: "Já analisados", d: "leitura feita; aguardam a próxima rodada", f: (i) => i.estado === "lido" },
+    { t: "Aguardando a vez", d: "ainda sem análise nesta rodada", f: (i) => i.estado === "fila" },
+  ];
+  const usados = new Set();
+  const blocos = grupos.map((g) => {
+    const l = itens.filter((i) => !usados.has(i) && g.f(i));
+    l.forEach((i) => usados.add(i));
+    return { ...g, l };
+  });
+  const fora = itens.filter((i) => !usados.has(i));
+  if (!itens.length) return `<p class="vazio">Nada ao vivo agora.</p>`;
+  const resumo = blocos.map((b) => `<span><b class="num">${b.l.length}</b> ${esc(b.t.toLowerCase())}</span>`).join("")
+    + (fora.length ? `<span><b class="num">${fora.length}</b> fora do ar</span>` : "");
+  return `<div class="meta">${resumo}</div>`
+    + blocos.filter((b) => b.l.length).map((b) => `<div class="grupo-live"><div class="meta"><b>${esc(b.t)}</b><span>${esc(b.d)}</span></div>
+        <ul class="lista">${b.l.map(htmlItemMonitor).join("")}</ul></div>`).join("")
+    + (fora.length ? `<details><summary>${ico("chevron")}Fora do ar ${fora.length}</summary><ul class="lista">${fora.map(htmlItemMonitor).join("")}</ul></details>` : "");
+}
+
 function htmlItemMonitor(i) {
-  const cls = i.ativo ? "good" : i.analisando || i.estado === "fila" ? "warning" : "muted";
+  const cls = i.ativo || i.estado === "lido" ? "good" : i.analisando || i.estado === "fila" ? "warning" : "muted";
   const auto = i.fonte === "agentes" ? RE_AUTO.exec(i.detalhe ?? "") : null;
   const detalhe = auto ? i.detalhe.slice(auto[0].length) : i.detalhe;
   const extras = [
@@ -946,9 +972,9 @@ function htmlMonitor(e) {
       ${rodada}
       <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
         <ul class="lista">${sinais.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>
-      <div class="fila"><div class="meta"><b>Fila de execução</b> <span class="count">${visiveis.length}</span></div>
-        ${agora.length ? `<ul class="lista">${agora.map(htmlItemMonitor).join("")}</ul>` : `<p class="vazio">Nada em execução agora.</p>`}
-        ${resto.length ? `<details><summary>${ico("chevron")}Outros ${resto.length} itens</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : ""}</div>
+      <div class="fila"><div class="meta"><b>${f === "tiktok" || f === "youtube" ? "Loop de leitura" : "Fila de execução"}</b> <span class="count">${visiveis.length}</span></div>
+        ${f === "tiktok" || f === "youtube" ? htmlLoopLives(visiveis) : `${agora.length ? `<ul class="lista">${agora.map(htmlItemMonitor).join("")}</ul>` : `<p class="vazio">Nada em execução agora.</p>`}
+        ${resto.length ? `<details><summary>${ico("chevron")}Outros ${resto.length} itens</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : ""}`}</div>
     </div>`;
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
