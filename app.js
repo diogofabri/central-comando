@@ -187,7 +187,8 @@ function fonteSupabase(cfg) {
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados, monitorConsensos,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
-               loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true } };
+               loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
+               consensoLigado: ctl["consenso:modo"] === true };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -199,6 +200,8 @@ function fonteSupabase(cfg) {
       sb.from("controle").upsert(fontes.map((f) => ({ chave: `monitor:${f}`, valor: ligar }))).then(ok),
     // liga/desliga o self-learning do executor dos agentes (lido a cada execução, a cada 5 min)
     comandarSelfLearning: (ligar) => sb.from("controle").upsert({ chave: "agentes:self_learning", valor: ligar }).then(ok),
+    // modo consenso do TikTok e do YouTube: true = vários canais precisam concordar; false (padrão) = cada canal gera o seu sinal
+    comandarConsenso: (ligar) => sb.from("controle").upsert({ chave: "consenso:modo", valor: ligar }).then(ok),
     // pede ao monitor que abra a janela de login da conta Google (a senha é digitada só no noVNC; nada de credencial passa por aqui)
     pedirLogin: (f) => sb.from("controle").upsert({ chave: `login:${f}:pedido`, valor: true }).then(ok),
     aoMudar(fn) {
@@ -301,6 +304,7 @@ function fonteDemo() {
     ],
     monitorComando: { tiktok: true, sites: true, agentes: true },
     agentesPainel: demoAgentes(agora), selfLearning: true,
+    consensoLigado: false,
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
     monitorConsensos: [{ criado_em: new Date(agora - 4.2 * h).toISOString(), instrumento: "XAUUSD", direcao: "compra", canais: ["@canal.fx", "@mogotrading_off", "▶️ Forex & Crypto Live"] }],
     monitorResultados: [
@@ -337,6 +341,7 @@ function fonteDemo() {
       });
     },
     async comandarSelfLearning(ligar) { s.selfLearning = ligar; s.agentesPainel.self_learning.ligado = ligar; },
+    async comandarConsenso(ligar) { s.consensoLigado = ligar; },
     async pedirLogin(f) { s.loginFonte[f] = { ...s.loginFonte[f], estado: "aguardando", atualizado_em: new Date().toISOString() }; },
     aoMudar() {},
   };
@@ -949,7 +954,8 @@ function htmlMonitor(e) {
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Monitor de lives e agentes <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
       <span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length} sinais</span>
-      <span class="direita"><button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
+      <span class="direita"><button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>
+      <button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     ${htmlFiltroAtivo(e)}
     <div class="grade-cartoes">${fontes.join("")}</div>
     <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar.</p>
@@ -1281,6 +1287,12 @@ document.addEventListener("click", (ev) => {
     if (!ligar && !confirm("Pausar o self-learning? As rodadas dos agentes continuam; só param os ajustes automáticos de parâmetros até retomar.")) return;
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarSelfLearning(ligar));
+  }
+  if (acao === "consenso") {
+    const ligar = b.dataset.ligar === "true";
+    if (ligar && !confirm("Ligar o consenso? O TikTok e o YouTube só geram sinal quando vários canais concordam (mínimo de canais, tolerância e bloqueio do lado oposto). Os sinais já abertos continuam. Vale em até ~10 s, sem reiniciar.")) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarConsenso(ligar));
   }
   if (acao === "login") {
     b.disabled = true; b.classList.add("ocupado");
