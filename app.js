@@ -1323,7 +1323,7 @@ function usdDoResultado(r, rr) {
   const c = contratoDe(r.instrumento), er = entradaERisco(r);
   if (rr == null || !c || !er) return null;
   const spread = c.pct ? c.pct * er.entrada : c.spread;
-  return Math.round((rr * er.risco - spread) * c.un * (c.cota ?? 1) * 100) / 100;
+  return Math.round((rr * er.risco - spread) * c.un * (c.cota ?? 1) * 1e4) / 1e4;
 }
 
 // R de um resultado: o do placar; sem ele (sites que só publicam pips), stop = −1 R e alvo = distância ao 1º alvo ÷ risco
