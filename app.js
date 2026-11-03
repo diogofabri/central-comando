@@ -1332,6 +1332,7 @@ function htmlTermometro(e) {
     <h2 id="h-termo">${ico("activity")} Termômetro <span class="count">${t.ativos.length} ativos</span>${fechado ? htmlBadge("muted", "mercado fechado", "clock") : ""}</h2>
     <div class="meta termo-fonte">
       <span>atualizado <b class="num" data-desde="${esc(t.atualizado_em)}">${textoDesde(t.atualizado_em)}</b></span>
+      ${t.proxima_em && !fechado ? `<span>próxima em ~<b class="num" data-ate="${esc(t.proxima_em)}">${textoContador(t.proxima_em)}</b> (a cada ${t.intervalo_min} min)</span>` : ""}
       <span>direcionadores: ${t.cotacoes === "tradingview" ? "TradingView" : "sem cotações agora"}</span>
       <span>velas: ${origemVelas(t)}</span>
       ${fechado ? "" : t.sentimento === "capital.com" ? htmlBadge("good", "Capital.com conectada", "check") : htmlBadge(String(t.sentimento).startsWith("erro") ? "critical" : "warning", sent, "alert")}
