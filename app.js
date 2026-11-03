@@ -187,6 +187,7 @@ function fonteSupabase(cfg) {
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados, monitorConsensos,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
+               termometro: ctl["termometro:painel"] ?? null,
                loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
                consensoLigado: ctl["consenso:modo"] === true };
     },
@@ -306,6 +307,7 @@ function fonteDemo() {
     ],
     monitorComando: { tiktok: true, sites: true, agentes: true, tradingview: true },
     agentesPainel: demoAgentes(agora), selfLearning: true,
+    termometro: demoTermometro(agora),
     consensoLigado: false,
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
     monitorConsensos: [{ criado_em: new Date(agora - 4.2 * h).toISOString(), instrumento: "XAUUSD", direcao: "compra", canais: ["@canal.fx", "@mogotrading_off", "▶️ Forex & Crypto Live"] }],
@@ -380,6 +382,35 @@ function demoResultados(agora) {
     }
   });
   return linhas;
+}
+
+// dados de exemplo do termômetro (modo demonstração): mesma forma do controle.termometro:painel
+function demoTermometro(agora) {
+  const tf = (h1, m15, m5, rh1, rm15, adx) => ({ h1: { pontuacao: h1, regime: rh1, adx }, m15: { pontuacao: m15, regime: rm15, adx: adx - 3 }, m5: { pontuacao: m5, regime: "lateral", adx: 14 } });
+  const it = (nome, v, regime = false, implica) => ({ nome, variacao_pct: v, regime, ...(implica ? { implica } : {}) });
+  return {
+    atualizado_em: new Date(agora - 6 * 6e4).toISOString(), mercado: "aberto", cotacoes: "tradingview", sentimento: "capital.com",
+    ativos: [
+      { id: "GOLD", nome: "Ouro", preco: 3927.1, variacao_dia_pct: -0.49, d1: -0.49, idade_min: 7, direcao: "baixa", forca: "forte", confirmacao: "H1 e M15",
+        tf: tf(-0.72, -0.64, -0.2, "tendencia", "tendencia", 31), divergencia: false, sentimento: { compra: 78.5, venda: 21.5, leitura: "maioria comprada" },
+        alinhamento: { a_favor: [it("US10Y", 0.85), it("SILVER", -1.86)], contra: [], parado: [it("DXY", 0.04), it("EURUSD", -0.04)], sem_leitura: [] },
+        motivo: "Baixa forte · H1 e M15 · em tendência. A favor: US10Y +0,9%, SILVER −1,9%." },
+      { id: "SILVER", nome: "Prata", preco: 49.71, variacao_dia_pct: -1.86, d1: -0.44, idade_min: 7, direcao: "baixa", forca: "", confirmacao: "H1 e M15",
+        tf: tf(-0.41, -0.35, -0.1, "tendencia", "lateral", 45), divergencia: false, sentimento: { compra: 91.9, venda: 8.1, leitura: "maioria comprada" },
+        alinhamento: { a_favor: [it("GOLD", -0.49), it("COPPER", -2.6), it("US10Y", 0.85)], contra: [], parado: [it("DXY", 0.04)], sem_leitura: [] },
+        motivo: "Baixa · H1 e M15 · em tendência. A favor: GOLD −0,5%, COPPER −2,6%, US10Y +0,9%." },
+      { id: "CRUDEOIL", nome: "Petróleo WTI", preco: 95.87, variacao_dia_pct: -0.53, d1: 0, idade_min: 7, direcao: "neutra", forca: "", confirmacao: "",
+        tf: tf(0.12, -0.18, 0.05, "lateral", "lateral", 19), divergencia: false, sentimento: { compra: 52.0, venda: 48.0, leitura: "equilibrado" },
+        alinhamento: { a_favor: [], contra: [it("BRENT", -1.3), it("US500", 0.3, true)], parado: [], sem_leitura: [] },
+        motivo: "Sem direção clara · lateral. Direcionadores pedem queda: BRENT −1,3%, US500 +0,3% (regime 2025–26)." },
+      { id: "US30", nome: "US30 (Dow Jones)", preco: 51742, variacao_dia_pct: -0.48, d1: -0.42, idade_min: 7, direcao: "baixa", forca: "", confirmacao: "só H1 (M15 não confirma)",
+        tf: tf(-0.47, -0.12, 0.1, "tendencia", "lateral", 27), divergencia: true, sentimento: null,
+        alinhamento: { a_favor: [it("US10Y", 0.85, true)], contra: [it("VIX", -2.2), it("US500", 0.3)], parado: [], sem_leitura: [it("CRUDEOIL")] },
+        motivo: "Baixa · só H1 (M15 não confirma) · em tendência. A favor: US10Y +0,9% (regime 2025–26). Contra: VIX −2,2%, US500 +0,3%." },
+      { id: "US100", nome: "US100 (Nasdaq)", preco: null, variacao_dia_pct: null, d1: null, direcao: null, alinhamento: null, divergencia: false, sentimento: null,
+        motivo: "Sem dados: poucas velas em H1" },
+    ],
+  };
 }
 
 // dados de exemplo da página #/agentes (modo demonstração): mesma forma do controle.agentes:painel
@@ -1185,6 +1216,55 @@ function htmlLoginYoutube(e) {
     <span>Abre uma janela no noVNC; e-mail e senha são digitados só lá.</span></div>`;
 }
 
+// ---------- termômetro (painel do Monitor) ----------
+// Lê controle.termometro:painel (executor dos agentes, a cada ~15 min). Contexto e confirmação, não sinal de entrada.
+const ROTULO_DIRECAO = { alta: ["Alta", "good"], baixa: ["Baixa", "critical"], neutra: ["Neutra", "muted"] };
+const sinal2 = (v) => v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const pctSinal = (v) => v == null ? "—" : `${sinal2(v)}%`;
+const REGIME_TXT = { tendencia: "em tendência", lateral: "lateral", volatil: "volátil" };
+const SENTIMENTO_TXT = { "aguardando chave": "Capital.com: aguardando a chave da API", "mercado fechado": "mercado fechado" };
+
+function htmlTermometroAtivo(a) {
+  const [rot, cls] = ROTULO_DIRECAO[a.direcao] ?? ["Sem leitura", "muted"];
+  const velho = a.idade_min != null && a.idade_min > 45;
+  const tfs = a.tf ? ["h1", "m15", "m5"].map((k) => `<span>${k.toUpperCase()} <b class="num">${sinal2(a.tf[k]?.pontuacao)}</b></span>`).join("") : "";
+  const reg = a.tf?.h1?.regime ? `<span>${esc(REGIME_TXT[a.tf.h1.regime] ?? a.tf.h1.regime)}${a.tf.h1.adx != null ? ` · ADX <b class="num">${numero(a.tf.h1.adx)}</b>` : ""}</span>` : "";
+  const s = a.sentimento;
+  return `<div class="cartao termo">
+    <div class="titulo">${iconeAtivo(a.id)} ${esc(a.nome)} ${a.direcao ? htmlBadge(cls, rot + (a.forca ? " forte" : "")) : htmlBadge("muted", rot)}${a.divergencia ? htmlBadge("warning", "Divergência", "alert") : ""}</div>
+    ${a.preco != null ? `<div class="meta"><span class="num">${esc(preco2(a.preco))}</span><span>dia <b class="num">${pctSinal(a.variacao_dia_pct)}</b></span>${a.d1 != null ? `<span>nota D1 <b class="num">${sinal2(a.d1)}</b></span>` : ""}</div>` : ""}
+    ${tfs ? `<div class="meta">${tfs}${reg}</div>` : ""}
+    <p class="termo-motivo">${esc(a.motivo)}</p>
+    ${s ? `<div class="termo-sent"><span class="num">${Math.round(s.compra)}%</span> comprados · <span class="num">${100 - Math.round(s.compra)}%</span> vendidos <span class="meta-leve">(${esc(s.leitura)})</span></div>` : ""}
+    ${velho ? `<div class="meta"><span class="atraso">${ico("clock")}velas de há ${esc(duracaoMin(a.idade_min))}</span></div>` : ""}
+  </div>`;
+}
+
+const preco2 = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const duracaoMin = (min) => min >= 120 ? `${Math.round(min / 60)} h` : `${Math.round(min)} min`;
+
+function htmlTermometro(e) {
+  const t = e.termometro;
+  if (!t?.ativos?.length) {
+    return `<section class="painel" aria-labelledby="h-termo">
+      <h2 id="h-termo">${ico("activity")} Termômetro</h2>
+      <p class="vazio">Ainda sem leitura: o executor dos agentes publica o termômetro a cada ~15 min depois de terminar a próxima rodada.</p>
+    </section>`;
+  }
+  const fechado = t.mercado === "fechado";
+  const sent = SENTIMENTO_TXT[t.sentimento] ?? (t.sentimento === "capital.com" ? "Capital.com: sentimento dos clientes" : `Capital.com: ${t.sentimento}`);
+  return `<section class="painel" aria-labelledby="h-termo">
+    <h2 id="h-termo">${ico("activity")} Termômetro <span class="count">${t.ativos.length} ativos</span>${fechado ? htmlBadge("muted", "mercado fechado", "clock") : ""}</h2>
+    <div class="meta termo-fonte">
+      <span>atualizado <b class="num" data-desde="${esc(t.atualizado_em)}">${textoDesde(t.atualizado_em)}</b></span>
+      <span>direcionadores: ${t.cotacoes === "tradingview" ? "TradingView" : "sem cotações agora"}</span>
+      <span>${esc(sent)}</span>
+    </div>
+    <div class="grade-cartoes larga">${t.ativos.map(htmlTermometroAtivo).join("")}</div>
+    <p class="meta termo-nota">Contexto e confirmação, não sinal de entrada: nos testes de 03/11/2026 os direcionadores acompanham o movimento do ativo, mas não o antecipam. Tendência = pontuação do multi-tf (−1 a +1; acima de ±0,30 em H1 e M15 há direção). "Regime 2025–26" = relação medida só neste período. Uso pessoal; não é recomendação.</p>
+  </section>`;
+}
+
 function vistaMonitor() {
   const e = estado;
   const p = e.projetos.find((x) => x.id === "monitor");
@@ -1201,6 +1281,7 @@ function vistaMonitor() {
       </div>
     </div>
     ${htmlSinaisAtivos(e)}
+    ${htmlTermometro(e)}
     ${htmlMonitor(e)}
     ${htmlPlacar(e)}
     <section class="painel" aria-labelledby="h-pend">
