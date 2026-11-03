@@ -19,7 +19,7 @@ const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, proximo: 1, fila: 
 const ROTULO_ESTADO = { gravando: "capturando", analisando: "IA analisando", fila: "aguardando a vez", lido: "já analisado", offline: "offline",
   desconhecido: "desconhecido", aberto: "sinal aberto", executado: "encerrado", bloqueado: "bloqueado",
   ao_vivo: "ao vivo", login_necessario: "pede login", proximo: "próximo", sem_sinal: "sem sinal", sem_dados: "sem dados",
-  erro: "erro" };
+  erro: "erro", expirado: "vencido" };
 const RESULTADO = { aprovada: "Aprovada", ajustada: "Ajustada", descartada: "Descartada", expirada: "Expirou" };
 const TIPO_EVENTO = { acao: "ação", aprendizado: "aprendizado", alerta: "alerta", resumo: "resumo", erro: "erro" };
 const MARCOS_PADRAO = { M1: 4, M3: 13, M6: 26, M12: 52 };
@@ -778,28 +778,42 @@ function modoAgente(id) {
   return a ? a.self_learning : /-auto$/.test(id ?? "");
 }
 
-// TikTok e YouTube: em que ponto do loop (varredura e foco) cada live está, em grupos
-function htmlLoopLives(itens) {
-  const lendo = (i) => i.estado === "gravando" || i.estado === "analisando" || i.analisando;
-  const grupos = [
-    { t: "Analisando agora", d: "live aberta, prints sendo lidos", f: lendo },
+// Status de cada fonte, no mesmo molde: resumo com contagens, grupos (o que significa) e um último grupo recolhido.
+// "Sinal aberto" só conta aqui: os sinais ficam no painel "Sinais ativos".
+const ABERTO = { t: "Sinal aberto", d: "listados em Sinais ativos", f: (i) => i.ativo || i.estado === "aberto", semLista: true };
+const LOOP_LIVES = {
+  titulo: "Loop de leitura", vazio: "Nada ao vivo agora.", resto: "Fora do ar",
+  grupos: [
+    { t: "Analisando agora", d: "live aberta, prints sendo lidos", f: (i) => i.estado === "gravando" || i.estado === "analisando" || i.analisando },
     { t: "Já analisados", d: "leitura feita; aguardam a próxima rodada", f: (i) => i.estado === "lido" },
     { t: "Aguardando a vez", d: "ainda sem análise nesta rodada", f: (i) => i.estado === "fila" },
-  ];
-  const usados = new Set();
-  const blocos = grupos.map((g) => {
+  ],
+};
+const GRUPOS_FONTE = {
+  tiktok: LOOP_LIVES, youtube: LOOP_LIVES,
+  sites: { titulo: "Leitura dos sites", vazio: "Nenhum site lido ainda.", resto: "Resolvidos e vencidos",
+    grupos: [ABERTO, { t: "Aguardando liberação", d: "espera gratuita do site em contagem", f: (i) => i.estado === "bloqueado" }] },
+  agentes: { titulo: "Rodada dos agentes", vazio: "Nenhuma rodada ainda.", resto: "Sem sinal",
+    grupos: [ABERTO,
+      { t: "Próximos de disparar", d: "setup se formando; o motor ainda não confirmou", f: (i) => i.estado === "proximo" },
+      { t: "Sem dados", d: "sem velas novas; conferir o TradingView e o executor", f: (i) => i.estado === "sem_dados" || i.estado === "erro" }] },
+};
+
+function htmlStatusFonte(f, itens) {
+  const cfg = GRUPOS_FONTE[f], usados = new Set();
+  if (!itens.length) return `<p class="vazio">${esc(cfg.vazio)}</p>`;
+  const blocos = cfg.grupos.map((g) => {
     const l = itens.filter((i) => !usados.has(i) && g.f(i));
     l.forEach((i) => usados.add(i));
     return { ...g, l };
   });
-  const fora = itens.filter((i) => !usados.has(i));
-  if (!itens.length) return `<p class="vazio">Nada ao vivo agora.</p>`;
+  const resto = itens.filter((i) => !usados.has(i));
   const resumo = blocos.map((b) => `<span><b class="num">${b.l.length}</b> ${esc(b.t.toLowerCase())}</span>`).join("")
-    + (fora.length ? `<span><b class="num">${fora.length}</b> fora do ar</span>` : "");
+    + (resto.length ? `<span><b class="num">${resto.length}</b> ${esc(cfg.resto.toLowerCase())}</span>` : "");
   return `<div class="meta">${resumo}</div>`
-    + blocos.filter((b) => b.l.length).map((b) => `<div class="grupo-live"><div class="meta"><b>${esc(b.t)}</b><span>${esc(b.d)}</span></div>
+    + blocos.filter((b) => b.l.length && !b.semLista).map((b) => `<div class="grupo-live"><div class="meta"><b>${esc(b.t)}</b><span>${esc(b.d)}</span></div>
         <ul class="lista">${b.l.map(htmlItemMonitor).join("")}</ul></div>`).join("")
-    + (fora.length ? `<details><summary>${ico("chevron")}Fora do ar ${fora.length}</summary><ul class="lista">${fora.map(htmlItemMonitor).join("")}</ul></details>` : "");
+    + (resto.length ? `<details><summary>${ico("chevron")}${esc(cfg.resto)} ${resto.length}</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : "");
 }
 
 function htmlItemMonitor(i) {
@@ -930,19 +944,31 @@ function htmlPlacar(e) {
   </section>`;
 }
 
+function sinaisVigentes(e, f) {
+  return (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now()) && passaFiltro(s.instrumento))
+    .sort((a, b) => new Date(b.desde) - new Date(a.desde));
+}
+
+function htmlSinaisAtivos(e) {
+  const por = Object.keys(FONTES).map((f) => [f, sinaisVigentes(e, f)]);
+  const total = por.reduce((n, [, l]) => n + l.length, 0);
+  const cartoes = por.map(([f, l]) => `<div class="cartao">
+      <div class="titulo">${FONTES[f]} <span class="count">${l.length}</span></div>
+      <ul class="lista">${l.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>`);
+  return `<section class="painel" aria-labelledby="h-sinais">
+    <h2 id="h-sinais">${ico("zap")} Sinais ativos <span class="count">${total}</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
+    ${htmlFiltroAtivo(e)}
+    <div class="grade-cartoes larga">${cartoes.join("")}</div>
+    <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar. Não é recomendação.</p>
+  </section>`;
+}
+
 function htmlMonitor(e) {
   const fontes = Object.keys(FONTES).map((f) => {
     const info = e.monitorFontes.find((x) => x.fonte === f);
     const itens = e.monitorItens.filter((i) => i.fonte === f)
       .sort((a, b) => (ORDEM_ESTADO[a.estado] ?? 9) - (ORDEM_ESTADO[b.estado] ?? 9) || (b.espectadores ?? 0) - (a.espectadores ?? 0));
-    const sinais = (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now())
-      && passaFiltro(s.instrumento));
-    // item cujo sinal aberto já aparece em "Sinais ativos" (sites: um item por par) não se repete na lista
-    const comSinal = new Set(sinais.map((s) => s.item));
-    const visiveis = itens.filter((i) => !(i.estado === "aberto" && comSinal.has(i.item))
-      && (f !== "sites" || passaFiltro(i.item.split(":").pop())));
-    const agora = visiveis.filter((i) => (ORDEM_ESTADO[i.estado] ?? 9) <= 2 || i.analisando);
-    const resto = visiveis.filter((i) => !agora.includes(i));
+    const visiveis = itens.filter((i) => f !== "sites" || passaFiltro(i.item.split(":").pop()));
     const periodica = FONTES_PERIODICAS.has(f);
     // fonte periódica (agentes): está "no ar" enquanto a próxima rodada prevista não atrasar mais de 10 min
     const atraso = !info ? Infinity : periodica ? (info.proxima_execucao ? (Date.now() - new Date(info.proxima_execucao)) / 6e4 - 10 : 0)
@@ -970,11 +996,8 @@ function htmlMonitor(e) {
       ${f === "youtube" ? htmlLoginYoutube(e) : ""}
       ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
       ${rodada}
-      <div class="sinais"><div class="meta"><b>Sinais ativos</b> <span class="count">${sinais.length}</span></div>
-        <ul class="lista">${sinais.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>
-      <div class="fila"><div class="meta"><b>${f === "tiktok" || f === "youtube" ? "Loop de leitura" : "Fila de execução"}</b> <span class="count">${visiveis.length}</span></div>
-        ${f === "tiktok" || f === "youtube" ? htmlLoopLives(visiveis) : `${agora.length ? `<ul class="lista">${agora.map(htmlItemMonitor).join("")}</ul>` : `<p class="vazio">Nada em execução agora.</p>`}
-        ${resto.length ? `<details><summary>${ico("chevron")}Outros ${resto.length} itens</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : ""}`}</div>
+      <div class="fila"><div class="meta"><b>${GRUPOS_FONTE[f].titulo}</b> <span class="count">${visiveis.length}</span></div>
+        ${htmlStatusFonte(f, visiveis)}</div>
     </div>`;
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
@@ -983,9 +1006,7 @@ function htmlMonitor(e) {
       <span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length} sinais</span>
       <span class="direita"><button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>
       <button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
-    ${htmlFiltroAtivo(e)}
     <div class="grade-cartoes">${fontes.join("")}</div>
-    <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar.</p>
   </section>`;
 }
 
@@ -1026,6 +1047,7 @@ function vistaMonitor() {
         ${c.cfg.status ? `<p class="resumo">${esc(c.cfg.status)}</p>` : ""}
       </div>
     </div>
+    ${htmlSinaisAtivos(e)}
     ${htmlMonitor(e)}
     ${htmlPlacar(e)}
     <section class="painel" aria-labelledby="h-pend">
