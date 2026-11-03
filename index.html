@@ -273,7 +273,8 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 /* ---------- monitor ---------- */
 .fila { border-top: 1px dashed var(--line-2); padding-top: 8px; margin-top: 10px; }
 .fila .lista li { border-bottom-color: var(--line); }
-.grade-cartoes.larga { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+/* 5 fontes (TikTok, YouTube, Sites, Agentes, TradingView): 230 px cabem lado a lado a partir de ~1180 px de largura */
+.grade-cartoes.larga { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
 .fila .meta > b { color: var(--ink-2); }
 .fila .grupo-live { margin-top: 10px; }
 .sinal-topo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
@@ -420,6 +421,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=33"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>

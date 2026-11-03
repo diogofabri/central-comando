@@ -320,6 +320,7 @@ function fonteDemo() {
     monitorSinais: [
       { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "Sinal do canal @canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
       { fonte: "sites", sinal_id: 2, item: "foresignal:EURUSD", origem: "Foresignal", instrumento: "EURUSD", direcao: "compra", entrada: "1.117", stop: 1.1149, alvos: "1.1187", desde: new Date(agora - 1 * h).toISOString(), ate: new Date(agora + 7 * h).toISOString() },
+      { fonte: "tradingview", sinal_id: 1, item: "GOLD", origem: "📐 novo-a (Novo A)", instrumento: "XAUUSD", direcao: "compra", entrada: "3913.49", stop: 3901, alvos: "3938.5", condicoes: "Scalper Pro, layout Novo A", desde: new Date(agora - 20 * 60e3).toISOString(), ate: new Date(agora + 11 * 3600e3).toISOString() },
       { fonte: "agentes", sinal_id: 1, item: "GOLD", origem: "🤖 cruzamento-medias", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", stop: 4002, alvos: "4019.6 / 4026", condicoes: "EMA 9/21 cruzou no M15 (confirmação); H1 a favor; ADX 24; RSI 55", desde: new Date(agora - 0.5 * h).toISOString(), ate: new Date(agora + 11.5 * h).toISOString() },
     ],
   };
