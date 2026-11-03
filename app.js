@@ -1143,7 +1143,7 @@ function seloModo(a) {
 
 // cartão Agentes do monitor: o modo de cada agente (self-learning ou fixo) e o botão, dizendo a quem se aplica
 function htmlModosAgentes(e) {
-  const ags = e.agentesPainel?.agentes ?? [];
+  const ags = (e.agentesPainel?.agentes ?? []).filter((a) => a.tipo !== "todos");
   if (!ags.length) return `<div class="meta">${controleSelfLearning(e.agentesPainel, { compacto: true })}<a href="#/agentes">Ver cada agente</a></div>`;
   const auto = ags.filter((a) => a.self_learning);
   const resumoAuto = (a) => {
@@ -1290,6 +1290,7 @@ const RESUMO_ANALISE = {
   youtube: "Cada canal do YouTube com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
   sites: "Cada site com o seu saldo em US$ no lote mínimo de 0,01 (forex: 1.000 unidades; cripto: 0,01 moeda), líquido de spread estimado. Quando o site só publica pips ou pontos, o resultado sai da entrada, do stop e do primeiro alvo (stop = −1 R). Soma os sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
 };
+const TODOS = "Todos";
 const STATUS_COM_R = new Set(["alvo", "stop", "expirado"]);
 const numerosDe = (t) => (String(t ?? "").match(/\d+(?:[.,]\d+)?/g) ?? []).map((x) => Number(x.replace(",", "."))).filter(Number.isFinite);
 
@@ -1413,8 +1414,8 @@ function unidadeDeResultados(f, nome, linhas, abertos) {
       texto: s ? `ATIVO · ${String(s.direcao).toUpperCase()} · entrada ${s.entrada}${s.stop != null ? ` · stop ${s.stop}` : ""}${s.alvos ? ` · alvos ${s.alvos}` : ""}` : null };
   });
   let saldo = 0;
-  const base = nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : `Sinal do canal no ${FONTES[f]}`;
-  const a = { id: nome, tipo: f, metodo: `${base}${ops.length ? ` · último resultado ${quando(ops[ops.length - 1].momento)}` : ""}`, ligado: true, ativos, timeframes: [],
+  const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${f === "sites" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : `Sinal do canal no ${FONTES[f]}`;
+  const a = { id: nome, tipo: nome === TODOS ? "todos" : f, metodo: `${base}${ops.length ? ` · último resultado ${quando(ops[ops.length - 1].momento)}` : ""}`, ligado: true, ativos, timeframes: [],
     self_learning: false, por_ativo_versao: false, revisao_ia: false, selos: "", ultima_execucao: null, proxima_execucao: null, unidade: "usd",
     metricas: metricasUsd(ops), curva: ops.map((o) => [o.momento, Math.round((saldo += o.v) * 100) / 100]), por_ativo,
     por_hora: recorteUsd(ops, (o) => new Date(o.aberto_em).getUTCHours()), por_lado: recorteUsd(ops, (o) => o.lado), desfechos: recorteUsd(ops, (o) => o.status),
@@ -1429,6 +1430,9 @@ function painelDeResultados(f, e) {
   const nomes = [...new Set([...linhas.map((r) => nomeDaUnidade(r.origem)), ...abertos.map((s) => nomeDaUnidade(s.origem))])];
   const agentes = nomes.map((n) => unidadeDeResultados(f, n, linhas.filter((r) => nomeDaUnidade(r.origem) === n), abertos.filter((s) => nomeDaUnidade(s.origem) === n)))
     .sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
+  // aba "Todos": soma dos canais ou sites; o consenso fica fora porque repete os sinais dos canais
+  const semConsenso = (x) => nomeDaUnidade(x.origem) !== "Consenso";
+  if (agentes.some((a) => a.id !== "Consenso")) agentes.unshift(unidadeDeResultados(f, TODOS, linhas.filter(semConsenso), abertos.filter(semConsenso)));
   return { unidade: "usd", agentes };
 }
 
@@ -1442,7 +1446,7 @@ function vistaAnalise(f, id) {
         <a class="voltar" href="#/monitor">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>${ehAgentes ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
         <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; o spread ainda é estimado. Uso pessoal: não é recomendação.` : RESUMO_ANALISE[f]}</p>
-        ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
+        ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
       ${ehAgentes ? controleSelfLearning(p) : ""}
     </div>`;
@@ -1453,14 +1457,14 @@ function vistaAnalise(f, id) {
         : `Nenhum sinal do ${FONTES[f]} foi resolvido nos últimos 30 dias. A página se monta sozinha quando o placar resolver o primeiro.`}</span></div></main>`;
   }
   const atual = p.agentes.find((a) => a.id === id) ?? p.agentes[0];
-  const max = Math.max(1, ...p.agentes.map((a) => Math.abs(a.metricas.lucro_usd)));
+  const max = Math.max(1, ...p.agentes.filter((a) => a.tipo !== "todos").map((a) => Math.abs(a.metricas.lucro_usd)));
   const comparacao = `<section class="painel" aria-labelledby="h-comp">
-      <h2 id="h-comp">${ico("target")} Comparação <span class="count">${p.agentes.length} ${p.agentes.length === 1 ? um : varios}</span></h2>
+      <h2 id="h-comp">${ico("target")} Comparação <span class="count">${p.agentes.filter((a) => a.tipo !== "todos").length} ${p.agentes.filter((a) => a.tipo !== "todos").length === 1 ? um : varios}</span></h2>
       <div class="rolagem"><table class="tabela comparacao">
         <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">Saldo real</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th></tr></thead>
         <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
           <td><a href="${hrefAnalise(f, a.id)}">${esc(a.id)}</a></td>
-          ${ehAgentes ? `<td>${a.self_learning ? seloAuto("self-learning") : `<span class="badge muted">fixo</span>`}</td>` : ""}
+          ${ehAgentes ? `<td>${a.tipo === "todos" ? "" : a.self_learning ? seloAuto("self-learning") : `<span class="badge muted">fixo</span>`}</td>` : ""}
           <td class="num">${a.metricas.ops}</td><td class="num">${pct(a.metricas.acerto_pct)}</td>
           <td class="col-zero">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
           <td class="num">${a.metricas.fator_lucro == null ? "—" : String(a.metricas.fator_lucro).replace(".", ",")}</td>
