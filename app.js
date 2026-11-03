@@ -791,13 +791,33 @@ const LOOP_LIVES = {
 };
 const GRUPOS_FONTE = {
   tiktok: LOOP_LIVES, youtube: LOOP_LIVES,
-  sites: { titulo: "Leitura dos sites", vazio: "Nenhum site lido ainda.", resto: "Resolvidos e vencidos",
-    grupos: [ABERTO, { t: "Aguardando liberação", d: "espera gratuita do site em contagem", f: (i) => i.estado === "bloqueado" }] },
+  sites: { titulo: "Leitura dos sites" },  // desenho próprio: uma linha por site (htmlStatusSites)
   agentes: { titulo: "Rodada dos agentes", vazio: "Nenhuma rodada ainda.", resto: "Sem sinal",
     grupos: [ABERTO,
       { t: "Próximos de disparar", d: "setup se formando; o motor ainda não confirmou", f: (i) => i.estado === "proximo" },
       { t: "Sem dados", d: "sem velas novas; conferir o TradingView e o executor", f: (i) => i.estado === "sem_dados" || i.estado === "erro" }] },
 };
+
+// Sites: quais sites o monitor lê, quando leu pela última vez, quando lê de novo e o que cada um tem. Os pares ficam recolhidos.
+function htmlStatusSites(itens) {
+  if (!itens.length) return `<p class="vazio">Nenhum site lido ainda.</p>`;
+  const por = {};
+  itens.forEach((i) => (por[i.item.split(":")[0]] ??= []).push(i));
+  return Object.values(por).sort((a, b) => a[0].nome.localeCompare(b[0].nome)).map((l) => {
+    const nome = l[0].nome.split("·")[0].trim();
+    const maisNovo = (campo) => l.map((i) => i[campo]).filter(Boolean).sort().pop();
+    const ultima = maisNovo("ultima_analise"), proxima = maisNovo("proxima_analise");
+    const conta = (estado) => l.filter((i) => estado === "aberto" ? i.ativo || i.estado === "aberto" : i.estado === estado).length;
+    const contagens = [["aberto", "abertos"], ["bloqueado", "aguardando liberação"], ["executado", "encerrados"], ["expirado", "vencidos"]]
+      .filter(([e]) => conta(e)).map(([e, t]) => `<span><b class="num">${conta(e)}</b> ${t}</span>`).join("");
+    const leitura = ultima || proxima
+      ? `${ultima ? `<span>última leitura <b class="num" data-desde="${esc(ultima)}">${textoDesde(ultima)}</b></span>` : ""}${proxima ? `<span>próxima em <b class="num" data-ate="${esc(proxima)}">${textoContador(proxima)}</b></span>` : ""}`
+      : `<span>horário da leitura ainda não publicado</span>`;
+    return `<div class="grupo-live"><div class="meta"><b>${esc(nome)}</b></div>
+      <div class="meta">${leitura}</div><div class="meta">${contagens}</div>
+      <details><summary>${ico("chevron")}Pares de ${esc(nome)} ${l.length}</summary><ul class="lista">${l.map(htmlItemMonitor).join("")}</ul></details></div>`;
+  }).join("");
+}
 
 function htmlStatusFonte(f, itens) {
   const cfg = GRUPOS_FONTE[f], usados = new Set();
@@ -825,7 +845,7 @@ function htmlItemMonitor(i) {
     i.espectadores != null ? `<span>${Number(i.espectadores).toLocaleString("pt-BR")} espectadores</span>` : "",
     i.ativo && i.desde ? `<span>há ${duracao(i.desde)}</span>` : "",
     i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
-    htmlContadores(i),
+    i.fonte === "sites" ? "" : htmlContadores(i),
   ].join("");
   // só o self-learning ganha selo no item; o "fixo" fica na lista "Modo de cada agente" (dito uma vez)
   const selo = auto ? ` ${seloAuto(`self-learning v${auto[1]} · ${auto[2].trim()}`)}` : "";
@@ -852,11 +872,13 @@ function classeAtivo(sym) {
 const NOME_CLASSE = { metal: "metal", energia: "energia", cripto: "cripto", indice: "índice", forex: "forex", ativo: "ativo" };
 function iconeAtivo(sym) { return ico(classeAtivo(sym), "ativo-ico"); }
 
+const precoCurto = (v) => (v == null ? "—" : String(v).replace(/\d+\.\d{6,}/g, (m) => String(Number(Number(m).toFixed(5)))));
+
 function htmlSinal(s) {
   const venda = s.direcao === "venda";
   const ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : null;
   const selo = s.fonte === "agentes" && modoAgente((s.origem ?? "").replace(/^\S+\s/, "")) ? seloAuto("self-learning") : "";
-  const nivel = (rotulo, valor) => `<div><dt>${rotulo}</dt><dd>${esc(valor ?? "—")}</dd></div>`;
+  const nivel = (rotulo, valor) => `<div><dt>${rotulo}</dt><dd>${esc(precoCurto(valor))}</dd></div>`;
   return `<li class="sinal">
     <div class="sinal-topo"><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
       <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span><b>${esc(s.instrumento)}</b>${selo}</div>
@@ -996,14 +1018,14 @@ function htmlMonitor(e) {
       ${f === "youtube" ? htmlLoginYoutube(e) : ""}
       ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
       ${rodada}
-      <div class="fila"><div class="meta"><b>${GRUPOS_FONTE[f].titulo}</b> <span class="count">${visiveis.length}</span></div>
-        ${htmlStatusFonte(f, visiveis)}</div>
+      <div class="fila"><div class="meta"><b>${GRUPOS_FONTE[f].titulo}</b> <span class="count">${f === "sites" ? new Set(visiveis.map((i) => i.item.split(":")[0])).size : visiveis.length}</span></div>
+        ${f === "sites" ? htmlStatusSites(visiveis) : htmlStatusFonte(f, visiveis)}</div>
     </div>`;
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Monitor de lives e agentes <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
-      <span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length} sinais</span>
+      <span class="count">${Object.keys(FONTES).reduce((n, f) => n + sinaisVigentes(e, f).length, 0)} sinais</span>
       <span class="direita"><button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>
       <button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes">${fontes.join("")}</div>
