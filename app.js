@@ -391,19 +391,19 @@ function demoTermometro(agora) {
   return {
     atualizado_em: new Date(agora - 6 * 6e4).toISOString(), mercado: "aberto", cotacoes: "tradingview", sentimento: "capital.com",
     ativos: [
-      { id: "GOLD", nome: "Ouro", preco: 3927.1, variacao_dia_pct: -0.49, d1: -0.49, idade_min: 7, direcao: "baixa", forca: "forte", confirmacao: "H1 e M15",
+      { id: "GOLD", nome: "Ouro", preco: 3927.1, variacao_dia_pct: -0.49, d1: -0.49, idade_min: 7, corretora: { estado: "TRADEABLE", spread: 0.5, spread_normal: 0.5, spread_x: 1, spread_alto: false, margem_pct: 5, tamanho_minimo: 0.01 }, fonte_velas: "capital.com", dia_faixa: { maxima: 3962.4, minima: 3901.1, vwap: 3931.2, preco: 3927.1, barras: 214, sessao: "atual" }, direcao: "baixa", forca: "forte", confirmacao: "H1 e M15",
         tf: tf(-0.72, -0.64, -0.2, "tendencia", "tendencia", 31), divergencia: false, sentimento: { compra: 78.5, venda: 21.5, leitura: "maioria comprada" },
         alinhamento: { a_favor: [it("US10Y", 0.85), it("SILVER", -1.86)], contra: [], parado: [it("DXY", 0.04), it("EURUSD", -0.04)], sem_leitura: [] },
         motivo: "Baixa forte · H1 e M15 · em tendência. A favor: US10Y +0,9%, SILVER −1,9%." },
-      { id: "SILVER", nome: "Prata", preco: 49.71, variacao_dia_pct: -1.86, d1: -0.44, idade_min: 7, direcao: "baixa", forca: "", confirmacao: "H1 e M15",
+      { id: "SILVER", nome: "Prata", preco: 49.71, variacao_dia_pct: -1.86, d1: -0.44, idade_min: 7, corretora: { estado: "TRADEABLE", spread: 0.05, margem_pct: 10, tamanho_minimo: 1 }, fonte_velas: "capital.com", dia_faixa: { maxima: 51.3, minima: 48.9, vwap: 50.2, preco: 49.71, barras: 214, sessao: "atual" }, direcao: "baixa", forca: "", confirmacao: "H1 e M15",
         tf: tf(-0.41, -0.35, -0.1, "tendencia", "lateral", 45), divergencia: false, sentimento: { compra: 91.9, venda: 8.1, leitura: "maioria comprada" },
         alinhamento: { a_favor: [it("GOLD", -0.49), it("COPPER", -2.6), it("US10Y", 0.85)], contra: [], parado: [it("DXY", 0.04)], sem_leitura: [] },
         motivo: "Baixa · H1 e M15 · em tendência. A favor: GOLD −0,5%, COPPER −2,6%, US10Y +0,9%." },
-      { id: "CRUDEOIL", nome: "Petróleo WTI", preco: 95.87, variacao_dia_pct: -0.53, d1: 0, idade_min: 7, direcao: "neutra", forca: "", confirmacao: "",
+      { id: "CRUDEOIL", nome: "Petróleo WTI", preco: 95.87, variacao_dia_pct: -0.53, d1: 0, idade_min: 7, corretora: { estado: "TRADEABLE", spread: 0.04, margem_pct: 10, tamanho_minimo: 1 }, fonte_velas: "capital.com", dia_faixa: { maxima: 97.4, minima: 94.6, vwap: 96.1, preco: 95.87, barras: 214, sessao: "atual" }, direcao: "neutra", forca: "", confirmacao: "",
         tf: tf(0.12, -0.18, 0.05, "lateral", "lateral", 19), divergencia: false, sentimento: { compra: 52.0, venda: 48.0, leitura: "equilibrado" },
         alinhamento: { a_favor: [], contra: [it("BRENT", -1.3), it("US500", 0.3, true)], parado: [], sem_leitura: [] },
         motivo: "Sem direção clara · lateral. Direcionadores pedem queda: BRENT −1,3%, US500 +0,3% (regime 2025–26)." },
-      { id: "US30", nome: "US30 (Dow Jones)", preco: 51742, variacao_dia_pct: -0.48, d1: -0.42, idade_min: 7, direcao: "baixa", forca: "", confirmacao: "só H1 (M15 não confirma)",
+      { id: "US30", nome: "US30 (Dow Jones)", preco: 51742, variacao_dia_pct: -0.48, d1: -0.42, idade_min: 7, corretora: { estado: "TRADEABLE", spread: 10, spread_normal: 2, spread_x: 5, spread_alto: true, margem_pct: 5, tamanho_minimo: 0.001 }, fonte_velas: "capital.com", dia_faixa: { maxima: 52010.0, minima: 51480.0, vwap: 51790.5, preco: 51742.0, barras: 214, sessao: "atual" }, direcao: "baixa", forca: "", confirmacao: "só H1 (M15 não confirma)",
         tf: tf(-0.47, -0.12, 0.1, "tendencia", "lateral", 27), divergencia: true, sentimento: null,
         alinhamento: { a_favor: [it("US10Y", 0.85, true)], contra: [it("VIX", -2.2), it("US500", 0.3)], parado: [], sem_leitura: [it("CRUDEOIL")] },
         motivo: "Baixa · só H1 (M15 não confirma) · em tendência. A favor: US10Y +0,9% (regime 2025–26). Contra: VIX −2,2%, US500 +0,3%." },
@@ -455,7 +455,7 @@ function demoAgentes(agora) {
   ];
   mt.pontos_fracos = ["Self-learning em ajuste em GOLD: a versão atual não lucra fora da amostra.", "Self-learning em ajuste em US30: a versão atual não lucra fora da amostra."];
   mt.pontos_fortes = ["Os vetos da IA pouparam US$ 21,40 em 5 sinais.", "Melhor ativo: SILVER, US$ +38,10 em 3 operações."];
-  return { atualizado_em: new Date(agora - 0.05 * h).toISOString(), lote: 0.01, contratos: "tamanhos da folha MT5 da Capital.com (30/10/2026); spread estimado",
+  return { atualizado_em: new Date(agora - 0.05 * h).toISOString(), lote: 0.01, contratos: "tamanhos da folha MT5 da Capital.com (30/10/2026); spread real da API da Capital.com (03/11/2026)",
     self_learning: { ligado: true, ultimo: new Date(agora - 2 * h).toISOString(), proximo: new Date(agora + 4 * h).toISOString(), cada_h: 6 },
     agentes: [cm, gk, mt] };
 }
@@ -1224,24 +1224,99 @@ const pctSinal = (v) => v == null ? "—" : `${sinal2(v)}%`;
 const REGIME_TXT = { tendencia: "em tendência", lateral: "lateral", volatil: "volátil" };
 const SENTIMENTO_TXT = { "aguardando chave": "Capital.com: aguardando a chave da API", "mercado fechado": "mercado fechado" };
 
-function htmlTermometroAtivo(a) {
+const NOME_DRIVER = { DXY: "DXY", US10Y: "Juro 10 anos", EURUSD: "EUR/USD", USDJPY: "USD/JPY", VIX: "VIX", US500: "S&P 500", US100: "US100", US30: "US30",
+  GOLD: "Ouro", SILVER: "Prata", COPPER: "Cobre", BRENT: "Brent", CRUDEOIL: "WTI" };
+const ficha = (i) => `<span class="ficha">${esc(NOME_DRIVER[i.nome] ?? i.nome)} <b class="num">${i.variacao_pct == null ? "" : pctSinal(i.variacao_pct)}</b>${i.regime ? ` <abbr title="Relação medida só em 2025–26; no longo prazo muda de sinal.">regime</abbr>` : ""}</span>`;
+const linhaFichas = (cls, icone, rotulo, itens) => itens?.length ? `<div class="termo-linha ${cls}">${ico(icone)}<span class="rot">${rotulo}</span><span class="fichas">${itens.map(ficha).join("")}</span></div>` : "";
+
+// "Por que …": a leitura em linhas curtas, com ícone e título, em vez de um parágrafo
+function htmlPorQue(a) {
+  const [rot] = ROTULO_DIRECAO[a.direcao] ?? ["Sem leitura"];
+  if (!a.alinhamento) return `<div class="termo-bloco"><div class="termo-sec-titulo">${ico("bulb")} Por que ${esc(rot.toLowerCase())}</div><p class="termo-leitura">${esc(a.motivo)}</p></div>`;
+  const al = a.alinhamento, reg = REGIME_TXT[a.tf?.h1?.regime];
+  const neutra = a.direcao === "neutra";
+  const base = neutra ? `Sem direção clara: H1 e M15 não se alinham${reg ? ` · ${reg}` : ""}` : `${a.confirmacao}${reg ? ` · ${reg}` : ""}`;
+  const semLeitura = al.sem_leitura?.length ? `<div class="termo-linha sem">${ico("alert")}<span class="rot">Sem cotação</span><span class="fichas">${al.sem_leitura.map((i) => `<span class="ficha">${esc(NOME_DRIVER[i.nome] ?? i.nome)}</span>`).join("")}</span></div>` : "";
+  return `<div class="termo-bloco">
+    <div class="termo-sec-titulo">${ico("bulb")} Por que ${esc(rot.toLowerCase())}${a.forca ? " forte" : ""}</div>
+    <div class="termo-linha base">${ico("activity")}<span>${esc(base)}</span></div>
+    ${neutra ? linhaFichas("favor", "alta", "Pedem alta", al.a_favor) + linhaFichas("contra", "baixa", "Pedem queda", al.contra)
+             : linhaFichas("favor", "check", "A favor", al.a_favor) + linhaFichas("contra", "x", "Contra", al.contra)}
+    ${linhaFichas("parado", "pause", "Parados", al.parado)}${semLeitura}
+  </div>`;
+}
+
+// máxima, mínima e VWAP da sessão (velas M5 do monitor; a sessão começa às 17:00 de Nova York)
+function htmlFaixaDia(a) {
+  const d = a.dia_faixa;
+  if (!d) return "";
+  const amp = d.maxima - d.minima, pos = (v) => amp > 0 ? Math.max(0, Math.min(100, ((v - d.minima) / amp) * 100)) : 50;
+  const noPreco = Math.round(pos(d.preco));
+  const dv = d.vwap == null ? null : ((d.preco - d.vwap) / d.vwap) * 100;
+  const leituraVwap = dv == null ? `VWAP indisponível: o feed não traz volume` : `${ico(dv >= 0 ? "alta" : "baixa")} Preço <b class="num">${preco2(Math.abs(dv))}%</b> ${dv >= 0 ? "acima" : "abaixo"} da VWAP`;
+  const sessao = d.sessao === "anterior" ? "última sessão" : "sessão desde 17:00 NY";
+  return `<div class="termo-bloco" role="group" aria-label="Faixa do dia: máxima ${preco2(d.maxima)}, mínima ${preco2(d.minima)}${d.vwap == null ? "" : `, VWAP ${preco2(d.vwap)}`}, preço a ${noPreco}% da faixa">
+    <div class="termo-sec-titulo">${ico("faixa")} Faixa do dia <small>${sessao}</small></div>
+    <div class="termo-faixa-nums"><div><small>Máxima</small><b class="num">${preco2(d.maxima)}</b></div><div><small>VWAP</small><b class="num">${d.vwap == null ? "—" : preco2(d.vwap)}</b></div><div><small>Mínima</small><b class="num">${preco2(d.minima)}</b></div></div>
+    <div class="termo-trilho" aria-hidden="true">${d.vwap == null ? "" : `<i style="left:${pos(d.vwap)}%" title="VWAP"></i>`}<b style="left:${pos(d.preco)}%" title="Preço"></b></div>
+    <div class="termo-leitura">${leituraVwap} · a <b class="num">${noPreco}%</b> da faixa do dia</div>
+  </div>`;
+}
+
+// o que a corretora cobra e exige agora (API da Capital.com): spread real, margem (alavancagem) e tamanho mínimo da operação
+const ESTADO_MERCADO = { TRADEABLE: null, CLOSED: "Fechado", EDITS_ONLY: "Só edição", AUCTION: "Leilão", SUSPENDED: "Suspenso" };
+function htmlCorretora(a) {
+  const c = a.corretora;
+  if (!c) return "";
+  const estado = c.estado in ESTADO_MERCADO ? ESTADO_MERCADO[c.estado] : c.estado;
+  const alav = c.margem_pct > 0 ? `${Math.round(100 / c.margem_pct)}×` : "—";
+  const tam = c.tamanho_minimo == null ? "—" : Number(c.tamanho_minimo).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+  return `<div class="termo-bloco" role="group" aria-label="Na corretora: spread ${preco2(c.spread)}, margem ${c.margem_pct}%, tamanho mínimo ${tam}">
+    <div class="termo-sec-titulo">${ico("target")} Na corretora <small>Capital.com, agora</small>${estado ? htmlBadge("warning", estado, "alert") : ""}${c.spread_alto ? htmlBadge("warning", `Spread ${Number(c.spread_x).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}× o normal`, "alert") : ""}</div>
+    <div class="termo-faixa-nums"><div><small>Spread</small><b class="num">${preco2(c.spread)}</b>${c.spread_normal != null ? `<small>normal ${preco2(c.spread_normal)}</small>` : ""}</div><div><small>Margem</small><b class="num">${c.margem_pct ?? "—"}%</b> <small>${alav}</small></div><div><small>Mínimo</small><b class="num">${tam}</b></div></div>
+  </div>`;
+}
+
+function htmlSentimentoTermo(a, estadoGeral) {
+  const s = a.sentimento;
+  if (!s) {
+    const txt = estadoGeral === "capital.com" ? "Clientes Capital.com: sem dado deste ativo agora" : (SENTIMENTO_TXT[estadoGeral] ?? "Clientes Capital.com: indisponível agora");
+    return `<div class="termo-sent vazio"><div class="termo-sent-topo"><span>${ico("pessoas")} ${esc(txt)}</span></div></div>`;
+  }
+  const c = Math.round(s.compra), v = 100 - c;
+  return `<div class="termo-sent" role="group" aria-label="Clientes da Capital.com: ${c}% comprados, ${v}% vendidos">
+    <div class="termo-sent-topo"><span>${ico("pessoas")} Clientes Capital.com</span>${htmlBadge("muted", s.leitura.charAt(0).toUpperCase() + s.leitura.slice(1))}</div>
+    <div class="termo-barra" aria-hidden="true"><i class="compra" style="width:${c}%"></i><i class="venda" style="width:${v}%"></i></div>
+    <div class="termo-sent-nums"><span class="compra">${ico("alta")}<b class="num">${c}%</b> comprados</span><span class="venda"><b class="num">${v}%</b> vendidos${ico("baixa")}</span></div>
+  </div>`;
+}
+
+function htmlTermometroAtivo(a, estadoGeral) {
   const [rot, cls] = ROTULO_DIRECAO[a.direcao] ?? ["Sem leitura", "muted"];
   const velho = a.idade_min != null && a.idade_min > 45;
   const tfs = a.tf ? ["h1", "m15", "m5"].map((k) => `<span>${k.toUpperCase()} <b class="num">${sinal2(a.tf[k]?.pontuacao)}</b></span>`).join("") : "";
   const reg = a.tf?.h1?.regime ? `<span>${esc(REGIME_TXT[a.tf.h1.regime] ?? a.tf.h1.regime)}${a.tf.h1.adx != null ? ` · ADX <b class="num">${numero(a.tf.h1.adx)}</b>` : ""}</span>` : "";
-  const s = a.sentimento;
   return `<div class="cartao termo">
-    <div class="titulo">${iconeAtivo(a.id)} ${esc(a.nome)} ${a.direcao ? htmlBadge(cls, rot + (a.forca ? " forte" : "")) : htmlBadge("muted", rot)}${a.divergencia ? htmlBadge("warning", "Divergência", "alert") : ""}</div>
+    <div class="titulo">${iconeAtivo(a.id)} ${esc(a.nome)} ${a.direcao ? htmlBadge(cls, rot + (a.forca ? " forte" : ""), a.direcao === "alta" ? "alta" : a.direcao === "baixa" ? "baixa" : undefined) : htmlBadge("muted", rot)}${a.divergencia ? htmlBadge("warning", "Divergência", "alert") : ""}</div>
     ${a.preco != null ? `<div class="meta"><span class="num">${esc(preco2(a.preco))}</span><span>dia <b class="num">${pctSinal(a.variacao_dia_pct)}</b></span>${a.d1 != null ? `<span>nota D1 <b class="num">${sinal2(a.d1)}</b></span>` : ""}</div>` : ""}
     ${tfs ? `<div class="meta">${tfs}${reg}</div>` : ""}
-    <p class="termo-motivo">${esc(a.motivo)}</p>
-    ${s ? `<div class="termo-sent"><span class="num">${Math.round(s.compra)}%</span> comprados · <span class="num">${100 - Math.round(s.compra)}%</span> vendidos <span class="meta-leve">(${esc(s.leitura)})</span></div>` : ""}
+    ${htmlPorQue(a)}
+    ${htmlFaixaDia(a)}
+    ${htmlCorretora(a)}
+    ${htmlSentimentoTermo(a, estadoGeral)}
     ${velho ? `<div class="meta"><span class="atraso">${ico("clock")}velas de há ${esc(duracaoMin(a.idade_min))}</span></div>` : ""}
   </div>`;
 }
 
 const preco2 = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const duracaoMin = (min) => min >= 120 ? `${Math.round(min / 60)} h` : `${Math.round(min)} min`;
+
+function origemVelas(t) {
+  const fontes = new Set(t.ativos.map((a) => a.fonte_velas).filter(Boolean));
+  if (!fontes.size) return "sem dados";
+  if (fontes.size === 1) return fontes.has("capital.com") ? "Capital.com (preço de compra)" : "TradingView (reserva)";
+  return "Capital.com e TradingView (reserva em parte)";
+}
 
 function htmlTermometro(e) {
   const t = e.termometro;
@@ -1258,9 +1333,10 @@ function htmlTermometro(e) {
     <div class="meta termo-fonte">
       <span>atualizado <b class="num" data-desde="${esc(t.atualizado_em)}">${textoDesde(t.atualizado_em)}</b></span>
       <span>direcionadores: ${t.cotacoes === "tradingview" ? "TradingView" : "sem cotações agora"}</span>
-      <span>${esc(sent)}</span>
+      <span>velas: ${origemVelas(t)}</span>
+      ${fechado ? "" : t.sentimento === "capital.com" ? htmlBadge("good", "Capital.com conectada", "check") : htmlBadge(String(t.sentimento).startsWith("erro") ? "critical" : "warning", sent, "alert")}
     </div>
-    <div class="grade-cartoes larga">${t.ativos.map(htmlTermometroAtivo).join("")}</div>
+    <div class="grade-cartoes larga">${t.ativos.map((a) => htmlTermometroAtivo(a, t.sentimento)).join("")}</div>
     <p class="meta termo-nota">Contexto e confirmação, não sinal de entrada: nos testes de 03/11/2026 os direcionadores acompanham o movimento do ativo, mas não o antecipam. Tendência = pontuação do multi-tf (−1 a +1; acima de ±0,30 em H1 e M15 há direção). "Regime 2025–26" = relação medida só neste período. Uso pessoal; não é recomendação.</p>
   </section>`;
 }
@@ -1625,7 +1701,7 @@ function vistaAnalise(f, id) {
       <div class="bloco">
         <a class="voltar" href="#/monitor">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>${ehAgentes ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
-        <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; o spread ainda é estimado. Uso pessoal: não é recomendação.` : RESUMO_ANALISE[f]}</p>
+        <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : RESUMO_ANALISE[f]}</p>
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
       ${ehAgentes ? controleSelfLearning(p) : ""}
