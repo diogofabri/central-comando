@@ -1281,18 +1281,50 @@ function htmlAgente(a) {
 
 // ---------- agentes, tiktok, youtube e sites (#/<fonte>, #/<fonte>/<id>) ----------
 // Agentes: lê o painel publicado pelo executor. TikTok, YouTube e Sites não publicam um resumo: o dashboard soma os
-// resultados já resolvidos (monitor_resultados, últimos 30 dias). O saldo é em R (múltiplos do risco), porque o tamanho do
-// contrato e o spread em US$ só existem para os 5 ativos dos agentes. As chaves seguem a forma dos agentes
-// (`lucro_usd` e `drawdown_usd` guardam R quando `unidade` é "r"), para a mesma página servir às quatro fontes.
+// resultados já resolvidos (monitor_resultados, últimos 30 dias). O saldo é em US$ no lote mínimo 0,01: o R do resultado vira
+// contrato e o spread em US$ vêm da tabela CONTRATOS (lote 0,01). As chaves seguem a forma dos agentes, para a mesma página servir às quatro fontes.
 
 const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"] };
 const RESUMO_ANALISE = {
-  tiktok: "Cada canal do TikTok com o seu saldo em R, múltiplos do risco: o stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias, sem spread; o consenso fica à parte. Uso pessoal: não é recomendação.",
-  youtube: "Cada canal do YouTube com o seu saldo em R, múltiplos do risco: o stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias, sem spread; o consenso fica à parte. Uso pessoal: não é recomendação.",
-  sites: "Cada site com o seu saldo em R, múltiplos do risco. Quando o site só publica pips ou pontos, o R sai da entrada, do stop e do primeiro alvo (stop = −1 R). Soma os sinais resolvidos nos últimos 30 dias, sem spread. Uso pessoal: não é recomendação.",
+  tiktok: "Cada canal do TikTok com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
+  youtube: "Cada canal do YouTube com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
+  sites: "Cada site com o seu saldo em US$ no lote mínimo de 0,01 (forex: 1.000 unidades; cripto: 0,01 moeda), líquido de spread estimado. Quando o site só publica pips ou pontos, o resultado sai da entrada, do stop e do primeiro alvo (stop = −1 R). Soma os sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
 };
 const STATUS_COM_R = new Set(["alvo", "stop", "expirado"]);
 const numerosDe = (t) => (String(t ?? "").match(/\d+(?:[.,]\d+)?/g) ?? []).map((x) => Number(x.replace(",", "."))).filter(Number.isFinite);
+
+// Lote 0,01 por instrumento: `un` = unidades do contrato no lote 0,01 (forex 100.000 × 0,01; ouro 100 oz × 0,01; cripto e US100: 1 contrato = 1 unidade),
+// `spread` em preço (`pct` = fração do preço) e `cota` = o que converte a moeda de cotação em US$ (1/preço do par USD×moeda; só aproximação, [NV]).
+// Ouro: spread 0,30 informado pelo Diogo; US100: Capital.com (config.py). O resto é estimativa típica de corretora, a conferir na plataforma.
+const FX = 1000, PIP = 0.0001;
+const CONTRATOS = {
+  XAUUSD: { un: 1, spread: 0.30 }, US100: { un: 0.01, spread: 1.8 },
+  EURUSD: { un: FX, spread: PIP }, GBPUSD: { un: FX, spread: PIP }, AUDUSD: { un: FX, spread: PIP }, NZDUSD: { un: FX, spread: PIP },
+  USDJPY: { un: FX, spread: 0.01, cota: 1 / 157 }, USDCHF: { un: FX, spread: PIP, cota: 1.22 }, USDCAD: { un: FX, spread: PIP, cota: 0.72 },
+  EURJPY: { un: FX, spread: 0.02, cota: 1 / 157 }, GBPCHF: { un: FX, spread: 2 * PIP, cota: 1.22 }, GBPAUD: { un: FX, spread: 2 * PIP, cota: 0.70 },
+  GBPNZD: { un: FX, spread: 3 * PIP, cota: 0.56 }, EURNZD: { un: FX, spread: 3 * PIP, cota: 0.56 },
+};
+const CRIPTO_LOTE = ["BTC", "ETH", "XRP", "DOGE", "LTC", "ADA", "SOL", "LINK", "TRX"];
+function contratoDe(instrumento) {
+  const k = String(instrumento ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^NAS100$/, "US100");
+  if (CONTRATOS[k]) return CONTRATOS[k];
+  return CRIPTO_LOTE.some((c) => k.startsWith(c)) ? { un: 0.01, pct: 0.001 } : null;
+}
+
+// entrada (ponto médio se for faixa) e risco (distância até o stop) de um resultado
+function entradaERisco(r) {
+  const ent = numerosDe(r.entrada), stop = Number(r.stop);
+  if (!ent.length || !Number.isFinite(stop)) return null;
+  const entrada = ent.length > 1 ? (ent[0] + ent[1]) / 2 : ent[0], risco = Math.abs(entrada - stop);
+  return risco ? { entrada, risco } : null;
+}
+// US$ líquido no lote 0,01: (movimento do preço − spread) × unidades × cota
+function usdDoResultado(r, rr) {
+  const c = contratoDe(r.instrumento), er = entradaERisco(r);
+  if (rr == null || !c || !er) return null;
+  const spread = c.pct ? c.pct * er.entrada : c.spread;
+  return Math.round((rr * er.risco - spread) * c.un * (c.cota ?? 1) * 100) / 100;
+}
 
 // R de um resultado: o do placar; sem ele (sites que só publicam pips), stop = −1 R e alvo = distância ao 1º alvo ÷ risco
 function rDoResultado(r) {
@@ -1328,35 +1360,35 @@ function resultadosDaFonte(f, e) {
   });
 }
 
-function metricasR(ops) {
+function metricasUsd(ops) {
   const v = ops.map((o) => o.v), c2 = (x) => Math.round(x * 100) / 100;
   const ganhos = v.filter((x) => x > 0).reduce((s, x) => s + x, 0), perdas = -v.filter((x) => x < 0).reduce((s, x) => s + x, 0);
   let saldo = 0, pico = 0, dd = 0;
   v.forEach((x) => { saldo += x; pico = Math.max(pico, saldo); dd = Math.max(dd, pico - saldo); });
   return { ops: v.length, lucro_usd: c2(saldo), acerto_pct: v.length ? Math.round((1000 * v.filter((x) => x > 0).length) / v.length) / 10 : null,
-           fator_lucro: perdas ? c2(ganhos / perdas) : null, r_total: c2(saldo), drawdown_usd: c2(dd) };
+           fator_lucro: perdas ? c2(ganhos / perdas) : null, r_total: c2(ops.reduce((x, o) => x + o.r, 0)), drawdown_usd: c2(dd) };
 }
-function recorteR(ops, chave) {
+function recorteUsd(ops, chave) {
   const g = {};
   ops.forEach((o) => (g[chave(o)] ??= []).push(o));
-  return Object.fromEntries(Object.entries(g).map(([k, lista]) => [k, metricasR(lista)]));
+  return Object.fromEntries(Object.entries(g).map(([k, lista]) => [k, metricasUsd(lista)]));
 }
 
 // pontos fracos e fortes por regra, só com o que os números sustentam (mesmas regras do painel_agentes.py, sem vetos nem self-learning)
-function leituraR(a, [um]) {
+function leituraUsd(a, [um]) {
   const m = a.metricas, n = m.ops, fracos = [], fortes = [];
   if (n < 10) fracos.push(`Amostra pequena (${n} operações resolvidas): nada conclusivo ainda.`);
   const comOps = a.por_ativo.filter((x) => x.metricas.ops >= 3);
   if (comOps.length) {
     const pior = comOps.reduce((p, x) => (x.metricas.lucro_usd < p.metricas.lucro_usd ? x : p)), melhor = comOps.reduce((p, x) => (x.metricas.lucro_usd > p.metricas.lucro_usd ? x : p));
-    if (pior.metricas.lucro_usd < 0) fracos.push(`Perde em ${pior.ativo}: ${r2(pior.metricas.lucro_usd)} em ${pior.metricas.ops} operações.`);
-    if (melhor.metricas.lucro_usd > 0) fortes.push(`Melhor ativo: ${melhor.ativo}, ${r2(melhor.metricas.lucro_usd)} em ${melhor.metricas.ops} operações.`);
+    if (pior.metricas.lucro_usd < 0) fracos.push(`Perde em ${pior.ativo}: ${usd2(pior.metricas.lucro_usd)} em ${pior.metricas.ops} operações.`);
+    if (melhor.metricas.lucro_usd > 0) fortes.push(`Melhor ativo: ${melhor.ativo}, ${usd2(melhor.metricas.lucro_usd)} em ${melhor.metricas.ops} operações.`);
   }
   const horas = Object.entries(a.por_hora).filter(([, x]) => x.ops >= 3);
   if (horas.length) {
     const [hp, xp] = horas.reduce((p, x) => (x[1].lucro_usd < p[1].lucro_usd ? x : p)), [hm, xm] = horas.reduce((p, x) => (x[1].lucro_usd > p[1].lucro_usd ? x : p));
-    if (xp.lucro_usd < 0) fracos.push(`Pior horário: ${String(hp).padStart(2, "0")}h UTC (${r2(xp.lucro_usd)} em ${xp.ops} operações).`);
-    if (xm.lucro_usd > 0) fortes.push(`Melhor horário: ${String(hm).padStart(2, "0")}h UTC (${r2(xm.lucro_usd)} em ${xm.ops} operações).`);
+    if (xp.lucro_usd < 0) fracos.push(`Pior horário: ${String(hp).padStart(2, "0")}h UTC (${usd2(xp.lucro_usd)} em ${xp.ops} operações).`);
+    if (xm.lucro_usd > 0) fortes.push(`Melhor horário: ${String(hm).padStart(2, "0")}h UTC (${usd2(xm.lucro_usd)} em ${xm.ops} operações).`);
   }
   const c = a.por_lado.compra, v = a.por_lado.venda;
   if (c && v && c.ops >= 3 && v.ops >= 3 && (c.lucro_usd > 0) !== (v.lucro_usd > 0)) {
@@ -1365,29 +1397,29 @@ function leituraR(a, [um]) {
   }
   const expirados = a.desfechos.expirado?.ops ?? 0;
   if (n >= 10 && expirados / n > 0.4) fracos.push(`${Math.round((100 * expirados) / n)}% das operações expiram sem bater alvo nem stop: alvo longe demais?`);
-  if (n && m.drawdown_usd > Math.abs(m.lucro_usd) && m.drawdown_usd > 0) fracos.push(`Queda máxima (${r2(-m.drawdown_usd)}) maior que o saldo acumulado.`);
+  if (n && m.drawdown_usd > Math.abs(m.lucro_usd) && m.drawdown_usd > 0) fracos.push(`Queda máxima (${usd2(-m.drawdown_usd)}) maior que o saldo acumulado.`);
   if (m.fator_lucro && m.fator_lucro >= 1.3 && n >= 10) fortes.push(`Fator de lucro ${String(m.fator_lucro).replace(".", ",")}: ganha ${String(m.fator_lucro).replace(".", ",")}× o que perde.`);
   return [fracos, fortes];
 }
 
 function unidadeDeResultados(f, nome, linhas, abertos) {
   const ops = linhas.filter((r) => STATUS_COM_R.has(r.status) && r.resolvido_em)
-    .map((r) => ({ v: rDoResultado(r), momento: r.resolvido_em, aberto_em: r.desde ?? r.resolvido_em, ativo: r.instrumento, lado: r.direcao, status: r.status }))
+    .map((r) => ({ r: rDoResultado(r), v: usdDoResultado(r, rDoResultado(r)), momento: r.resolvido_em, aberto_em: r.desde ?? r.resolvido_em, ativo: r.instrumento, lado: r.direcao, status: r.status }))
     .filter((o) => o.v != null).sort((a, b) => new Date(a.momento) - new Date(b.momento));
   const ativos = [...new Set([...ops.map((o) => o.ativo), ...abertos.map((s) => s.instrumento)])].sort();
   const por_ativo = ativos.map((ativo) => {
     const s = abertos.find((x) => x.instrumento === ativo);
-    return { ativo, metricas: metricasR(ops.filter((o) => o.ativo === ativo)), status: s ? "ATIVO" : null, auto: null, backtest: null,
+    return { ativo, metricas: metricasUsd(ops.filter((o) => o.ativo === ativo)), status: s ? "ATIVO" : null, auto: null, backtest: null,
       texto: s ? `ATIVO · ${String(s.direcao).toUpperCase()} · entrada ${s.entrada}${s.stop != null ? ` · stop ${s.stop}` : ""}${s.alvos ? ` · alvos ${s.alvos}` : ""}` : null };
   });
   let saldo = 0;
   const base = nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : `Sinal do canal no ${FONTES[f]}`;
   const a = { id: nome, tipo: f, metodo: `${base}${ops.length ? ` · último resultado ${quando(ops[ops.length - 1].momento)}` : ""}`, ligado: true, ativos, timeframes: [],
-    self_learning: false, por_ativo_versao: false, revisao_ia: false, selos: "", ultima_execucao: null, proxima_execucao: null, unidade: "r",
-    metricas: metricasR(ops), curva: ops.map((o) => [o.momento, Math.round((saldo += o.v) * 100) / 100]), por_ativo,
-    por_hora: recorteR(ops, (o) => new Date(o.aberto_em).getUTCHours()), por_lado: recorteR(ops, (o) => o.lado), desfechos: recorteR(ops, (o) => o.status),
+    self_learning: false, por_ativo_versao: false, revisao_ia: false, selos: "", ultima_execucao: null, proxima_execucao: null, unidade: "usd",
+    metricas: metricasUsd(ops), curva: ops.map((o) => [o.momento, Math.round((saldo += o.v) * 100) / 100]), por_ativo,
+    por_hora: recorteUsd(ops, (o) => new Date(o.aberto_em).getUTCHours()), por_lado: recorteUsd(ops, (o) => o.lado), desfechos: recorteUsd(ops, (o) => o.status),
     vetos: null, ciclos: [], trocas: [] };
-  [a.pontos_fracos, a.pontos_fortes] = leituraR(a, SUBSTANTIVO[f]);
+  [a.pontos_fracos, a.pontos_fortes] = leituraUsd(a, SUBSTANTIVO[f]);
   return a;
 }
 
@@ -1397,7 +1429,7 @@ function painelDeResultados(f, e) {
   const nomes = [...new Set([...linhas.map((r) => nomeDaUnidade(r.origem)), ...abertos.map((s) => nomeDaUnidade(s.origem))])];
   const agentes = nomes.map((n) => unidadeDeResultados(f, n, linhas.filter((r) => nomeDaUnidade(r.origem) === n), abertos.filter((s) => nomeDaUnidade(s.origem) === n)))
     .sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
-  return { unidade: "r", agentes };
+  return { unidade: "usd", agentes };
 }
 
 const hrefAnalise = (f, id) => `#/${f}/${encodeURIComponent(id)}`;
