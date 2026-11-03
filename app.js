@@ -1542,7 +1542,7 @@ const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"
 const RESUMO_ANALISE = {
   tiktok: "Cada canal do TikTok com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
   youtube: "Cada canal do YouTube com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
-  sites: "Cada site com o seu saldo em US$ no lote mínimo de 0,01 (forex: 1.000 unidades; cripto: 0,01 moeda), líquido de spread estimado. Quando o site só publica pips ou pontos, o resultado sai da entrada, do stop e do primeiro alvo (stop = −1 R). Soma os sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
+  sites: "Cada site com o seu saldo em US$ no lote mínimo de 0,01 (forex: 1.000 unidades; cripto: 0,01 moeda), líquido do spread real da Capital.com. Quando o site só publica pips ou pontos, o resultado sai da entrada, do stop e do primeiro alvo (stop = −1 R). Soma os sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
   tradingview: "Cada layout do TradingView (portes dos indicadores e alertas criados à mão) com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias. Fonte em teste: o placar decide quais layouts ficam. Uso pessoal: não é recomendação.",
 };
 const TODOS = "Todos";
@@ -1551,20 +1551,23 @@ const numerosDe = (t) => (String(t ?? "").match(/\d+(?:[.,]\d+)?/g) ?? []).map((
 
 // Lote 0,01 por instrumento: `un` = unidades do contrato no lote 0,01 (forex 100.000 × 0,01; ouro 100 oz × 0,01; cripto e US100: 1 contrato = 1 unidade),
 // `spread` em preço (`pct` = fração do preço) e `cota` = o que converte a moeda de cotação em US$ (1/preço do par USD×moeda; só aproximação, [NV]).
-// Ouro: spread 0,30 informado pelo Diogo; US100: Capital.com (config.py). O resto é estimativa típica de corretora, a conferir na plataforma.
-const FX = 1000, PIP = 0.0001;
+// SPREAD = o REAL da API da Capital.com (regra do Diogo, 03/11/2026: spread de qualquer coisa dos monitores vem da API, nunca de estimativa):
+// mediana do ask − bid do fecho de ~1.000 velas H1 (~6 semanas). Refazer com `python -m monitor_lives.termometro spreads-tudo` (05-monitor-lives).
+const FX = 1000;
 const CONTRATOS = {
-  XAUUSD: { un: 1, spread: 0.30 }, US100: { un: 0.01, spread: 1.8 },
-  EURUSD: { un: FX, spread: PIP }, GBPUSD: { un: FX, spread: PIP }, AUDUSD: { un: FX, spread: PIP }, NZDUSD: { un: FX, spread: PIP },
-  USDJPY: { un: FX, spread: 0.01, cota: 1 / 157 }, USDCHF: { un: FX, spread: PIP, cota: 1.22 }, USDCAD: { un: FX, spread: PIP, cota: 0.72 },
-  EURJPY: { un: FX, spread: 0.02, cota: 1 / 157 }, GBPCHF: { un: FX, spread: 2 * PIP, cota: 1.22 }, GBPAUD: { un: FX, spread: 2 * PIP, cota: 0.70 },
-  GBPNZD: { un: FX, spread: 3 * PIP, cota: 0.56 }, EURNZD: { un: FX, spread: 3 * PIP, cota: 0.56 },
+  XAUUSD: { un: 1, spread: 0.50 }, US100: { un: 0.01, spread: 1.8 },
+  EURUSD: { un: FX, spread: 0.00007 }, GBPUSD: { un: FX, spread: 0.00013 }, AUDUSD: { un: FX, spread: 0.00006 }, NZDUSD: { un: FX, spread: 0.00015 },
+  USDJPY: { un: FX, spread: 0.012, cota: 1 / 157 }, USDCHF: { un: FX, spread: 0.00014, cota: 1.22 }, USDCAD: { un: FX, spread: 0.0002, cota: 0.72 },
+  EURJPY: { un: FX, spread: 0.018, cota: 1 / 157 }, GBPCHF: { un: FX, spread: 0.00024, cota: 1.22 }, GBPAUD: { un: FX, spread: 0.00018, cota: 0.70 },
+  GBPNZD: { un: FX, spread: 0.00017, cota: 0.56 }, EURNZD: { un: FX, spread: 0.00016, cota: 0.56 },
 };
-const CRIPTO_LOTE = ["BTC", "ETH", "XRP", "DOGE", "LTC", "ADA", "SOL", "LINK", "TRX"];
+// cripto: spread da API como fração do preço (mediana ÷ preço); o das altcoins é de 0,5% a 1,0%, bem acima de BTC e ETH
+const CRIPTO_SPREAD = { BTC: 0.000644, ETH: 0.000762, XRP: 0.00535, DOGE: 0.00561, LTC: 0.00573, ADA: 0.00618, SOL: 0.00576, LINK: 0.00568, TRX: 0.01034 };
 function contratoDe(instrumento) {
   const k = String(instrumento ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^NAS100$/, "US100");
   if (CONTRATOS[k]) return CONTRATOS[k];
-  return CRIPTO_LOTE.some((c) => k.startsWith(c)) ? { un: 0.01, pct: 0.001 } : null;
+  const moeda = Object.keys(CRIPTO_SPREAD).find((c) => k.startsWith(c));
+  return moeda ? { un: 0.01, pct: CRIPTO_SPREAD[moeda] } : null;
 }
 
 // entrada (ponto médio se for faixa) e risco (distância até o stop) de um resultado
