@@ -1137,15 +1137,18 @@ function htmlMonitor(e) {
       ${f === "agentes" ? htmlModosAgentes(e) : ""}` : "";
     // o comando leva até ~10 s para chegar e ~1 min para o estado voltar ao painel
     const pendente = info && atraso <= 3 && querLigado === desligado;
-    const botao = `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}">${ico(querLigado ? "power" : "play")} ${querLigado ? "Desligar" : "Ligar"}</button>`;
+    const botao = `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}" aria-label="${querLigado ? "Desligar" : "Ligar"} ${esc(FONTES[f])}" title="${querLigado ? "Desligar" : "Ligar"} ${esc(FONTES[f])}">${ico(querLigado ? "power" : "play")}<span class="rotulo-btn">${querLigado ? "Desligar" : "Ligar"}</span></button>`;
     const aviso = pendente ? `<span class="badge warning">${ico("loader")}${querLigado ? "ligando…" : "desligando…"}</span>`
       : atraso > 3 && info ? `<span class="meta">${periodica ? "o executor dos agentes parou: conferir o launchd com.vinculo.agentes e o log em 05-monitor-lives/dados-agentes/logs/" : `o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code>`}</span>` : "";
     return `<div class="cartao">
-      <div class="titulo" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${FONTES[f]} <span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span><span style="margin-left:auto">${botao}</span></div>
+      <div class="cartao-topo">
+      <div class="titulo titulo-fonte"><span class="nome-fonte">${FONTES[f]}</span>${botao}</div>
+      <div class="meta estado-fonte"><span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span>${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}</div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
       ${f === "youtube" ? htmlLoginYoutube(e) : ""}
-      ${info ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span><span>atualizado ${quando(info.atualizado_em)}</span></div>` : ""}
+      ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
       ${rodada}
+      </div>
       <div class="fila"><div class="meta"><b>${GRUPOS_FONTE[f].titulo}</b> <span class="count">${f === "sites" ? new Set(visiveis.map((i) => i.item.split(":")[0])).size : visiveis.length}</span></div>
         ${f === "sites" ? htmlStatusSites(visiveis) : htmlStatusFonte(f, visiveis)}</div>
     </div>`;
@@ -1156,7 +1159,7 @@ function htmlMonitor(e) {
       <span class="count">${Object.keys(FONTES).reduce((n, f) => n + sinaisVigentes(e, f).length, 0)} sinais</span>
       <span class="direita"><button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>
       <button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
-    <div class="grade-cartoes">${fontes.join("")}</div>
+    <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
 }
 
