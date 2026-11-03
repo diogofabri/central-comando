@@ -316,6 +316,9 @@ function fonteDemo() {
       { fonte: "sites", sinal_id: 9, origem: "Foresignal", instrumento: "NZDUSD", direcao: "compra", entrada: "0.5682", status: "alvo", resultado_pontos: 12, resultado_unidade: "pips", resultado_fonte: "site", resolvido_em: new Date(agora - 1 * h).toISOString() },
       { fonte: "sites", sinal_id: 10, origem: "CryptET", instrumento: "ADAUSDT", direcao: "venda", entrada: "0.2052", status: "stop", resultado_pontos: -12, resultado_unidade: "pontos", resultado_fonte: "site", resolvido_em: new Date(agora - 3 * h).toISOString() },
       { fonte: "sites", sinal_id: 11, origem: "Foresignal", instrumento: "AUDUSD", direcao: "compra", entrada: "0.6512", status: "expirado", resultado_fonte: "site", resolvido_em: new Date(agora - 5 * h).toISOString() },
+      { fonte: "tradingview", sinal_id: 21, origem: "📐 novo-a (Novo A)", instrumento: "XAUUSD", direcao: "compra", entrada: "3913.49", status: "alvo", resultado_r: 1.6, desde: new Date(agora - 9 * h).toISOString(), resolvido_em: new Date(agora - 7.5 * h).toISOString() },
+      { fonte: "tradingview", sinal_id: 22, origem: "📐 novo-c (Novo C)", instrumento: "XAUUSD", direcao: "venda", entrada: "3950.2", status: "stop", resultado_r: -1, desde: new Date(agora - 6 * h).toISOString(), resolvido_em: new Date(agora - 5.2 * h).toISOString() },
+      { fonte: "tradingview", sinal_id: 23, origem: "📐 novo-a (Novo A)", instrumento: "XAUUSD", direcao: "venda", entrada: "3960.8", status: "alvo", resultado_r: 2, desde: new Date(agora - 3 * h).toISOString(), resolvido_em: new Date(agora - 2.4 * h).toISOString() },
     ],
     monitorSinais: [
       { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "Sinal do canal @canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
@@ -434,7 +437,7 @@ function rotaAtual() {
   const m = h.match(/^#\/p\/(\w+)/);
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? { tipo: "monitor" } : { tipo: "projeto", id: m[1] };
   if (h.startsWith("#/monitor")) return { tipo: "monitor" };
-  const an = h.match(/^#\/(agentes|tiktok|youtube|sites)(?:\/([^/?]+))?/);
+  const an = h.match(/^#\/(agentes|tiktok|youtube|sites|tradingview)(?:\/([^/?]+))?/);
   if (an) return { tipo: "analise", fonte: an[1], id: an[2] ? decodeURIComponent(an[2]) : undefined };
   return { tipo: "geral" };
 }
@@ -616,6 +619,96 @@ function htmlIndicadores(c, p) {
 
 // ---------- vistas ----------
 
+// ---------- menu Monitor: um item só na barra, com um submenu para cada fonte ----------
+// Abre ao passar o mouse, ao focar com o teclado ou ao tocar na seta (celular). O estado e o foco sobrevivem ao redesenho
+// automático da página (a cada atualização o render troca o HTML inteiro). A lista do submenu fica FORA do .nav: o .nav rola
+// na horizontal e, em tela estreita, tem uma máscara de degradê que apagaria o submenu.
+const FONTES_MENU = ["tiktok", "youtube", "sites", "agentes", "tradingview"];
+let menuMonitorAberto = false, atrasoFecharMenu = null;
+const sinaisAbertosDe = (e, f) => (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now())).length;
+
+function htmlGrupoMonitor(rota, e) {
+  const total = FONTES_MENU.reduce((n, f) => n + sinaisAbertosDe(e, f), 0);
+  return `<div class="aba-grupo" data-menu="monitor"${menuMonitorAberto ? " data-aberto" : ""}>
+    <a class="aba" href="#/monitor" ${rota.tipo === "monitor" || rota.tipo === "analise" ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
+    <button type="button" class="aba-seta" data-menu-seta aria-expanded="${menuMonitorAberto}" aria-controls="menu-monitor" aria-label="Fontes do monitor">${ico("chevron")}</button>
+  </div>`;
+}
+
+function htmlSubmenuMonitor(rota, e) {
+  const itens = FONTES_MENU.map((f) => {
+    const n = sinaisAbertosDe(e, f);
+    return `<li><a href="#/${f}" ${rota.tipo === "analise" && rota.fonte === f ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>${FONTES[f]}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
+  }).join("");
+  return `<ul class="submenu" id="menu-monitor" aria-label="Fontes do monitor"${menuMonitorAberto ? " data-aberto" : ""}>${itens}</ul>`;
+}
+
+const menuEl = () => document.querySelector('[data-menu="monitor"]');
+const subEl = () => document.getElementById("menu-monitor");
+const noMenu = (n) => !!n && (menuEl()?.contains(n) || subEl()?.contains(n));
+const itensMenu = () => [...(menuEl()?.querySelectorAll("a, button") ?? []), ...(subEl()?.querySelectorAll("a") ?? [])];
+
+function definirMenu(aberto) {
+  clearTimeout(atrasoFecharMenu);
+  menuMonitorAberto = aberto;
+  const g = menuEl(), sub = subEl();
+  if (!g || !sub) return;
+  g.toggleAttribute("data-aberto", aberto);
+  sub.toggleAttribute("data-aberto", aberto);
+  g.querySelector(".aba-seta").setAttribute("aria-expanded", String(aberto));
+  if (!aberto) return;
+  // posicionado em relação ao .topo, colado embaixo do item Monitor
+  const topo = g.closest(".topo").getBoundingClientRect(), r = g.getBoundingClientRect();
+  sub.style.top = `${Math.round(r.bottom - topo.top - 1)}px`;
+  sub.style.left = `${Math.max(8, Math.min(Math.round(r.left - topo.left), topo.width - sub.offsetWidth - 8))}px`;
+}
+
+const focoNoMenu = () => (noMenu(document.activeElement) ? itensMenu().indexOf(document.activeElement) : -1);
+function restaurarMenu(foco) {
+  if (menuMonitorAberto) definirMenu(true);
+  if (foco >= 0) itensMenu()[foco]?.focus();
+}
+
+const comHover = matchMedia("(hover: hover)");
+document.addEventListener("mouseover", (ev) => {
+  if (!comHover.matches) return;
+  if (ev.target.closest?.('[data-menu="monitor"], .submenu')) definirMenu(true);
+  else if (menuMonitorAberto && !noMenu(document.activeElement)) { clearTimeout(atrasoFecharMenu); atrasoFecharMenu = setTimeout(() => definirMenu(false), 160); }
+});
+document.addEventListener("click", (ev) => {
+  // com mouse o hover já abriu: o clique na seta mantém aberto; toque (sem hover) e teclado (detail 0) alternam
+  if (ev.target.closest?.("[data-menu-seta]")) return definirMenu(comHover.matches && ev.detail > 0 ? true : !menuMonitorAberto);
+  if (!ev.target.closest?.('[data-menu="monitor"], .submenu') || ev.target.closest?.(".submenu a, .aba-grupo > .aba")) definirMenu(false);
+});
+document.addEventListener("keydown", (ev) => {
+  const g = menuEl();
+  if (!g) return;
+  if (ev.key === "Escape" && menuMonitorAberto) {
+    const dentro = noMenu(document.activeElement);
+    definirMenu(false);
+    if (dentro) g.querySelector(".aba-seta").focus();
+    return;
+  }
+  if (ev.key === "ArrowDown" && (ev.target.closest?.("[data-menu-seta]") || ev.target === g.querySelector(".aba"))) {
+    ev.preventDefault();
+    definirMenu(true);
+    subEl()?.querySelector("a")?.focus();
+    return;
+  }
+  const sub = ev.target.closest?.(".submenu");
+  if (sub && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
+    ev.preventDefault();
+    const itens = [...sub.querySelectorAll("a")], i = itens.indexOf(ev.target.closest("a"));
+    itens[(i + (ev.key === "ArrowDown" ? 1 : -1) + itens.length) % itens.length].focus();
+  }
+});
+document.addEventListener("focusout", (ev) => {
+  if (menuMonitorAberto && noMenu(ev.target) && ev.relatedTarget && !noMenu(ev.relatedTarget)) definirMenu(false);
+});
+document.addEventListener("scroll", (ev) => { if (menuMonitorAberto && ev.target.classList?.contains("nav")) definirMenu(false); }, true);
+addEventListener("hashchange", () => definirMenu(false));
+addEventListener("resize", () => { if (menuMonitorAberto) definirMenu(true); });
+
 function htmlTopo(rota) {
   const e = estado;
   const semana = estado.painel ? Math.max(1, semanaDe(new Date(), new Date(estado.painel.data_inicio + "T00:00:00"))) : null;
@@ -626,8 +719,7 @@ function htmlTopo(rota) {
       const pend = p?.decisoes_pendentes ?? 0;
       return aba(`#/p/${id}`, rota.tipo === "projeto" && rota.id === id, `<i class="ponto"></i>${esc(PROJETOS[id].nome)}${pend ? `<span class="count alerta">${pend}</span>` : ""}`, cor(id));
     }))
-    .concat(aba("#/monitor", rota.tipo === "monitor", `<i class="ponto"></i>Monitor${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length ? `<span class="count">${(e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length}</span>` : ""}`, cor("monitor")))
-    .concat(["agentes", "tiktok", "youtube", "sites"].map((f) => aba(`#/${f}`, rota.tipo === "analise" && rota.fonte === f, `<i class="ponto"></i>${FONTES[f]}`, cor("monitor"))));
+    .concat(htmlGrupoMonitor(rota, e));
   return `<header class="topo">
     <div class="topo-linha">
       <div class="marca"><span class="logo">${ico("zap")}</span><div><h1>Central de comando</h1><small>${semana ? `Semana ${semana} do roteiro · ` : ""}${fonte.demo ? "modo demonstração" : "banco único"}</small></div></div>
@@ -636,6 +728,7 @@ function htmlTopo(rota) {
       <span class="sync" id="sync"><i class="ponto"></i>atualizado ${new Date().toLocaleTimeString("pt-PT", { timeStyle: "short" })}</span>
     </div>
     <nav class="nav" aria-label="Projetos">${abas.join("")}</nav>
+    ${htmlSubmenuMonitor(rota, e)}
   </header>`;
 }
 
@@ -983,7 +1076,7 @@ function htmlPlacar(e) {
     const total = lista.length || 1;
     const barra = lista.length ? `<div class="placar-barra" role="img" aria-label="${w} win, ${l} loss, ${outros} outros"><i class="w" style="width:${(100 * w) / total}%"></i><i class="l" style="width:${(100 * l) / total}%"></i><i class="o" style="width:${(100 * outros) / total}%"></i></div>` : "";
     return `<div class="cartao">
-      <div class="titulo">${FONTES[f]}${["agentes", "tiktok", "youtube", "sites"].includes(f) ? ` <a class="meta" href="#/${f}">análise completa</a>` : ""}</div>
+      <div class="titulo">${FONTES[f]}${["agentes", "tiktok", "youtube", "sites", "tradingview"].includes(f) ? ` <a class="meta" href="#/${f}">análise completa</a>` : ""}</div>
       ${barra}
       <div class="meta"><span class="badge compra">${w} win</span><span class="badge venda">${l} loss</span>
         <span>acerto <b class="num">${pct(w, l)}</b></span>${rMedio ? `<span>R médio <b class="num">${rMedio}</b></span>` : ""}
@@ -1285,11 +1378,12 @@ function htmlAgente(a) {
 // resultados já resolvidos (monitor_resultados, últimos 30 dias). O saldo é em US$ no lote mínimo 0,01: o R do resultado vira
 // contrato e o spread em US$ vêm da tabela CONTRATOS (lote 0,01). As chaves seguem a forma dos agentes, para a mesma página servir às quatro fontes.
 
-const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"] };
+const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"], tradingview: ["layout", "layouts"] };
 const RESUMO_ANALISE = {
   tiktok: "Cada canal do TikTok com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
   youtube: "Cada canal do YouTube com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
   sites: "Cada site com o seu saldo em US$ no lote mínimo de 0,01 (forex: 1.000 unidades; cripto: 0,01 moeda), líquido de spread estimado. Quando o site só publica pips ou pontos, o resultado sai da entrada, do stop e do primeiro alvo (stop = −1 R). Soma os sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
+  tradingview: "Cada layout do TradingView (portes dos indicadores e alertas criados à mão) com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias. Fonte em teste: o placar decide quais layouts ficam. Uso pessoal: não é recomendação.",
 };
 const TODOS = "Todos";
 const STATUS_COM_R = new Set(["alvo", "stop", "expirado"]);
@@ -1339,19 +1433,19 @@ function rDoResultado(r) {
   return risco ? Math.round((100 * Math.abs(alvo - entrada)) / risco) / 100 : null;
 }
 
-const nomeDaUnidade = (origem) => (/^consenso/i.test(origem ?? "") ? "Consenso" : String(origem ?? "").replace(/^Sinal do canal /i, ""));
+const nomeDaUnidadeBase = (origem) => (/^consenso/i.test(origem ?? "") ? "Consenso" : String(origem ?? "").replace(/^Sinal do canal /i, ""));
 const plataformaDoCanal = (nome) => (nome.startsWith("@") ? "tiktok" : nome.startsWith("▶") ? "youtube" : null);
 // o canal do YouTube aparece nos dois monitores; cada página fica com os canais da sua plataforma e com os consensos que o monitor dela avisou
 function pertenceAFonte(f, fonteDoItem, origem) {
-  if (f === "sites") return fonteDoItem === "sites";
+  if (f === "sites" || f === "tradingview") return fonteDoItem === f;
   if (fonteDoItem !== "tiktok" && fonteDoItem !== "youtube") return false;
-  const nome = nomeDaUnidade(origem);
+  const nome = nomeDaUnidadeBase(origem);
   return nome === "Consenso" ? fonteDoItem === f : plataformaDoCanal(nome) === f;
 }
 
 function resultadosDaFonte(f, e) {
   const doMonitor = (e.monitorResultados ?? []).filter((r) => pertenceAFonte(f, r.fonte, r.origem));
-  if (f === "sites") return doMonitor;
+  if (f === "sites" || f === "tradingview") return doMonitor;
   // os dois monitores publicam o mesmo sinal de canal: conta uma vez só (mesmo canal, ativo, lado e até 10 min de diferença)
   const vistos = [];
   return doMonitor.sort((a, b) => (b.fonte === f) - (a.fonte === f)).filter((r) => {
@@ -1415,7 +1509,7 @@ function unidadeDeResultados(f, nome, linhas, abertos) {
       texto: s ? `ATIVO · ${String(s.direcao).toUpperCase()} · entrada ${s.entrada}${s.stop != null ? ` · stop ${s.stop}` : ""}${s.alvos ? ` · alvos ${s.alvos}` : ""}` : null };
   });
   let saldo = 0;
-  const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${f === "sites" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : `Sinal do canal no ${FONTES[f]}`;
+  const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${f === "sites" || f === "tradingview" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : f === "tradingview" ? "Sinais deste layout do TradingView" : `Sinal do canal no ${FONTES[f]}`;
   const a = { id: nome, tipo: nome === TODOS ? "todos" : f, metodo: `${base}${ops.length ? ` · último resultado ${quando(ops[ops.length - 1].momento)}` : ""}`, ligado: true, ativos, timeframes: [],
     self_learning: false, por_ativo_versao: false, revisao_ia: false, selos: "", ultima_execucao: null, proxima_execucao: null, unidade: "usd",
     metricas: metricasUsd(ops), curva: ops.map((o) => [o.momento, Math.round((saldo += o.v) * 100) / 100]), por_ativo,
@@ -1426,6 +1520,7 @@ function unidadeDeResultados(f, nome, linhas, abertos) {
 }
 
 function painelDeResultados(f, e) {
+  const nomeDaUnidade = (o) => { const n = nomeDaUnidadeBase(o); return f === "tradingview" ? n.replace(/^[^\p{L}\p{N}]+/u, "") : n; };
   const linhas = resultadosDaFonte(f, e);
   const abertos = (e.monitorSinais ?? []).filter((s) => pertenceAFonte(f, s.fonte, s.origem) && (!s.ate || new Date(s.ate) > Date.now()));
   const nomes = [...new Set([...linhas.map((r) => nomeDaUnidade(r.origem)), ...abertos.map((s) => nomeDaUnidade(s.origem))])];
@@ -1502,7 +1597,9 @@ function render() {
     : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id) : vistaGeral();
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
+  const focoMenu = focoNoMenu();
   app.innerHTML = htmlTopo(rota) + corpo;
+  restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
   document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte]} · Central de Comando` : "Central de Comando";
   if (nova) {

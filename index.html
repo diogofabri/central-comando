@@ -95,6 +95,27 @@ code { font: 12.5px/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: v
 .aba .ponto { background: var(--cor, var(--ink-3)); }
 .aba .count { margin-left: -2px; }
 
+/* ---------- menu Monitor (submenu das fontes) ---------- */
+/* o submenu fica no .topo, ao lado do .nav (que rola na horizontal e tem máscara em tela estreita) */
+.aba-grupo { display: inline-flex; align-items: stretch; }
+.aba-grupo .aba { padding-right: 2px; border-top-right-radius: 0; }
+.aba-seta { display: inline-flex; align-items: center; justify-content: center; width: 26px; min-height: 40px; padding: 8px 6px 10px 0; border: 0; border-radius: 0 8px 0 0; background: transparent; color: var(--ink-3); cursor: pointer; transition: color var(--t-rapido), background var(--t-rapido); }
+.aba-seta .ico { width: 14px; height: 14px; transform: rotate(90deg); transition: transform var(--t-normal) var(--saida); }
+.aba-grupo[data-aberto] .aba-seta .ico { transform: rotate(-90deg); }
+.aba-grupo:hover .aba, .aba-grupo:hover .aba-seta, .aba-grupo[data-aberto] .aba, .aba-grupo[data-aberto] .aba-seta { background: var(--chip); color: var(--ink); }
+.aba-seta:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.aba-grupo .aba[aria-current="page"]::after { right: -18px; }
+.submenu { position: absolute; z-index: 20; display: none; margin: 0; padding: 6px; list-style: none; min-width: 220px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 0 var(--raio-s) var(--raio-s) var(--raio-s); box-shadow: var(--sombra); }
+.submenu[data-aberto] { display: block; animation: submenu-entra var(--t-rapido) var(--saida) both; }
+@keyframes submenu-entra { from { opacity: 0; transform: translateY(-4px); } }
+.submenu a { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 0 10px; border-radius: 6px; color: var(--ink-2); font-size: 14px; font-weight: 500; text-decoration: none; }
+.submenu a:hover, .submenu a:focus-visible { background: var(--chip); color: var(--ink); }
+.submenu a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.submenu a[aria-current="page"] { color: var(--ink); font-weight: 600; background: var(--chip); }
+.submenu .ponto { background: var(--monitor); }
+.submenu .count { margin-left: auto; }
+@media (pointer: coarse) { .submenu a { min-height: 44px; } .aba-seta { width: 36px; } }
+
 /* ---------- layout ---------- */
 main { max-width: 1320px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); align-items: start; }
 main.uma { grid-template-columns: minmax(0, 1fr); }
@@ -421,6 +442,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=34"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>
