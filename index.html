@@ -227,10 +227,12 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 /* coluna estreita: o botão vira só o ícone (o nome fica em aria-label e title) */
 @container (max-width: 279px) { .titulo-fonte .rotulo-btn { display: none; } .titulo-fonte .btn { width: 32px; padding: 0; } }
 /* os cinco cartões cabem lado a lado a partir de ~1.200 px */
-.grade-cartoes.fontes { grid-template-columns: repeat(auto-fit, minmax(min(100%, 236px), 1fr)); }
+.grade-cartoes.fontes { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }  /* 6 fontes numa linha a partir de ~1.200 px */
+.grade-cartoes.fontes .fila { min-width: 0; overflow-wrap: anywhere; }
+.grade-cartoes.fontes .fila .badge { white-space: normal; }  /* selo longo (self-learning v3 · em ajuste) quebra na coluna estreita */
 /* as duas partes do cartão ocupam linhas compartilhadas da grade: o início da fila (Loop de leitura, Leitura dos sites...) alinha entre os cartões */
 @supports (grid-template-rows: subgrid) {
-  .grade-cartoes.fontes .cartao { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0; align-content: start; }
+  .grade-cartoes.fontes .cartao { display: grid; grid-row: span 2; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); row-gap: 0; align-content: start; }
   .grade-cartoes.fontes .fila { margin-top: 10px; }
 }
 .cartao + .cartao { margin-top: 10px; }
@@ -355,6 +357,7 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 .fila .lista li { border-bottom-color: var(--line); }
 /* 5 fontes (TikTok, YouTube, Sites, Agentes, TradingView): 230 px cabem lado a lado a partir de ~1180 px de largura */
 .grade-cartoes.larga { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.grade-cartoes.larga.sinais { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }  /* 6 fontes numa linha a partir de ~1.200 px */
 .fila .meta > b { color: var(--ink-2); }
 .fila .grupo-live { margin-top: 10px; }
 .sinal-topo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
@@ -505,6 +508,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=44"></script>
+<script src="app.js?v=45"></script>
 </body>
 </html>

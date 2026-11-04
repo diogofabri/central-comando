@@ -11,9 +11,11 @@ const PROJETOS = {
   monitor:  { nome: "Monitor", longo: "Monitor de lives (uso pessoal)" },
 };
 const RENDA = ["servicos", "video", "produtos", "cafe", "tortas"];
-const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites", agentes: "Agentes", tradingview: "TradingView" };
+const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites", telegram: "Telegram", agentes: "Agentes", tradingview: "TradingView" };
+// fontes no molde dos sites: uma linha por site/canal, com os pares recolhidos (item = "<site ou canal>:<par>")
+const COMO_SITES = new Set(["sites", "telegram"]);
 // fontes que não são contêiner: rodam na sessão do Claude Code a cada N min (monitor_fontes.proxima_execucao)
-const FONTES_PERIODICAS = new Set(["agentes", "tradingview"]);  // rodadas pelo executor (sem live): contador até a próxima rodada
+const FONTES_PERIODICAS = new Set(["agentes", "tradingview", "telegram"]);  // rodadas pelo executor (sem live): contador até a próxima rodada
 // ordem na lista: o que está acontecendo agora primeiro
 const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, proximo: 1, fila: 2, lido: 2, bloqueado: 3, executado: 4, sem_sinal: 5, sem_dados: 6, erro: 6 };
 const ROTULO_ESTADO = { gravando: "capturando", analisando: "IA analisando", fila: "aguardando a vez", lido: "já analisado", offline: "offline",
@@ -39,6 +41,7 @@ function urlCanal(fonte, item) {
     return `https://www.youtube.com/@${encodeURIComponent(item.replace(/^@/, ""))}/live`;
   }
   if (fonte === "sites") return SITES_URL[item.split(":")[0]] ?? null;
+  if (fonte === "telegram") { const c = item.split(":")[0]; return /^-\d+$/.test(c) ? null : `https://t.me/${encodeURIComponent(c)}`; }  // canal privado (id numérico): sem link público
   return null;
 }
 // nome do canal como link que abre em outra aba (ou só o texto, quando não há URL)
@@ -53,6 +56,7 @@ function itemDaOrigem(fonte, origem, e) {
   if (achado) return achado.item;
   if (fonte === "tiktok" && /^@[\w.]+$/.test(origem)) return origem.slice(1);
   if (fonte === "sites") { const id = Object.keys(SITES_URL).find((k) => origem.toLowerCase().startsWith(k)); return id ? `${id}:` : null; }
+  if (fonte === "telegram") { const i = (e.monitorItens ?? []).find((x) => x.fonte === fonte && x.nome.startsWith(`${origem} ·`)); return i ? i.item : null; }
   return null;
 }
 const inteiro = (v) => Math.round(Number(v) || 0).toLocaleString("pt-BR");
@@ -290,6 +294,7 @@ function fonteDemo() {
     },
     monitorFontes: [
       { fonte: "tiktok", ligado: true, vagas: "5 vagas", resumo: "1 gravando, 0 na fila, 1 em análise", atualizado_em: new Date(agora).toISOString() },
+      { fonte: "telegram", ligado: true, vagas: "2 canais", resumo: "SureShotFX, SureShotFX Signals (FREE): 1 sinais abertos, leitura a cada 5 min", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), ultima_execucao: new Date(agora - 2 * 6e4).toISOString(), proxima_execucao: new Date(agora + 3 * 6e4).toISOString(), intervalo_min: 5 },
       { fonte: "sites", ligado: true, vagas: "3 site(s)", resumo: "Foresignal: 1 sinal aberto em 2 pares", atualizado_em: new Date(agora).toISOString() },
       { fonte: "agentes", ligado: true, vagas: "5 ativos · cruzamento-medias", resumo: "1 sinal(is) aberto(s) · próxima rodada 10:30", atualizado_em: new Date(agora - 0.1 * h).toISOString(), ultima_execucao: new Date(agora - 0.1 * h).toISOString(), proxima_execucao: new Date(agora + 0.4 * h).toISOString(), intervalo_min: 30 },
     ],
@@ -299,13 +304,15 @@ function fonteDemo() {
       { fonte: "tiktok", item: "canal.b", nome: "@canal.b", estado: "lido", ativo: false, analisando: false, espectadores: 120, chamadas_hoje: 0, detalhe: "leitura 18:52: XAUUSD compra 4010", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.2 * h).toISOString(), ciclo_fim: new Date(agora + 0.22 * h).toISOString() },
       { fonte: "tiktok", item: "canal.c", nome: "@canal.c", estado: "fila", ativo: false, analisando: false, espectadores: 64, chamadas_hoje: 0 },
       { fonte: "sites", item: "foresignal:EURUSD", nome: "Foresignal · EUR/USD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 1 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · válido até 07:51" },
+      { fonte: "telegram", item: "SureShotFX_Signals:XAUUSD", nome: "SureShotFX Signals (FREE) · XAUUSD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 0.2 * h).toISOString(), chamadas_hoje: 1, detalhe: "compra · vale até 14:36 UTC", ultima_analise: new Date(agora - 2 * 6e4).toISOString(), proxima_analise: new Date(agora + 3 * 6e4).toISOString() },
+      { fonte: "telegram", item: "sureshot_fx:", nome: "SureShotFX · sem sinais", estado: "sem_sinal", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "nenhum sinal com SL e TP no período", ultima_analise: new Date(agora - 2 * 6e4).toISOString(), proxima_analise: new Date(agora + 3 * 6e4).toISOString() },
       { fonte: "sites", item: "foresignal:GBPUSD", nome: "Foresignal · GBP/USD", estado: "executado", ativo: false, analisando: false, chamadas_hoje: 1, detalhe: "+11 pips" },
       { fonte: "agentes", item: "GOLD", nome: "GOLD · XAUUSD", estado: "aberto", ativo: true, analisando: false, desde: new Date(agora - 0.5 * h).toISOString(), chamadas_hoje: 1, detalhe: "ATIVO 🟢 COMPRA · entrada 4010 · stop 4002 · alvos 4019.6 / 4026", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
       { fonte: "agentes", item: "cruzamento-medias:US100", nome: "cruzamento-medias · US100 · NAS100", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "PRÓXIMO 🔴 VENDA: falta ADX 14 baixo/deitado (lateral); novo cruzamento ou ADX virar para cima", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
       { fonte: "agentes", item: "CRUDEOIL", nome: "CRUDEOIL · USOIL", estado: "sem_sinal", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "SEM SINAL · lateral (ADX < 20) · ADX 15.2 · RSI 48 · fora da janela do ativo", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
       { fonte: "agentes", item: "multi-tf-auto:GOLD", nome: "multi-tf-auto · GOLD · XAUUSD", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "self-learning v3 · em ajuste · PRÓXIMO · M5 tendência +0.12 · M15 tendência +0.41 · H1 tendência +0.62 · vela heikin_ashi", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.9 * h).toISOString() },
     ],
-    monitorComando: { tiktok: true, sites: true, agentes: true, tradingview: true },
+    monitorComando: { tiktok: true, sites: true, agentes: true, tradingview: true, telegram: true },
     agentesPainel: demoAgentes(agora), selfLearning: true,
     termometro: demoTermometro(agora),
     consensoLigado: false,
@@ -324,6 +331,7 @@ function fonteDemo() {
     ],
     monitorSinais: [
       { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "Sinal do canal @canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
+      { fonte: "telegram", sinal_id: 5, item: "SureShotFX_Signals:XAUUSD", origem: "SureShotFX Signals (FREE)", instrumento: "XAUUSD", direcao: "compra", entrada: "3934–3944", stop: 3930, alvos: "3954 / 3964", desde: new Date(agora - 0.2 * h).toISOString(), ate: new Date(agora + 23.8 * h).toISOString() },
       { fonte: "sites", sinal_id: 2, item: "foresignal:EURUSD", origem: "Foresignal", instrumento: "EURUSD", direcao: "compra", entrada: "1.117", stop: 1.1149, alvos: "1.1187", desde: new Date(agora - 1 * h).toISOString(), ate: new Date(agora + 7 * h).toISOString() },
       { fonte: "tradingview", sinal_id: 1, item: "GOLD", origem: "📐 novo-a (Novo A)", instrumento: "XAUUSD", direcao: "compra", entrada: "3913.49", stop: 3901, alvos: "3938.5", condicoes: "Scalper Pro, layout Novo A", desde: new Date(agora - 20 * 60e3).toISOString(), ate: new Date(agora + 11 * 3600e3).toISOString() },
       { fonte: "agentes", sinal_id: 1, item: "GOLD", origem: "🤖 cruzamento-medias", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", stop: 4002, alvos: "4019.6 / 4026", condicoes: "EMA 9/21 cruzou no M15 (confirmação); H1 a favor; ADX 24; RSI 55", desde: new Date(agora - 0.5 * h).toISOString(), ate: new Date(agora + 11.5 * h).toISOString() },
@@ -365,7 +373,7 @@ function demoResultados(agora) {
     ["tiktok", "Sinal do canal @canal.fx", ["XAUUSD", "US30"], 0.18], ["tiktok", "Sinal do canal @mogotrading_off", ["XAUUSD"], -0.08],
     ["tiktok", "Sinal do canal @rayyy.fx", ["XAUUSD", "NAS100"], 0.05], ["youtube", "Sinal do canal ▶️ forex & crypto live", ["XAUUSD", "EURUSD"], 0.1],
     ["youtube", "Sinal do canal ▶️ forexlia", ["XAUUSD", "GBPUSD"], -0.15], ["tiktok", "Consenso de 3 canais", ["XAUUSD"], 0.2],
-    ["sites", "Foresignal", ["EURUSD", "GBPUSD", "USDJPY"], 0.12], ["sites", "CryptET", ["ETHUSDT", "ADAUSDT"], -0.05], ["sites", "SureShotFX", ["XAUUSD", "GBPJPY"], 0],
+    ["sites", "Foresignal", ["EURUSD", "GBPUSD", "USDJPY"], 0.12], ["sites", "CryptET", ["ETHUSDT", "ADAUSDT"], -0.05], ["sites", "SureShotFX", ["XAUUSD", "GBPJPY"], 0], ["telegram", "SureShotFX", ["XAUUSD", "GBPJPY"], 0.05],
   ];
   const linhas = [];
   let id = 100;
@@ -468,7 +476,7 @@ function rotaAtual() {
   const m = h.match(/^#\/p\/(\w+)/);
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? { tipo: "monitor" } : { tipo: "projeto", id: m[1] };
   if (h.startsWith("#/monitor")) return { tipo: "monitor" };
-  const an = h.match(/^#\/(agentes|tiktok|youtube|sites|tradingview)(?:\/([^/?]+))?/);
+  const an = h.match(/^#\/(agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
   if (an) return { tipo: "analise", fonte: an[1], id: an[2] ? decodeURIComponent(an[2]) : undefined };
   return { tipo: "geral" };
 }
@@ -654,7 +662,7 @@ function htmlIndicadores(c, p) {
 // Abre ao passar o mouse, ao focar com o teclado ou ao tocar na seta (celular). O estado e o foco sobrevivem ao redesenho
 // automático da página (a cada atualização o render troca o HTML inteiro). A lista do submenu fica FORA do .nav: o .nav rola
 // na horizontal e, em tela estreita, tem uma máscara de degradê que apagaria o submenu.
-const FONTES_MENU = ["tiktok", "youtube", "sites", "agentes", "tradingview"];
+const FONTES_MENU = ["tiktok", "youtube", "sites", "telegram", "agentes", "tradingview"];
 let menuMonitorAberto = false, atrasoFecharMenu = null;
 const sinaisAbertosDe = (e, f) => (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now())).length;
 
@@ -945,7 +953,8 @@ const LOOP_LIVES = {
 };
 const GRUPOS_FONTE = {
   tiktok: LOOP_LIVES, youtube: LOOP_LIVES,
-  sites: { titulo: "Leitura dos sites" },  // desenho próprio: uma linha por site (htmlStatusSites)
+  sites: { titulo: "Leitura dos sites", vazio: "Nenhum site lido ainda.", pares: "Pares" },  // desenho próprio: uma linha por site (htmlStatusSites)
+  telegram: { titulo: "Leitura dos canais", vazio: "Nenhum canal lido ainda.", pares: "Sinais" },  // canais públicos do Telegram, no molde dos sites
   agentes: { titulo: "Rodada dos agentes", vazio: "Nenhuma rodada ainda.", resto: "Sem sinal",
     grupos: [ABERTO,
       { t: "Próximos de disparar", d: "setup se formando; o motor ainda não confirmou", f: (i) => i.estado === "proximo" },
@@ -958,8 +967,8 @@ const GRUPOS_FONTE = {
 };
 
 // Sites: quais sites o monitor lê, quando leu pela última vez, quando lê de novo e o que cada um tem. Os pares ficam recolhidos.
-function htmlStatusSites(itens) {
-  if (!itens.length) return `<p class="vazio">Nenhum site lido ainda.</p>`;
+function htmlStatusSites(itens, f = "sites") {
+  if (!itens.length) return `<p class="vazio">${GRUPOS_FONTE[f].vazio}</p>`;
   const por = {};
   itens.forEach((i) => (por[i.item.split(":")[0]] ??= []).push(i));
   return Object.values(por).sort((a, b) => a[0].nome.localeCompare(b[0].nome)).map((l) => {
@@ -974,7 +983,7 @@ function htmlStatusSites(itens) {
       : `<span>horário da leitura ainda não publicado</span>`;
     return `<div class="grupo-live"><div class="meta"><b>${esc(nome)}</b></div>
       <div class="meta">${leitura}</div><div class="meta">${contagens}</div>
-      <details><summary>${ico("chevron")}Pares de ${esc(nome)} ${l.length}</summary><ul class="lista">${l.map(htmlItemMonitor).join("")}</ul></details></div>`;
+      <details><summary>${ico("chevron")}${GRUPOS_FONTE[f].pares} de ${esc(nome)} ${l.length}</summary><ul class="lista">${l.map(htmlItemMonitor).join("")}</ul></details></div>`;
   }).join("");
 }
 
@@ -1004,11 +1013,11 @@ function htmlItemMonitor(i) {
     i.espectadores != null ? `<span>${Number(i.espectadores).toLocaleString("pt-BR")} espectadores</span>` : "",
     i.ativo && i.desde ? `<span>há ${duracao(i.desde)}</span>` : "",
     i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
-    i.fonte === "sites" ? "" : htmlContadores(i),
+    COMO_SITES.has(i.fonte) ? "" : htmlContadores(i),
   ].join("");
   // só o self-learning ganha selo no item; o "fixo" fica na lista "Modo de cada agente" (dito uma vez)
   const selo = auto ? ` ${seloAuto(`self-learning v${auto[1]} · ${auto[2].trim()}`)}` : "";
-  const icone = i.fonte === "sites" ? `${iconeAtivo(i.item.split(":").pop())} ` : FONTES_PERIODICAS.has(i.fonte) ? `${iconeAtivo(i.nome.split("·").pop().trim())} ` : "";
+  const icone = COMO_SITES.has(i.fonte) ? (i.item.split(":").pop() ? `${iconeAtivo(i.item.split(":").pop())} ` : "") : FONTES_PERIODICAS.has(i.fonte) ? `${iconeAtivo(i.nome.split("·").pop().trim())} ` : "";
   const vivo = i.ativo ? `<i class="ponto vivo" aria-hidden="true"></i>` : "";
   return `<li><span class="badge ${cls}">${vivo}${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${linkCanal(i.fonte, i.item, i.nome)}${selo}
     <div class="meta">${extras}${detalhe ? `<span>${esc(detalhe)}</span>` : ""}</div></li>`;
@@ -1107,7 +1116,7 @@ function htmlPlacar(e) {
     const total = lista.length || 1;
     const barra = lista.length ? `<div class="placar-barra" role="img" aria-label="${w} win, ${l} loss, ${outros} outros"><i class="w" style="width:${(100 * w) / total}%"></i><i class="l" style="width:${(100 * l) / total}%"></i><i class="o" style="width:${(100 * outros) / total}%"></i></div>` : "";
     return `<div class="cartao">
-      <div class="titulo">${FONTES[f]}${["agentes", "tiktok", "youtube", "sites", "tradingview"].includes(f) ? ` <a class="meta" href="#/${f}">análise completa</a>` : ""}</div>
+      <div class="titulo">${FONTES[f]}${["agentes", "tiktok", "youtube", "sites", "tradingview", "telegram"].includes(f) ? ` <a class="meta" href="#/${f}">análise completa</a>` : ""}</div>
       ${barra}
       <div class="meta"><span class="badge compra">${w} win</span><span class="badge venda">${l} loss</span>
         <span>acerto <b class="num">${pct(w, l)}</b></span>${rMedio ? `<span>R médio <b class="num">${rMedio}</b></span>` : ""}
@@ -1121,7 +1130,7 @@ function htmlPlacar(e) {
   return `<section class="painel" aria-labelledby="h-placar">
     <h2 id="h-placar">${ico("target")} Placar dos sinais <span class="count">últimos 30 dias</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
     <div class="grade-cartoes">${cartoes.join("")}</div>
-    <p class="meta" style="margin-top:8px">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Sites: o resultado publicado pelo próprio site; lives e sureshotfx: velas de preço (Binance para cripto, Twelve Data para forex e ouro); agentes: velas M15 do TradingView. Não é recomendação.</p>
+    <p class="meta" style="margin-top:8px">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Sites: o resultado publicado pelo próprio site; lives, canais do Telegram e sureshotfx: velas de preço (Binance para cripto, Twelve Data para forex e ouro); agentes: velas M15 do TradingView. Não é recomendação.</p>
   </section>`;
 }
 
@@ -1139,7 +1148,7 @@ function htmlSinaisAtivos(e) {
   return `<section class="painel" aria-labelledby="h-sinais">
     <h2 id="h-sinais">${ico("zap")} Sinais ativos <span class="count">${total}</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
     ${htmlFiltroAtivo(e)}
-    <div class="grade-cartoes larga">${cartoes.join("")}</div>
+    <div class="grade-cartoes larga sinais">${cartoes.join("")}</div>
     <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar. Não é recomendação.</p>
   </section>`;
 }
@@ -1149,7 +1158,7 @@ function htmlMonitor(e) {
     const info = e.monitorFontes.find((x) => x.fonte === f);
     const itens = e.monitorItens.filter((i) => i.fonte === f)
       .sort((a, b) => (ORDEM_ESTADO[a.estado] ?? 9) - (ORDEM_ESTADO[b.estado] ?? 9) || (b.espectadores ?? 0) - (a.espectadores ?? 0));
-    const visiveis = itens.filter((i) => f !== "sites" || passaFiltro(i.item.split(":").pop()));
+    const visiveis = itens.filter((i) => !COMO_SITES.has(f) || !i.item.split(":").pop() || passaFiltro(i.item.split(":").pop()));
     const periodica = FONTES_PERIODICAS.has(f);
     // fonte periódica (agentes): está "no ar" enquanto a próxima rodada prevista não atrasar mais de 10 min
     const atraso = !info ? Infinity : periodica ? (info.proxima_execucao ? (Date.now() - new Date(info.proxima_execucao)) / 6e4 - 10 : 0)
@@ -1180,8 +1189,8 @@ function htmlMonitor(e) {
       ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
       ${rodada}
       </div>
-      <div class="fila"><div class="meta"><b>${GRUPOS_FONTE[f].titulo}</b> <span class="count">${f === "sites" ? new Set(visiveis.map((i) => i.item.split(":")[0])).size : visiveis.length}</span></div>
-        ${f === "sites" ? htmlStatusSites(visiveis) : htmlStatusFonte(f, visiveis)}</div>
+      <div class="fila"><div class="meta"><b>${GRUPOS_FONTE[f].titulo}</b> <span class="count">${COMO_SITES.has(f) ? new Set(visiveis.map((i) => i.item.split(":")[0])).size : visiveis.length}</span></div>
+        ${COMO_SITES.has(f) ? htmlStatusSites(visiveis, f) : htmlStatusFonte(f, visiveis)}</div>
     </div>`;
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
@@ -1539,11 +1548,12 @@ function htmlAgente(a) {
 // resultados já resolvidos (monitor_resultados, últimos 30 dias). O saldo é em US$ no lote mínimo 0,01: o R do resultado vira
 // contrato e o spread em US$ vêm da tabela CONTRATOS (lote 0,01). As chaves seguem a forma dos agentes, para a mesma página servir às quatro fontes.
 
-const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"], tradingview: ["layout", "layouts"] };
+const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"], tradingview: ["layout", "layouts"], telegram: ["canal", "canais"] };
 const RESUMO_ANALISE = {
   tiktok: "Cada canal do TikTok com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
   youtube: "Cada canal do YouTube com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
   sites: "Cada site com o seu saldo em US$ no lote mínimo de 0,01 (forex: 1.000 unidades; cripto: 0,01 moeda), líquido do spread real da Capital.com. Quando o site só publica pips ou pontos, o resultado sai da entrada, do stop e do primeiro alvo (stop = −1 R). Soma os sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
+  telegram: "Cada canal público do Telegram com o seu saldo em US$ no lote mínimo de 0,01, líquido do spread real da Capital.com. O resultado sai do preço (Twelve Data e Binance), nunca do que o canal anuncia: stop = −1 R, alvo = distância até o 1.º alvo ÷ o risco. Soma os sinais resolvidos nos últimos 30 dias. Fonte em teste: o placar decide quais canais ficam. Uso pessoal: não é recomendação.",
   tradingview: "Cada layout do TradingView (portes dos indicadores e alertas criados à mão) com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias. Fonte em teste: o placar decide quais layouts ficam. Uso pessoal: não é recomendação.",
 };
 const TODOS = "Todos";
@@ -1601,7 +1611,7 @@ const nomeDaUnidadeBase = (origem) => (/^consenso/i.test(origem ?? "") ? "Consen
 const plataformaDoCanal = (nome) => (nome.startsWith("@") ? "tiktok" : nome.startsWith("▶") ? "youtube" : null);
 // o canal do YouTube aparece nos dois monitores; cada página fica com os canais da sua plataforma e com os consensos que o monitor dela avisou
 function pertenceAFonte(f, fonteDoItem, origem) {
-  if (f === "sites" || f === "tradingview") return fonteDoItem === f;
+  if (COMO_SITES.has(f) || f === "tradingview") return fonteDoItem === f;
   if (fonteDoItem !== "tiktok" && fonteDoItem !== "youtube") return false;
   const nome = nomeDaUnidadeBase(origem);
   return nome === "Consenso" ? fonteDoItem === f : plataformaDoCanal(nome) === f;
@@ -1609,7 +1619,7 @@ function pertenceAFonte(f, fonteDoItem, origem) {
 
 function resultadosDaFonte(f, e) {
   const doMonitor = (e.monitorResultados ?? []).filter((r) => pertenceAFonte(f, r.fonte, r.origem));
-  if (f === "sites" || f === "tradingview") return doMonitor;
+  if (COMO_SITES.has(f) || f === "tradingview") return doMonitor;
   // os dois monitores publicam o mesmo sinal de canal: conta uma vez só (mesmo canal, ativo, lado e até 10 min de diferença)
   const vistos = [];
   return doMonitor.sort((a, b) => (b.fonte === f) - (a.fonte === f)).filter((r) => {
@@ -1673,7 +1683,7 @@ function unidadeDeResultados(f, nome, linhas, abertos) {
       texto: s ? `ATIVO · ${String(s.direcao).toUpperCase()} · entrada ${s.entrada}${s.stop != null ? ` · stop ${s.stop}` : ""}${s.alvos ? ` · alvos ${s.alvos}` : ""}` : null };
   });
   let saldo = 0;
-  const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${f === "sites" || f === "tradingview" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : f === "tradingview" ? "Sinais deste layout do TradingView" : `Sinal do canal no ${FONTES[f]}`;
+  const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${COMO_SITES.has(f) || f === "tradingview" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : f === "telegram" ? "Sinais publicados no canal do Telegram" : f === "tradingview" ? "Sinais deste layout do TradingView" : `Sinal do canal no ${FONTES[f]}`;
   const a = { id: nome, tipo: nome === TODOS ? "todos" : f, metodo: `${base}${ops.length ? ` · último resultado ${quando(ops[ops.length - 1].momento)}` : ""}`, ligado: true, ativos, timeframes: [],
     self_learning: false, por_ativo_versao: false, revisao_ia: false, selos: "", ultima_execucao: null, proxima_execucao: null, unidade: "usd",
     metricas: metricasUsd(ops), curva: ops.map((o) => [o.momento, Math.round((saldo += o.v) * 100) / 100]), por_ativo,
