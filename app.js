@@ -1040,13 +1040,16 @@ function classeAtivo(sym) {
 const NOME_CLASSE = { metal: "metal", energia: "energia", cripto: "cripto", indice: "índice", forex: "forex", ativo: "ativo" };
 function iconeAtivo(sym) { return ico(classeAtivo(sym), "ativo-ico"); }
 
-const precoCurto = (v) => (v == null ? "—" : String(v).replace(/\d+\.\d{6,}/g, (m) => String(Number(Number(m).toFixed(5)))));
+// casas decimais pela grandeza do preço (índices e ouro 2, petróleo 3, forex e cripto 5, abaixo de 1 até 6): os portes
+// e o ATR geram 28171.72125; o cartão mostra 28171.72 sem inventar precisão
+const casasDoPreco = (x) => (Math.abs(x) >= 100 ? 2 : Math.abs(x) >= 10 ? 3 : Math.abs(x) >= 1 ? 5 : 6);
+const precoCurto = (v) => (v == null ? "—" : String(v).replace(/\d+\.\d+/g, (m) => String(Number(Number(m).toFixed(casasDoPreco(Number(m)))))));
 
 function htmlSinal(s) {
   const venda = s.direcao === "venda";
   const ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : null;
   const selo = s.fonte === "agentes" && modoAgente((s.origem ?? "").replace(/^\S+\s/, "")) ? seloAuto("self-learning") : "";
-  const nivel = (rotulo, valor) => `<div><dt>${rotulo}</dt><dd>${esc(precoCurto(valor))}</dd></div>`;
+  const nivel = (rotulo, valor) => `<div><dt>${rotulo}</dt><dd>${esc(precoCurto(valor)).replace(/ \/ /g, "\u00a0/ ")}</dd></div>`;
   return `<li class="sinal">
     <div class="sinal-topo"><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
       <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span><b>${esc(s.instrumento)}</b>${selo}</div>

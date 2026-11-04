@@ -361,12 +361,15 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 .fila .meta > b { color: var(--ink-2); }
 .fila .grupo-live { margin-top: 10px; }
 .sinal-topo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
-.sinal-niveis { display: flex; flex-wrap: wrap; gap: 6px 0; margin: 8px 0 6px; }
-.sinal-niveis > div { padding: 0 12px; }
+/* sempre igual em todo cartão: Entrada | Stop na 1.ª linha, Alvo (um ou vários) na linha toda embaixo */
+.sinal-niveis { display: grid; grid-template-columns: fit-content(60%) minmax(0, 1fr); gap: 6px 0; margin: 8px 0 6px; }
+.sinal-niveis > div { min-width: 0; padding: 0 12px; }
 .sinal-niveis > div:first-child { padding-left: 0; }
-.sinal-niveis > div + div { border-left: 1px solid var(--line-2); }
+.sinal-niveis > div:nth-child(2) { border-left: 1px solid var(--line-2); }
+.sinal-niveis > div:nth-child(3) { grid-column: 1 / -1; padding-left: 0; }
 .sinal-niveis dt { font-size: 11.5px; color: var(--ink-2); font-weight: 500; }
 .sinal-niveis dd { margin: 0; font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sinal-niveis > div:nth-child(odd) dd { white-space: normal; }  /* faixa de entrada quebra depois do traço e vários alvos entre um e outro, nunca no meio do número */
 .placar-barra { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--chip); margin: 6px 0 2px; }
 .placar-barra i { display: block; height: 100%; transform-origin: left; }
 .placar-barra .w { background: var(--good); } .placar-barra .l { background: var(--critical); } .placar-barra .o { background: var(--line-2); }
@@ -508,6 +511,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=45"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>
