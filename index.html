@@ -428,6 +428,16 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 .abas-agentes a { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; font-weight: 500; }
 .abas-agentes a:hover { color: var(--ink); }
 .abas-agentes a[aria-current] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+/* execução no MT5: modalidades (Todos, Demo, Real, Sem disparo) e botões por canal; o estado vai escrito, não só na cor */
+.modalidades { margin-top: 4px; }
+.exec-fonte, .exec-botoes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.exec-fonte { margin-left: auto; }
+.btn.exec .estado-exec { font-weight: 400; color: var(--ink-2); }
+.btn.exec.ligado { background: var(--good-soft); border-color: transparent; color: var(--good); }
+.btn.exec.ligado .estado-exec { color: inherit; font-weight: 600; }
+.btn.exec[disabled] { opacity: 1; color: var(--ink-2); border-style: dashed; cursor: not-allowed; }
+.tabela.comparacao td .exec-botoes { flex-wrap: nowrap; }
+.exec-estado { padding: 10px 2px 0; }
 section.agente > h2 .selos { display: inline-flex; gap: 6px; flex-wrap: wrap; font-size: 12px; font-weight: 500; }
 section.agente h3 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; color: var(--ink); text-transform: none; letter-spacing: -0.01em; }
 section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius: 0; border-left: 0; border-right: 0; background: transparent; }
@@ -511,6 +521,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=46"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>
