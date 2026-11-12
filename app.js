@@ -323,7 +323,7 @@ function fonteDemo() {
     consensoLigado: false,
     monitorOrdens: demoOrdens(agora),
     execucao: { selecao: { demo: { fontes: { tiktok: true }, unidades: { tiktok: { "@mogotrading_off": false } } }, real: { fontes: {}, unidades: {} } },
-      estado: { demo: { conectado: true, servidor: "ActivTrades-Demo", moeda: "USD", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), criterio_demo: { min_ordens: 20, lucro_min: 0 }, aprovacao: false, bloqueados: [] },
+      estado: { demo: { conectado: true, servidor: "ActivTrades-Demo", moeda: "USD", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), lote: 0.01 },
         real: { conectado: false, aviso: "faltam MT5_REAL_LOGIN, MT5_REAL_PASSWORD e MT5_REAL_SERVER no .env do monitor", atualizado_em: new Date(agora - 30e3).toISOString() } } },
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
     monitorConsensos: [{ criado_em: new Date(agora - 4.2 * h).toISOString(), instrumento: "XAUUSD", direcao: "compra", canais: ["@canal.fx", "@mogotrading_off", "▶️ Forex & Crypto Live"] }],
@@ -1763,10 +1763,9 @@ function painelDeResultados(f, e, modo = "todos") {
 const DESCRICAO_MODALIDADE = {
   todos: "Todos os sinais, executados ou não, no placar teórico pelo preço (lote 0,01, spread real). Não depende da seleção de execução.",
   demo: "Ordens executadas na conta DEMO da ActivTrades: preço executado, swap e comissão reais, na moeda da conta.",
-  real: "Ordens executadas na conta REAL da ActivTrades (cada uma aprovada com 1 clique): resultado real, na moeda da conta.",
-  sem: "Sinais que não viraram ordem nem no demo nem no real (canal desligado, recusa ou limites), no placar teórico.",
+  real: "Ordens executadas na conta REAL da ActivTrades: resultado real, na moeda da conta.",
+  sem: "Sinais que não viraram ordem nem no demo nem no real (canal desligado ou ordem recusada), no placar teórico.",
 };
-const CRITERIO_PADRAO = { min_ordens: 20, lucro_min: 0 };
 const DESFECHO_ORDEM = { tp: "alvo", sl: "stop", vencimento: "expirado" };
 
 function execucaoDoControle(ctl) {
@@ -1778,24 +1777,13 @@ function execucaoLigada(modo, f, id) {
   const sel = estado.execucao?.selecao?.[modo] ?? {}, canal = sel.unidades?.[f]?.[id];
   return typeof canal === "boolean" ? canal : sel.fontes?.[f] === true;
 }
-function criterioReal(f, id) {
-  const crit = estado.execucao?.estado?.real?.criterio_demo ?? CRITERIO_PADRAO;
-  const demo = (estado.monitorOrdens ?? []).filter((o) => o.modo === "demo" && o.status === "fechada" && o.pagina === f && o.unidade === id);
-  const lucro = demo.reduce((s, o) => s + Number(o.resultado ?? 0), 0);
-  return { ok: demo.length >= crit.min_ordens && lucro > crit.lucro_min, n: demo.length, lucro, crit };
-}
 function botaoExecucao(modo, f, id) {  // id ausente = a fonte inteira
   const fonteToda = id == null, nome = modo === "demo" ? "Demo" : "Real";
   const ligado = fonteToda ? estado.execucao?.selecao?.[modo]?.fontes?.[f] === true : execucaoLigada(modo, f, id);
-  let bloqueio = "";
-  if (modo === "real" && !fonteToda && !ligado) {
-    const c = criterioReal(f, id);
-    if (!c.ok) bloqueio = `Real bloqueado: precisa de ${c.crit.min_ordens} ordens demo fechadas e lucro no demo (tem ${c.n}, ${usd2(c.lucro)})`;
-  }
   const alvo = fonteToda ? `todo o ${FONTES[f]}` : id;
-  const titulo = bloqueio || `${ligado ? "Desligar" : "Ligar"} a execução na conta ${nome.toLowerCase()} para ${alvo}`;
+  const titulo = `${ligado ? "Desligar" : "Ligar"} a execução na conta ${nome.toLowerCase()} para ${alvo}`;
   return `<button class="btn pequeno exec ${ligado ? "ligado" : ""}" data-acao="execucao" data-modo="${modo}" data-fonte="${f}" ${fonteToda ? "" : `data-unidade="${esc(id)}"`}
-    data-ligar="${!ligado}" aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}" ${bloqueio ? "disabled" : ""}>${ico("power")}${fonteToda ? `${nome}: ${FONTES[f]}` : nome}<span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button>`;
+    data-ligar="${!ligado}" aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico("power")}${fonteToda ? `${nome}: ${FONTES[f]}` : nome}<span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button>`;
 }
 
 const rDaOrdem = (o) => {
@@ -1837,14 +1825,9 @@ function htmlEstadoExecucao(modo) {
   const din = dinheiro({ moeda: s.moeda });
   const partes = [`<span class="badge good"><i class="ponto vivo" aria-hidden="true"></i>${conta} conectada</span>`, `<span>${esc(s.servidor ?? "")}</span>`,
     `<span>${s.abertas} abertas · ${s.pendentes} pendentes</span>`, `<span>resultado do dia <b class="num">${din(s.resultado_dia)}</b></span>`];
-  if (s.limites) {
-    const l = s.limites;
-    partes.push(`<span>lote ${String(l.lote).replace(".", ",")} · ${l.max_posicoes == null ? "posições sem limite" : `até ${l.max_posicoes} posições`} · ${l.perda_max_dia == null ? "perda do dia sem limite" : `perda máx. do dia ${din(-l.perda_max_dia)}`}</span>`);
-  }
-  if (s.aprovacao) partes.push(`<span>cada ordem pede aprovação (Telegram ou Decisões)</span>`);
+  if (s.lote != null) partes.push(`<span>lote ${String(s.lote).replace(".", ",")}</span>`);
   if (s.parado) partes.push(`<span class="badge warning">${ico("pause")}parada: ${esc(s.parado)}</span>`);
   if (s.aviso) partes.push(`<span class="badge warning">${ico("alert")}${esc(s.aviso)}</span>`);
-  if (s.bloqueados?.length) partes.push(`<span>esperando o critério do demo: ${s.bloqueados.map(esc).join(", ")}</span>`);
   partes.push(`<span>atualizado ${quando(s.atualizado_em)}</span>`);
   return `<div class="meta exec-estado">${partes.join("")}</div>`;
 }
@@ -2025,7 +2008,7 @@ document.addEventListener("click", (ev) => {
   if (acao === "execucao") {
     const modo = b.dataset.modo, f = b.dataset.fonte, u = b.dataset.unidade, ligar = b.dataset.ligar === "true";
     const alvo = u ?? `todo o ${FONTES[f]}`;
-    if (ligar && modo === "real" && !confirm(`Ligar a execução na conta REAL para ${alvo}? Só canais que cumpriram o critério do demo executam, e cada ordem ainda pede a sua aprovação (Telegram ou Decisões).`)) return;
+    if (ligar && modo === "real" && !confirm(`Ligar a execução na conta REAL para ${alvo}? Os sinais novos passam a abrir ordens com dinheiro real.`)) return;
     if (!ligar && u == null && !confirm(`Desligar a execução ${modo === "demo" ? "demo" : "real"} de todo o ${FONTES[f]}? Os canais ligados um a um também desligam. As ordens já abertas continuam com stop e alvo.`)) return;
     const sel = structuredClone(estado.execucao?.selecao?.[modo] ?? {});
     sel.fontes = { ...(sel.fontes ?? {}) };
