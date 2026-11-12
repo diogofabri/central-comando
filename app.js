@@ -12,6 +12,40 @@ const PROJETOS = {
 };
 const RENDA = ["servicos", "video", "produtos", "cafe", "tortas"];
 const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites", telegram: "Telegram", agentes: "Agentes", tradingview: "TradingView" };
+
+// ---------- contextos de mercado (12/11/2026): Forex, Bovespa e a visão Todos ----------
+// No banco, a fonte do contexto Bovespa é "<fonte>@bovespa" (migração 0012); sem sufixo é Forex. A coluna `contexto` é gerada.
+const CONTEXTOS = {
+  forex: { nome: "Forex", fontes: ["tiktok", "youtube", "sites", "telegram", "agentes", "tradingview"], termometro: true, execucao: true,
+           corretora: "dados Capital.com · execução ActivTrades" },
+  bovespa: { nome: "Bovespa", fontes: ["youtube", "telegram", "agentes"], termometro: false, execucao: false,
+             corretora: "dados e execução CLEAR · ainda sem execução, só sinais" },
+};
+const ctxDe = (f) => String(f ?? "").split("@")[1] || "forex";
+const baseDe = (f) => String(f ?? "").split("@")[0];
+const sufixoDe = (ctx) => (ctx && ctx !== "forex" && ctx !== "todos" ? `@${ctx}` : "");
+let ctxLembrado = "forex", ctxAtual = "forex", ctxLente = "forex";
+try { const c = localStorage.getItem("monitor-ctx"); if (c === "bovespa" || c === "todos") ctxLembrado = c; } catch { /* sem armazenamento: segue o padrão */ }
+function lembrarContexto(c) {
+  ctxLembrado = c;
+  try { localStorage.setItem("monitor-ctx", c); } catch { /* ok */ }
+}
+const fontesDoCtx = () => CONTEXTOS[ctxLente]?.fontes ?? Object.keys(FONTES);
+
+// A "lente": o resto do dashboard compara `fonte === "youtube"` em dezenas de lugares. Em vez de mexer em todos, cada contexto
+// enxerga o estado só com as linhas dele e com o sufixo "@contexto" tirado do nome da fonte.
+function lente(bruto, ctx) {
+  if (!bruto) return bruto;
+  const doCtx = (linhas) => (linhas ?? []).filter((r) => ctxDe(r.fonte) === ctx).map((r) => ({ ...r, fonte: baseDe(r.fonte) }));
+  const chaves = (obj) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => ctxDe(k) === ctx).map(([k, v]) => [baseDe(k), v]));
+  return { ...bruto, contexto: ctx,
+    monitorFontes: doCtx(bruto.monitorFontes), monitorItens: doCtx(bruto.monitorItens), monitorSinais: doCtx(bruto.monitorSinais),
+    monitorResultados: doCtx(bruto.monitorResultados), monitorOrdens: doCtx(bruto.monitorOrdens), monitorMaquinas: doCtx(bruto.monitorMaquinas),
+    monitorComando: chaves(bruto.monitorComando),
+    // controles que ainda são só do Forex (painel dos agentes, termômetro, execução e login): vazios nos outros contextos
+    ...(ctx !== "forex" ? { agentesPainel: null, termometro: null, execucao: { selecao: { demo: {}, real: {} }, estado: { demo: null, real: null } }, loginFonte: {}, loginPedido: {} } : {}) };
+}
+
 // fontes no molde dos sites: uma linha por site/canal, com os pares recolhidos (item = "<site ou canal>:<par>")
 const COMO_SITES = new Set(["sites", "telegram"]);
 const MODALIDADES = [["todos", "Todos os sinais"], ["demo", "Demo"], ["real", "Real"], ["sem", "Sem disparo"]];  // páginas de análise (?m=)
@@ -289,14 +323,17 @@ function fonteDemo() {
       ],
     },
     monitorMaquinas: ["tiktok", "youtube", "sites", "telegram", "agentes", "tradingview"]
-      .map((fonte) => ({ fonte, maquina: "vps", visto_em: new Date(agora - 6e4).toISOString() })),
+      .concat(["youtube@bovespa"]).map((fonte) => ({ fonte, maquina: "vps", visto_em: new Date(agora - 6e4).toISOString() })),
     monitorFontes: [
       { fonte: "tiktok", ligado: true, vagas: "5 vagas", resumo: "1 gravando, 0 na fila, 1 em análise", atualizado_em: new Date(agora).toISOString() },
       { fonte: "telegram", ligado: true, vagas: "2 canais", resumo: "SureShotFX, SureShotFX Signals (FREE): 1 sinais abertos, leitura a cada 5 min", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), ultima_execucao: new Date(agora - 2 * 6e4).toISOString(), proxima_execucao: new Date(agora + 3 * 6e4).toISOString(), intervalo_min: 5 },
       { fonte: "sites", ligado: true, vagas: "3 site(s)", resumo: "Foresignal: 1 sinal aberto em 2 pares", atualizado_em: new Date(agora).toISOString() },
+      { fonte: "youtube@bovespa", ligado: true, vagas: "2 canais", resumo: "2 lives ao vivo, 1 em análise", atualizado_em: new Date(agora - 6e4).toISOString() },
       { fonte: "agentes", ligado: true, vagas: "5 ativos · cruzamento-medias", resumo: "1 sinal(is) aberto(s) · próxima rodada 10:30", atualizado_em: new Date(agora - 0.1 * h).toISOString(), ultima_execucao: new Date(agora - 0.1 * h).toISOString(), proxima_execucao: new Date(agora + 0.4 * h).toISOString(), intervalo_min: 30 },
     ],
     monitorItens: [
+      { fonte: "youtube@bovespa", item: "canal.win", nome: "@canal.win", estado: "gravando", ativo: true, analisando: true, espectadores: 2882, desde: new Date(agora - 0.3 * h).toISOString(), chamadas_hoje: 1, detalhe: "WIN ao vivo", ultima_analise: new Date(agora - 0.05 * h).toISOString(), proxima_analise: new Date(agora + 0.05 * h).toISOString(), ciclo_fim: new Date(agora + 0.2 * h).toISOString() },
+      { fonte: "youtube@bovespa", item: "canal.wdo", nome: "@canal.wdo", estado: "lido", ativo: false, analisando: false, espectadores: 2517, chamadas_hoje: 0, detalhe: "leitura 11:20: sem marcação legível", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.2 * h).toISOString() },
       { fonte: "tiktok", item: "canal.fx", nome: "@canal.fx", estado: "gravando", ativo: true, analisando: true, espectadores: 87, desde: new Date(agora - 0.4 * h).toISOString(), chamadas_hoje: 2, detalhe: "XAUUSD ao vivo", ultima_analise: new Date(agora - 0.07 * h).toISOString(), proxima_analise: new Date(agora + 0.03 * h).toISOString(), ciclo_fim: new Date(agora + 0.2 * h).toISOString() },
       { fonte: "tiktok", item: "outro", nome: "@outro", estado: "offline", ativo: false, analisando: false, chamadas_hoje: 0 },
       { fonte: "tiktok", item: "canal.b", nome: "@canal.b", estado: "lido", ativo: false, analisando: false, espectadores: 120, chamadas_hoje: 0, detalhe: "leitura 18:52: XAUUSD compra 4010", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.2 * h).toISOString(), ciclo_fim: new Date(agora + 0.22 * h).toISOString() },
@@ -310,7 +347,7 @@ function fonteDemo() {
       { fonte: "agentes", item: "CRUDEOIL", nome: "CRUDEOIL · USOIL", estado: "sem_sinal", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "SEM SINAL · lateral (ADX < 20) · ADX 15.2 · RSI 48 · fora da janela do ativo", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.4 * h).toISOString() },
       { fonte: "agentes", item: "multi-tf-auto:GOLD", nome: "multi-tf-auto · GOLD · XAUUSD", estado: "proximo", ativo: false, analisando: false, chamadas_hoje: 0, detalhe: "self-learning v3 · em ajuste · PRÓXIMO · M5 tendência +0.12 · M15 tendência +0.41 · H1 tendência +0.62 · vela heikin_ashi", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.9 * h).toISOString() },
     ],
-    monitorComando: { tiktok: true, sites: true, agentes: true, tradingview: true, telegram: true },
+    monitorComando: { tiktok: true, sites: true, agentes: true, tradingview: true, telegram: true, "youtube@bovespa": true },
     agentesPainel: demoAgentes(agora), selfLearning: true,
     termometro: demoTermometro(agora),
     consensoLigado: false,
@@ -321,6 +358,8 @@ function fonteDemo() {
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
     monitorResultados: [
       ...demoResultados(agora),
+      { fonte: "youtube@bovespa", sinal_id: 29, origem: "@canal.win", instrumento: "WIN", direcao: "compra", entrada: "129880", status: "alvo", resultado_r: 1.6, desde: new Date(agora - 5 * h).toISOString(), resolvido_em: new Date(agora - 4 * h).toISOString() },
+      { fonte: "youtube@bovespa", sinal_id: 30, origem: "@canal.wdo", instrumento: "WDO", direcao: "venda", entrada: "5410", status: "stop", resultado_r: -1, desde: new Date(agora - 3 * h).toISOString(), resolvido_em: new Date(agora - 2 * h).toISOString() },
       { fonte: "tiktok", sinal_id: 5, origem: "Consenso de 3 canais", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", status: "alvo", resultado_r: 1.8, desde: new Date(agora - 4.2 * h).toISOString(), resolvido_em: new Date(agora - 3 * h).toISOString() },
       { fonte: "tiktok", sinal_id: 4, origem: "@mogotrading_off", instrumento: "XAUUSD", direcao: "venda", entrada: "4031–4034", status: "alvo", resultado_r: 2.1, resolvido_em: new Date(agora - 2 * h).toISOString() },
       { fonte: "sites", sinal_id: 9, origem: "Foresignal", instrumento: "NZDUSD", direcao: "compra", entrada: "0.5682", status: "alvo", resultado_pontos: 12, resultado_unidade: "pips", resultado_fonte: "site", resolvido_em: new Date(agora - 1 * h).toISOString() },
@@ -331,6 +370,7 @@ function fonteDemo() {
       { fonte: "tradingview", sinal_id: 23, origem: "📐 novo-a (Novo A)", instrumento: "XAUUSD", direcao: "venda", entrada: "3960.8", status: "alvo", resultado_r: 2, desde: new Date(agora - 3 * h).toISOString(), resolvido_em: new Date(agora - 2.4 * h).toISOString() },
     ],
     monitorSinais: [
+      { fonte: "youtube@bovespa", sinal_id: 31, item: "canal.win", origem: "Sinal do canal @canal.win", instrumento: "WIN", direcao: "compra", entrada: "130150", stop: 129950, alvos: "130350 / 130550", desde: new Date(agora - 0.2 * h).toISOString(), ate: new Date(agora + 23.8 * h).toISOString() },
       { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "Sinal do canal @canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
       { fonte: "telegram", sinal_id: 5, item: "SureShotFX_Signals:XAUUSD", origem: "SureShotFX Signals (FREE)", instrumento: "XAUUSD", direcao: "compra", entrada: "3934–3944", stop: 3930, alvos: "3954 / 3964", desde: new Date(agora - 0.2 * h).toISOString(), ate: new Date(agora + 23.8 * h).toISOString() },
       { fonte: "sites", sinal_id: 2, item: "foresignal:EURUSD", origem: "Foresignal", instrumento: "EURUSD", direcao: "compra", entrada: "1.117", stop: 1.1149, alvos: "1.1187", desde: new Date(agora - 1 * h).toISOString(), ate: new Date(agora + 7 * h).toISOString() },
@@ -489,21 +529,29 @@ function demoAgentes(agora) {
 
 // ---------- rotas ----------
 
+// Rotas do monitor levam o contexto no prefixo (#/bovespa/youtube, #/todos/comparar). Sem prefixo vale o último contexto
+// escolhido (lembrado no navegador), então os links antigos e os de dentro das telas seguem no contexto em que o Diogo está.
 function rotaAtual() {
-  const h = location.hash;
+  let h = location.hash;
+  const mc = h.match(/^#\/(forex|bovespa|todos)(?=[/?]|$)/);
+  if (mc) { h = "#" + h.slice(mc[0].length); if (mc[1] !== ctxLembrado) lembrarContexto(mc[1]); }
+  const ctx = mc ? mc[1] : ctxLembrado;
+  const doMonitor = (r) => ({ ...r, ctx: ctx === "todos" ? "forex" : ctx });
+  if (mc?.[1] === "todos" || h.startsWith("#/comparar")) return { tipo: "comparar", ctx: "todos" };
+  if (mc && (h === "#" || h.startsWith("#?"))) return doMonitor({ tipo: "monitor" });
   const m = h.match(/^#\/p\/(\w+)/);
-  if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? { tipo: "monitor" } : { tipo: "projeto", id: m[1] };
-  if (h.startsWith("#/monitor")) return { tipo: "monitor" };
-  if (h.startsWith("#/termometro")) return { tipo: "termometro" };
+  if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? doMonitor({ tipo: "monitor" }) : { tipo: "projeto", id: m[1], ctx: "forex" };
+  if (h.startsWith("#/monitor")) return doMonitor({ tipo: "monitor" });
+  if (h.startsWith("#/termometro")) return doMonitor({ tipo: "termometro" });
   const an = h.match(/^#\/(agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
-  if (an) return { tipo: "analise", fonte: an[1], id: an[2] ? decodeURIComponent(an[2]) : undefined, modo: MODALIDADES.find(([k]) => k === new URLSearchParams(h.split("?")[1] ?? "").get("m"))?.[0] ?? "todos" };
-  return { tipo: "geral" };
+  if (an) return doMonitor({ tipo: "analise", fonte: an[1], id: an[2] ? decodeURIComponent(an[2]) : undefined, modo: MODALIDADES.find(([k]) => k === new URLSearchParams(h.split("?")[1] ?? "").get("m"))?.[0] ?? "todos" });
+  return { tipo: "geral", ctx: "forex" };
 }
-const chaveRota = (r) => r.tipo + (r.fonte ?? "") + (r.id ?? "") + (r.modo ?? "");
+const chaveRota = (r) => r.tipo + (r.ctx ?? "") + (r.fonte ?? "") + (r.id ?? "") + (r.modo ?? "");
 
 // ---------- componentes ----------
 
-let fonte, estado, ajustando = null, erro = "", filtroEventos = "", rotaRenderizada = null;
+let fonte, estado, estadoBruto = null, ajustando = null, erro = "", filtroEventos = "", rotaRenderizada = null;
 
 function htmlBadge(cls, texto, icone) {
   return `<span class="badge ${cls}">${icone ? ico(icone) : ""}${esc(texto)}</span>`;
@@ -682,25 +730,42 @@ function htmlIndicadores(c, p) {
 // Abre ao passar o mouse, ao focar com o teclado ou ao tocar na seta (celular). O estado e o foco sobrevivem ao redesenho
 // automático da página (a cada atualização o render troca o HTML inteiro). A lista do submenu fica FORA do .nav: o .nav rola
 // na horizontal e, em tela estreita, tem uma máscara de degradê que apagaria o submenu.
-const FONTES_MENU = ["tiktok", "youtube", "sites", "telegram", "agentes", "tradingview"];
 let menuMonitorAberto = false, atrasoFecharMenu = null;
 const sinaisAbertosDe = (e, f) => (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now())).length;
+const sinalAberto = (s) => !s.ate || new Date(s.ate) > Date.now();
+const NOME_CTX = { forex: "Forex", bovespa: "Bovespa", todos: "Todos" };
+const fmtR = (x) => `${x > 0 ? "+" : ""}${x.toFixed(2).replace(".", ",")} R`;
+const hrefCtx = (ctx, caminho = "monitor") => (ctx === "todos" ? "#/todos/comparar" : `#/${ctx}/${caminho}`);
 
 function htmlGrupoMonitor(rota, e) {
-  const total = FONTES_MENU.reduce((n, f) => n + sinaisAbertosDe(e, f), 0);
+  const total = (estadoBruto?.monitorSinais ?? []).filter((s) => sinalAberto(s) && (ctxAtual === "todos" || ctxDe(s.fonte) === ctxAtual)).length;
   return `<div class="aba-grupo" data-menu="monitor"${menuMonitorAberto ? " data-aberto" : ""}>
-    <a class="aba" href="#/monitor" ${["monitor", "analise", "termometro"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
+    <a class="aba" href="${hrefCtx(ctxAtual)}" ${["monitor", "analise", "termometro", "comparar"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
     <button type="button" class="aba-seta" data-menu-seta aria-expanded="${menuMonitorAberto}" aria-controls="menu-monitor" aria-label="Fontes do monitor">${ico("chevron")}</button>
   </div>`;
 }
 
 function htmlSubmenuMonitor(rota, e) {
-  const itens = FONTES_MENU.map((f) => {
-    const n = sinaisAbertosDe(e, f);
-    const s = saudeFonte(f, e).status;
-    return `<li><a href="#/${f}" ${rota.tipo === "analise" && rota.fonte === f ? 'aria-current="page"' : ""}><i class="ponto saude-${s.nivel}" title="${esc(s.t)}" aria-hidden="true"></i>${FONTES[f]}${s.nivel === "ok" ? "" : `<span class="so-leitor"> (${esc(s.t)})</span>`}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
-  }).join("") + `<li><a href="#/termometro" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>`;
-  return `<ul class="submenu" id="menu-monitor" aria-label="Fontes do monitor"${menuMonitorAberto ? " data-aberto" : ""}>${itens}</ul>`;
+  // o contexto do menu pode ser outro que o da tela (na Visão geral, p.ex.): a saúde e as contagens saem da lente do contexto do menu
+  const el = ctxAtual === "todos" ? null : lente(estadoBruto, ctxAtual);
+  const seletor = `<li class="ctx-seletor" role="group" aria-label="Contexto de mercado">${["forex", "bovespa", "todos"].map((c) =>
+    `<a href="${hrefCtx(c)}" ${c === ctxAtual ? 'aria-current="true"' : ""}>${NOME_CTX[c]}</a>`).join("")}</li>`;
+  const itens = ctxAtual === "todos"
+    ? `<li><a href="#/todos/comparar" ${rota.tipo === "comparar" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Comparar</a></li>`
+    : CONTEXTOS[ctxAtual].fontes.map((f) => {
+      const n = sinaisAbertosDe(el, f);
+      const s = saudeFonte(f, el).status;
+      return `<li><a href="${hrefCtx(ctxAtual, f)}" ${rota.tipo === "analise" && rota.fonte === f && rota.ctx === ctxAtual ? 'aria-current="page"' : ""}><i class="ponto saude-${s.nivel}" title="${esc(s.t)}" aria-hidden="true"></i>${FONTES[f]}${s.nivel === "ok" ? "" : `<span class="so-leitor"> (${esc(s.t)})</span>`}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
+    }).join("") + (CONTEXTOS[ctxAtual].termometro ? `<li><a href="${hrefCtx(ctxAtual, "termometro")}" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>` : "");
+  return `<ul class="submenu" id="menu-monitor" aria-label="Contexto e fontes do monitor"${menuMonitorAberto ? " data-aberto" : ""}>${seletor}${itens}</ul>`;
+}
+
+// Faixa do contexto: diz em qual mercado e corretora a tela está (as telas do Forex e da Bovespa são parecidas)
+function htmlFaixaContexto(rota) {
+  if (!["monitor", "analise", "termometro", "comparar"].includes(rota.tipo)) return "";
+  if (rota.tipo === "comparar") return `<p class="ctx-faixa" data-ctx="todos"><b>Todos</b><span>Forex × Bovespa lado a lado · resultado em R (euros na etapa seguinte)</span></p>`;
+  const c = CONTEXTOS[ctxLente];
+  return `<p class="ctx-faixa" data-ctx="${ctxLente}"><b>${c.nome}</b><span>${esc(c.corretora)}</span></p>`;
 }
 
 const menuEl = () => document.querySelector('[data-menu="monitor"]');
@@ -789,6 +854,7 @@ function htmlTopo(rota) {
     </div>
     <nav class="nav" aria-label="Projetos">${abas.join("")}</nav>
     ${htmlSubmenuMonitor(rota, e)}
+    ${htmlFaixaContexto(rota)}
   </header>`;
 }
 
@@ -828,14 +894,14 @@ function htmlFaixaGeral(e) {
   const abertas = painel ? painel.pendencias.filter((p) => !p.feito) : null;
   const doDiogo = abertas ? abertas.filter((p) => p.responsavel === "Diogo").length : 0;
   const sinais = (e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length;
-  const saudes = Object.keys(FONTES).map((f) => saudeFonte(f, e).status.nivel);
+  const saudes = fontesDoCtx().map((f) => saudeFonte(f, e).status.nivel);
   const fontesNoAr = saudes.filter((n) => n === "ok" || n === "atencao").length, paradas = saudes.filter((n) => n === "parada").length;
   const bloco = (icone, rotulo, valor, sub) => `<div><span class="rotulo">${ico(icone)}${rotulo}</span><span class="valor">${valor}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
   return `<div class="faixa">
     ${bloco("inbox", "Decisões pendentes", `<span data-contar="${e.pendentes.length}" data-fmt="int">${e.pendentes.length}</span>`, e.pendentes.length ? `a mais urgente vence em ${prazoRelativo(e.pendentes[0].prazo).texto}` : "nada esperando por você")}
     ${bloco("list", "Pendências abertas", abertas ? `<span data-contar="${abertas.length}" data-fmt="int">${abertas.length}</span>` : "—", abertas ? `${doDiogo} dependem do Diogo` : "rode sincronizar_painel.py")}
     ${bloco("target", "Lucro semanal (média 4 sem.)", `<span data-contar="${media4Total}" data-fmt="usd">${usd(media4Total)}</span>`, `meta realista desta semana ${usd(metaSemana)} · 28 dias ${usd(lucro28)}`)}
-    ${bloco("radio", "Monitor", `<span data-contar="${sinais}" data-fmt="int">${sinais}</span><small>sinais ativos</small>`, `${fontesNoAr} de ${Object.keys(FONTES).length} fontes no ar${paradas ? ` · <b class="neg">${paradas} parada${paradas > 1 ? "s" : ""}</b>` : ""}`)}
+    ${bloco("radio", "Monitor", `<span data-contar="${sinais}" data-fmt="int">${sinais}</span><small>sinais ativos</small>`, `${fontesNoAr} de ${fontesDoCtx().length} fontes no ar${paradas ? ` · <b class="neg">${paradas} parada${paradas > 1 ? "s" : ""}</b>` : ""}`)}
   </div>`;
 }
 
@@ -1094,16 +1160,17 @@ function htmlSinal(s) {
 
 // filtro por ativo da seção Monitor de lives (vale para sinais ativos, pares dos sites e placar)
 let filtroAtivo = (() => { try { return localStorage.getItem("filtroAtivo") || ""; } catch (e) { return ""; } })();
-const ATALHOS_ATIVO = [["", "Todos"], ["XAUUSD", "Ouro"], ["XAGUSD", "Prata"]];
+const ATALHOS_POR_CTX = { forex: [["", "Todos"], ["XAUUSD", "Ouro"], ["XAGUSD", "Prata"]], bovespa: [["", "Todos"], ["WIN", "Mini-índice"], ["WDO", "Mini-dólar"]] };
+const atalhosAtivo = () => ATALHOS_POR_CTX[ctxLente] ?? ATALHOS_POR_CTX.forex;
 const passaFiltro = (sym) => !filtroAtivo || String(sym || "").toUpperCase() === filtroAtivo;
 
 function htmlFiltroAtivo(e) {
   const ativos = new Set([...(e.monitorSinais ?? []), ...(e.monitorResultados ?? [])].map((s) => String(s.instrumento || "").toUpperCase()));
-  ATALHOS_ATIVO.forEach(([sym]) => sym && ativos.add(sym));
+  atalhosAtivo().forEach(([sym]) => sym && ativos.add(sym));
   const opcoes = [...ativos].filter(Boolean).sort();
   const chip = ([sym, rotulo]) => `<button class="btn" data-acao="filtro" data-ativo="${sym}" aria-pressed="${filtroAtivo === sym}">${sym ? iconeAtivo(sym) : ""}${rotulo}</button>`;
   return `<div class="filtros" style="align-items:center" role="group" aria-label="Filtrar por ativo">
-    <span class="meta">Ativo:</span>${ATALHOS_ATIVO.map(chip).join("")}
+    <span class="meta">Ativo:</span>${atalhosAtivo().map(chip).join("")}
     <select data-acao="filtro-lista" aria-label="Filtrar por ativo" style="width:auto;min-height:30px;padding:2px 8px;font-size:12.5px">
       <option value="">Outro ativo…</option>${opcoes.map((s) => `<option value="${s}" ${filtroAtivo === s ? "selected" : ""}>${s} (${NOME_CLASSE[classeAtivo(s)]})</option>`).join("")}
     </select>
@@ -1117,7 +1184,7 @@ function htmlFiltroAtivo(e) {
 function htmlPlacar(e) {
   const resultados = e.monitorResultados ?? [];
   const pct = (w, l) => (w + l ? `${Math.round((100 * w) / (w + l))}%` : "—");
-  const linhas = Object.keys(FONTES).map((f) => {
+  const linhas = fontesDoCtx().map((f) => {
     const lista = resultados.filter((r) => r.fonte === f && passaFiltro(r.instrumento));
     const w = lista.filter((r) => r.status === "alvo").length, l = lista.filter((r) => r.status === "stop").length;
     const outros = lista.length - w - l, total = lista.length || 1;
@@ -1163,7 +1230,7 @@ function sinaisVigentes(e, f) {
 }
 
 function htmlSinaisAtivos(e) {
-  const por = Object.keys(FONTES).map((f) => [f, sinaisVigentes(e, f)]);
+  const por = fontesDoCtx().map((f) => [f, sinaisVigentes(e, f)]);
   const total = por.reduce((n, [, l]) => n + l.length, 0);
   // fonte sem sinal não ganha cartão vazio: entra numa linha só, embaixo da grade
   const cartoes = por.filter(([, l]) => l.length).map(([f, l]) => `<div class="cartao">
@@ -1192,7 +1259,7 @@ function saudeFonte(f, e) {
   const desligado = !!info && !info.ligado && /desligado pelo dashboard/.test(info.resumo ?? "");
   // mercado fechado (sex 17:00 → dom 18:00 NY): o monitor para sozinho e volta na abertura (regra do Diogo, 30/10/2026)
   const fimDeSemana = !!info && !info.ligado && /^fim de semana/.test(info.resumo ?? "");
-  const status = !info ? { t: "sem dados", nivel: "atencao" }
+  const status = !info ? (e.contexto && e.contexto !== "forex" ? { t: "ainda não configurada", nivel: "inativa" } : { t: "sem dados", nivel: "atencao" })
     : atraso > 3 ? { t: periodica ? `rodada atrasada ${duracao(info.proxima_execucao)}` : `sem sinal há ${duracao(info.atualizado_em)}`, nivel: "parada" }
     : desligado ? { t: "desligado", nivel: "inativa" } : fimDeSemana ? { t: "fim de semana", nivel: "inativa" }
     : info.ligado ? { t: "no ar", nivel: "ok" } : { t: "pausado", nivel: "parada" };
@@ -1200,7 +1267,7 @@ function saudeFonte(f, e) {
   const motivos = [];
   if (status.nivel === "ok") {
     const login = e.loginFonte?.youtube;
-    if (f === "youtube" && (!login || login.estado !== "logado")) motivos.push("sem login");
+    if (f === "youtube" && (e.contexto ?? "forex") === "forex" && (!login || login.estado !== "logado")) motivos.push("sem login");  // o login é do YouTube do Forex
     const semDados = (e.monitorItens ?? []).filter((i) => i.fonte === f && (i.estado === "sem_dados" || i.estado === "erro")).length;
     if (semDados) motivos.push(`${semDados} sem dados`);
     if (motivos.length) status.nivel = "atencao";
@@ -1224,7 +1291,7 @@ function htmlMaquinaFonte(f, e) {
 }
 
 function htmlOperacao(e) {
-  const vivas = [...new Set(Object.keys(FONTES).map((f) => maquinaDaFonte(f, e)).filter((m) => m?.viva).map((m) => m.nome))];
+  const vivas = [...new Set(fontesDoCtx().map((f) => maquinaDaFonte(f, e)).filter((m) => m?.viva).map((m) => m.nome))];
   if (!vivas.length) return "";
   return vivas.length === 1 ? htmlBadge("muted", `operando em ${vivas[0]}`, "radio")
     : htmlBadge("warning", `operando em ${vivas.join(" e ")}`, "alert");
@@ -1232,12 +1299,12 @@ function htmlOperacao(e) {
 
 function htmlResumoSaude(e) {
   const n = { ok: 0, atencao: 0, parada: 0, inativa: 0 };
-  Object.keys(FONTES).forEach((f) => n[saudeFonte(f, e).status.nivel]++);
+  fontesDoCtx().forEach((f) => n[saudeFonte(f, e).status.nivel]++);
   return Object.entries(n).filter(([, v]) => v).map(([k, v]) => { const [cls, rot, icone] = NIVEL_SAUDE[k]; return htmlBadge(cls, `${v} ${v > 1 && k === "parada" ? "paradas" : v > 1 && k === "inativa" ? "inativas" : rot}`, icone); }).join("");
 }
 
 function htmlMonitor(e) {
-  const fontes = Object.keys(FONTES).map((f) => {
+  const fontes = fontesDoCtx().map((f) => {
     const itens = e.monitorItens.filter((i) => i.fonte === f)
       .sort((a, b) => (ORDEM_ESTADO[a.estado] ?? 9) - (ORDEM_ESTADO[b.estado] ?? 9) || (b.espectadores ?? 0) - (a.espectadores ?? 0));
     const visiveis = itens.filter((i) => !COMO_SITES.has(f) || !i.item.split(":").pop() || passaFiltro(i.item.split(":").pop()));
@@ -1270,17 +1337,18 @@ function htmlMonitor(e) {
         ${f === "agentes" && info ? htmlModosAgentes(e) : ""}</details>
     </div>`;
   });
-  const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
+  const algum = fontesDoCtx().some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span>
-      <span class="direita"><button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>
-      <button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
+      <span class="direita">${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
+      <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
 }
 
 // login da conta Google do monitor (YouTube): o estado vem do contêiner; a senha é digitada só no noVNC, nunca aqui
 function htmlLoginYoutube(e) {
+  if ((e.contexto ?? "forex") !== "forex") return "";  // o login de hoje é da conta Google do YouTube do Forex
   const l = e.loginFonte?.youtube;
   if (!l || (Date.now() - new Date(l.atualizado_em)) / 6e4 > 10) {
     return `<div class="meta"><span>Login da conta Google: sem informação (o contêiner do YouTube está parado?)</span></div>`;
@@ -1432,8 +1500,33 @@ function htmlTermometro(e) {
 const NOTA_USO = `<p class="meta nota">Uso pessoal: sinais só para o Diogo, nunca compartilhar. Não é recomendação.</p>`;
 const avisoErro = () => erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : "";
 
+// Contexto sem nenhuma fonte publicando ainda (Bovespa antes de o monitor rodar): diz o que falta, em vez de tela em branco
+function vistaContextoVazio(titulo) {
+  const c = CONTEXTOS[ctxLente];
+  return `<main class="uma">
+    ${avisoErro()}
+    <div class="cabecalho-proj compacto" style="--cor:${cor("monitor")}">
+      <div class="bloco">
+        <a class="voltar" href="#/">${ico("back")} Visão geral</a>
+        <h1><i class="ponto" aria-hidden="true"></i>${esc(titulo)}</h1>
+        <p class="resumo">Nenhuma fonte da ${esc(c.nome)} publicou ainda. Quando o monitor do contexto rodar, as fontes, os sinais e o placar aparecem aqui sozinhos.</p>
+      </div>
+    </div>
+    <section class="painel" aria-labelledby="h-falta">
+      <h2 id="h-falta">${ico("list")} O que ainda precisa existir</h2>
+      <ul class="lista compacta">
+        <li>Canais configurados e o monitor da fonte ligado (<code>${esc(ctxLente)}</code> no <code>07-monitor-${esc(ctxLente)}/</code>).</li>
+        <li>Grupo de Telegram do contexto com o bot (variável <code>TG_${esc(ctxLente.toUpperCase())}_CHAT_ID</code>).</li>
+        <li>Fonte de velas do contexto (TradingView ou exportador do MT5).</li>
+        <li>Execução: ${c.execucao ? "pelos botões Demo e Real de cada fonte." : "ainda não existe; por enquanto só sinais e placar."}</li>
+      </ul>
+    </section>
+  </main>`;
+}
+
 function vistaMonitor() {
   const e = estado;
+  if (ctxLente !== "forex" && !(e.monitorFontes ?? []).length) return vistaContextoVazio(`Monitor ${CONTEXTOS[ctxLente].nome}`);
   const p = e.projetos.find((x) => x.id === "monitor");
   const c = calcularProjeto("monitor", e);
   return `<main class="uma">
@@ -1441,8 +1534,8 @@ function vistaMonitor() {
     <div class="cabecalho-proj compacto" style="--cor:${cor("monitor")}">
       <div class="bloco">
         <a class="voltar" href="#/">${ico("back")} Visão geral</a>
-        <h1><i class="ponto" aria-hidden="true"></i>${esc(PROJETOS.monitor.longo)}</h1>
-        ${p?.fase || c.cfg.status ? `<div class="meta">${p?.fase ? `<span>${esc(p.fase)}</span>` : ""}${c.cfg.status ? `<span>${esc(c.cfg.status)}</span>` : ""}</div>` : ""}
+        <h1><i class="ponto" aria-hidden="true"></i>${ctxLente === "forex" ? esc(PROJETOS.monitor.longo) : `Monitor ${esc(CONTEXTOS[ctxLente].nome)} (uso pessoal)`}</h1>
+        ${ctxLente !== "forex" ? "" : p?.fase || c.cfg.status ? `<div class="meta">${p?.fase ? `<span>${esc(p.fase)}</span>` : ""}${c.cfg.status ? `<span>${esc(c.cfg.status)}</span>` : ""}</div>` : ""}
       </div>
     </div>
     ${htmlSinaisAtivos(e)}
@@ -1642,6 +1735,7 @@ function htmlAgente(a) {
 // contrato e o spread em US$ vêm da tabela CONTRATOS (lote 0,01). As chaves seguem a forma dos agentes, para a mesma página servir às quatro fontes.
 
 const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"], tradingview: ["layout", "layouts"], telegram: ["canal", "canais"] };
+const RESUMO_B3 = "Cada canal com o seu resultado em múltiplos do risco (R): o stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias. Dinheiro em R$ (contratos e custos da B3) entra na etapa seguinte. Uso pessoal: não é recomendação.";
 const RESUMO_ANALISE = {
   agentes: "Cada agente com o seu saldo teórico em US$ no lote 0,01, líquido de spread, pelos sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
   tiktok: "Cada canal do TikTok com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
@@ -1705,6 +1799,7 @@ const nomeDaUnidadeBase = (origem) => (/^consenso/i.test(origem ?? "") ? "Consen
 const plataformaDoCanal = (nome) => (nome.startsWith("@") ? "tiktok" : nome.startsWith("▶") ? "youtube" : null);
 // o canal do YouTube aparece nos dois monitores; cada página fica com os canais da sua plataforma e com os consensos que o monitor dela avisou
 function pertenceAFonte(f, fonteDoItem, origem) {
+  if (ctxLente !== "forex") return fonteDoItem === f;  // a lente já separou o contexto; a heurística de plataforma por canal é do Forex
   if (COMO_SITES.has(f) || f === "tradingview" || f === "agentes") return fonteDoItem === f;
   if (fonteDoItem !== "tiktok" && fonteDoItem !== "youtube") return false;
   const nome = nomeDaUnidadeBase(origem);
@@ -1916,20 +2011,93 @@ function htmlPorModalidade(f, id) {
 
 const hrefAnalise = (f, id, modo = rotaAtual().modo ?? "todos") => `#/${f}/${encodeURIComponent(id)}${modo && modo !== "todos" ? `?m=${modo}` : ""}`;
 
+// Comparar (contexto Todos): cada fonte de cada contexto, lado a lado, em R (independe de moeda e de lote). O resultado em euros
+// vem na etapa seguinte, com o câmbio do BCE do dia.
+function vistaComparar() {
+  const ctxs = ["forex", "bovespa"];
+  const pct = (w, l) => (w + l ? `${Math.round((100 * w) / (w + l))}%` : "—");
+  const linhas = ctxs.flatMap((ctx) => {
+    const l = lente(estadoBruto, ctx);
+    return CONTEXTOS[ctx].fontes.map((f) => {
+      const lista = (l.monitorResultados ?? []).filter((r) => r.fonte === f);
+      const w = lista.filter((r) => r.status === "alvo").length, perd = lista.filter((r) => r.status === "stop").length;
+      const rs = lista.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number);
+      const soma = rs.reduce((a, b) => a + b, 0);
+      const abertos = sinaisAbertosDe(l, f);
+      return `<tr><th scope="row" class="esq">${esc(NOME_CTX[ctx])}</th><td class="esq"><a href="${hrefCtx(ctx, f)}">${esc(FONTES[f])}</a></td>
+        <td class="num">${abertos}</td><td class="num">${w}</td><td class="num">${perd}</td>
+        <td class="num">${pct(w, perd)}${w + perd && w + perd < 10 ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td>
+        <td class="num">${rs.length ? fmtR(soma) : "—"}</td><td class="num">${rs.length ? fmtR(soma / rs.length) : "—"}</td></tr>`;
+    });
+  });
+  return `<main class="uma">
+    ${avisoErro()}
+    <div class="cabecalho-proj compacto" style="--cor:${cor("monitor")}">
+      <div class="bloco">
+        <a class="voltar" href="#/">${ico("back")} Visão geral</a>
+        <h1><i class="ponto" aria-hidden="true"></i>Comparar Forex e Bovespa</h1>
+        <p class="resumo">As mesmas fontes nos dois mercados, em múltiplos do risco (R), que não dependem de moeda nem de tamanho de lote. Só vale concluir com amostra grande e lucro nos dois trechos (treino e validação).</p>
+      </div>
+    </div>
+    <section class="painel" aria-labelledby="h-comp">
+      <h2 id="h-comp">${ico("target")} Placar por mercado <span class="count">últimos 30 dias</span></h2>
+      <div class="rolagem"><table class="tabela placar">
+        <thead><tr><th scope="col" class="esq">Mercado</th><th scope="col" class="esq">Fonte</th><th scope="col">Abertos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th></tr></thead>
+        <tbody>${linhas.join("")}</tbody></table></div>
+      <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. Promover algo de um mercado ao outro é decisão sua (N1) e exige backtest no mercado de destino.</p>
+    </section>
+  </main>`;
+}
+
+// Análise de uma fonte fora do Forex: um canal por linha, só em R. O resultado em dinheiro (R$) depende dos contratos e custos da B3,
+// que entram na etapa seguinte; até lá a página não mostra dinheiro para não afirmar o que não foi medido.
+function vistaAnaliseR(f) {
+  const porCanal = new Map();
+  resultadosDaFonte(f, estado).forEach((r) => { const k = r.origem ?? "—"; if (!porCanal.has(k)) porCanal.set(k, []); porCanal.get(k).push(r); });
+  const resumo = (rs) => {
+    const w = rs.filter((r) => r.status === "alvo").length, l = rs.filter((r) => r.status === "stop").length;
+    const rr = rs.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number), soma = rr.reduce((a, b) => a + b, 0);
+    return { w, l, acerto: w + l ? `${Math.round((100 * w) / (w + l))}%` : "—", total: rr.length ? fmtR(soma) : "—", medio: rr.length ? fmtR(soma / rr.length) : "—", poucos: w + l > 0 && w + l < 10 };
+  };
+  const linha = (nome, rs, forte) => { const s = resumo(rs); return `<tr${forte ? ' class="linha-total"' : ""}><th scope="row" class="esq">${esc(nome)}</th><td class="num">${rs.length}</td><td class="num">${s.w}</td><td class="num">${s.l}</td>
+      <td class="num">${s.acerto}${s.poucos ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td><td class="num">${s.total}</td><td class="num">${s.medio}</td></tr>`; };
+  const todos = [...porCanal.values()].flat();
+  return `<main class="uma">
+    ${avisoErro()}
+    <div class="cabecalho-proj" style="--cor:${cor("monitor")}">
+      <div class="bloco">
+        <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Monitor</a>
+        <h1><i class="ponto" aria-hidden="true"></i>${f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por canal`}</h1>
+        <p class="resumo">${RESUMO_B3}</p>
+      </div>
+    </div>
+    <section class="painel" aria-labelledby="h-canais">
+      <h2 id="h-canais">${ico("target")} Resultado por canal <span class="count">${porCanal.size} canais</span></h2>
+      ${todos.length ? `<div class="rolagem"><table class="tabela placar">
+        <thead><tr><th scope="col" class="esq">Canal</th><th scope="col">Resolvidos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th></tr></thead>
+        <tbody>${linha("Todos", todos, true)}${[...porCanal].map(([nome, rs]) => linha(nome, rs, false)).join("")}</tbody></table></div>`
+        : `<p class="meta">Nenhum sinal do ${esc(FONTES[f])} foi resolvido nos últimos 30 dias. A tabela aparece quando o placar resolver o primeiro.</p>`}
+      <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. Execução e dinheiro em R$ ainda não existem na Bovespa.</p>
+    </section>
+  </main>`;
+}
+
 function vistaAnalise(f, id, modo = "todos") {
+  if (ctxLente !== "forex" && !(estado.monitorFontes ?? []).some((x) => x.fonte === f) && !(estado.monitorResultados ?? []).some((x) => x.fonte === f)) return vistaContextoVazio(`${FONTES[f]} · ${CONTEXTOS[ctxLente].nome}`);
+  if (ctxLente !== "forex") return vistaAnaliseR(f);
   const ehAgentes = f === "agentes" && modo === "todos", p = painelDaModalidade(f, estado, modo), [um, varios] = SUBSTANTIVO[f];
   const din = dinheiro(p ?? {}), comOrdens = modo === "demo" || modo === "real";
   const cab = `<div class="cabecalho-proj" style="--cor:${cor("monitor")}">
       <div class="bloco">
         <a class="voltar" href="#/monitor">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>${f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
-        <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : comOrdens || modo === "sem" ? DESCRICAO_MODALIDADE[modo] : RESUMO_ANALISE[f]}</p>
+        <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : comOrdens || modo === "sem" ? DESCRICAO_MODALIDADE[modo] : ctxLente !== "forex" ? RESUMO_B3 : RESUMO_ANALISE[f]}</p>
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
-      <div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>
+      ${CONTEXTOS[ctxLente]?.execucao ?? true ? `<div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>` : ""}
       ${ehAgentes ? controleSelfLearning(p) : ""}
     </div>`;
-  const modalidades = `<nav class="abas-agentes modalidades" aria-label="Modalidade">${[["todos", "Todos os sinais"], ["demo", "Demo"], ["real", "Real"], ["sem", "Sem disparo"]]
+  const modalidades = !(CONTEXTOS[ctxLente]?.execucao ?? true) ? "" : `<nav class="abas-agentes modalidades" aria-label="Modalidade">${[["todos", "Todos os sinais"], ["demo", "Demo"], ["real", "Real"], ["sem", "Sem disparo"]]
     .map(([k, rotulo]) => `<a href="${hrefAnalise(f, id ?? TODOS, k)}" ${k === modo ? 'aria-current="page"' : ""}>${rotulo}</a>`).join("")}</nav>`;
   const estadoConta = comOrdens ? htmlEstadoExecucao(modo) : "";
   const aviso = erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : "";
@@ -1986,7 +2154,12 @@ function render() {
   const rota = rotaAtual();
   const nova = chaveRota(rota) !== rotaRenderizada;
   rotaRenderizada = chaveRota(rota);
-  const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor()
+  // contexto da tela (lente) e do menu: nas telas do monitor os dois coincidem; nas outras o menu segue o último contexto escolhido
+  const doMonitor = ["monitor", "analise", "termometro", "comparar"].includes(rota.tipo);
+  ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
+  ctxAtual = doMonitor ? (rota.tipo === "comparar" ? "todos" : rota.ctx) : ctxLembrado;
+  estado = ctxLente === "todos" ? estadoBruto : lente(estadoBruto, ctxLente);
+  const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar()
     : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo) : vistaGeral();
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
@@ -1994,7 +2167,7 @@ function render() {
   app.innerHTML = htmlTopo(rota) + corpo;
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
-  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte]} · Central de Comando` : "Central de Comando";
+  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte]}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
     main.classList.add("entrada");
@@ -2021,14 +2194,14 @@ function contar(raiz) {
 }
 
 function navegar() {
-  if (!estado) return;
+  if (!estadoBruto) return;
   if (document.startViewTransition && !reduzMovimento()) document.startViewTransition(() => render());
   else render();
 }
 
 async function recarregar() {
-  try { estado = await fonte.carregar(); erro = ""; } catch (e) { erro = `Falha ao carregar: ${e.message}`; }
-  if (!estado) return;
+  try { estadoBruto = await fonte.carregar(); erro = ""; } catch (e) { erro = `Falha ao carregar: ${e.message}`; }
+  if (!estadoBruto) return;
   render();
   const sync = document.getElementById("sync");
   if (sync) { sync.classList.add("piscou"); setTimeout(() => sync.classList.remove("piscou"), 600); }
@@ -2057,6 +2230,11 @@ document.addEventListener("click", (ev) => {
   if (acao === "pausa") { b.disabled = true; return agir(() => fonte.pausar(!estado.pausado)); }
   if (acao === "filtro") return definirFiltro(b.dataset.ativo);
   if (acao === "filtro-eventos") { filtroEventos = b.dataset.projeto; return render(); }
+  // self-learning, consenso, execução e login gravam em chaves globais que hoje são do Forex: fora dele, nada é gravado
+  if (["self-learning", "consenso", "execucao", "login"].includes(acao) && ctxLente !== "forex") {
+    erro = "Este controle ainda é só do Forex. Na Bovespa não há execução nem self-learning ligados.";
+    return render();
+  }
   if (acao === "self-learning") {
     const ligar = b.dataset.ligar === "true";
     if (!ligar && !confirm("Pausar o self-learning? As rodadas dos agentes continuam; só param os ajustes automáticos de parâmetros até retomar.")) return;
@@ -2095,7 +2273,7 @@ document.addEventListener("click", (ev) => {
     if (!ligar && !confirm(soPeriodicas ? `Desligar os agentes (${nomes})? As rodadas param (os sinais abertos continuam a ser conferidos) até ligar de novo.`
       : `Desligar o monitor (${nomes})? As gravações em andamento são encerradas e nada é capturado até ligar de novo.`)) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarMonitor(fontes, ligar));
+    return agir(() => fonte.comandarMonitor(fontes.map((f) => f + sufixoDe(ctxLente)), ligar));  // youtube@bovespa nunca liga/desliga o youtube do Forex
   }
   if (acao === "confirmar-ajuste") {
     const texto = document.getElementById(`aj-${id}`).value.trim();

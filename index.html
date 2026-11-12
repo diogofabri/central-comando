@@ -118,6 +118,14 @@ code { font: 12.5px/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: v
 .submenu .ponto.saude-parada { background: var(--critical); } .submenu .ponto.saude-inativa { background: var(--ink-3); }
 .so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .submenu .count { margin-left: auto; }
+/* contexto de mercado (Forex | Bovespa | Todos): controle segmentado no topo do submenu e faixa com a corretora na tela */
+.submenu .ctx-seletor { display: flex; gap: 2px; padding: 3px; margin: 0 0 6px; background: var(--chip); border-radius: 8px; }
+.submenu .ctx-seletor a { flex: 1; justify-content: center; min-height: 36px; padding: 0 12px; }
+.submenu .ctx-seletor a[aria-current="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / .14); }
+.ctx-faixa { margin: 0; padding: 8px 16px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); }
+.ctx-faixa b { color: var(--ink); font-weight: 600; }
+.tabela th.esq, .tabela td.esq { text-align: left; }
+@media (pointer: coarse) { .submenu .ctx-seletor a { min-height: 44px; } }
 @media (pointer: coarse) { .submenu a { min-height: 44px; } .aba-seta { width: 36px; } }
 
 /* ---------- layout ---------- */
@@ -557,6 +565,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=52"></script>
+<script src="app.js?v=58"></script>
 </body>
 </html>
