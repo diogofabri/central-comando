@@ -161,7 +161,7 @@ function fonteSupabase(cfg) {
     demo: false,
     sb,
     async carregar() {
-      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, controle, monitorFontes, monitorItens, monitorSinais, monitorResultados, kpis, lancamentos, monitorOrdens] = await Promise.all([
+      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, controle, monitorFontes, monitorItens, monitorSinais, monitorResultados, kpis, lancamentos, monitorOrdens, monitorMaquinas] = await Promise.all([
         sb.from("v_estado_projetos").select("*").order("id").then(ok),
         sb.from("decisoes").select("*").eq("status", "pendente").order("impacto", { ascending: false }).order("prazo").then(ok),
         sb.from("decisoes").select("*").neq("status", "pendente").order("decidido_em", { ascending: false }).limit(20).then(ok),
@@ -177,6 +177,8 @@ function fonteSupabase(cfg) {
         sb.from("v_lancamentos_usd").select("data,projeto_id,tipo,valor,moeda,valor_usd,descricao").order("data", { ascending: false }).limit(600).then(ok),
         // ordens da ponte do MT5 (migração 0011); sem a tabela ainda, a página segue só com o placar teórico
         sb.from("monitor_ordens").select("*").gte("criado_em", new Date(Date.now() - 31 * 864e5).toISOString()).order("id").limit(3000).then(ok).catch(() => []),
+        // máquina dona de cada fonte (Mac × VPS, migração 0006): renovada a cada passagem do monitor
+        sb.from("monitor_maquinas").select("fonte,maquina,visto_em").then(ok).catch(() => []),
       ]);
       const ctl = Object.fromEntries(controle.map((c) => [c.chave, c.valor]));
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
@@ -185,7 +187,7 @@ function fonteSupabase(cfg) {
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
                termometro: ctl["termometro:painel"] ?? null,
                loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
-               consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, execucao: execucaoDoControle(ctl) };
+               consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl) };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -286,6 +288,8 @@ function fonteDemo() {
         { projeto: "global", secao: "Decisões pendentes", texto: "Contador em PT: abrir atividade (recibos verdes, IVA, Segurança Social).", feito: false, responsavel: null, data: null },
       ],
     },
+    monitorMaquinas: ["tiktok", "youtube", "sites", "telegram", "agentes", "tradingview"]
+      .map((fonte) => ({ fonte, maquina: "vps", visto_em: new Date(agora - 6e4).toISOString() })),
     monitorFontes: [
       { fonte: "tiktok", ligado: true, vagas: "5 vagas", resumo: "1 gravando, 0 na fila, 1 em análise", atualizado_em: new Date(agora).toISOString() },
       { fonte: "telegram", ligado: true, vagas: "2 canais", resumo: "SureShotFX, SureShotFX Signals (FREE): 1 sinais abertos, leitura a cada 5 min", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), ultima_execucao: new Date(agora - 2 * 6e4).toISOString(), proxima_execucao: new Date(agora + 3 * 6e4).toISOString(), intervalo_min: 5 },
@@ -1205,6 +1209,27 @@ function saudeFonte(f, e) {
   return { info, periodica, atraso, querLigado, desligado, status, motivos };
 }
 
+// máquina dona de cada fonte (12/11/2026: VPS em operação, Mac só leitura). Posse vencida (> 5 min sem renovar) = ninguém.
+function maquinaDaFonte(f, e) {
+  const m = (e.monitorMaquinas ?? []).find((x) => x.fonte === f);
+  if (!m) return null;
+  return { nome: m.maquina, viva: (Date.now() - new Date(m.visto_em)) / 6e4 <= 5, visto: m.visto_em };
+}
+
+function htmlMaquinaFonte(f, e) {
+  const m = maquinaDaFonte(f, e);
+  if (!m) return "";
+  return m.viva ? `<span title="Máquina dona da fonte (renovada há ${duracao(m.visto)})">em <b>${esc(m.nome)}</b></span>`
+    : `<span title="Nenhuma máquina renovou a posse desta fonte há ${duracao(m.visto)}">sem máquina (última: <b>${esc(m.nome)}</b>)</span>`;
+}
+
+function htmlOperacao(e) {
+  const vivas = [...new Set(Object.keys(FONTES).map((f) => maquinaDaFonte(f, e)).filter((m) => m?.viva).map((m) => m.nome))];
+  if (!vivas.length) return "";
+  return vivas.length === 1 ? htmlBadge("muted", `operando em ${vivas[0]}`, "radio")
+    : htmlBadge("warning", `operando em ${vivas.join(" e ")}`, "alert");
+}
+
 function htmlResumoSaude(e) {
   const n = { ok: 0, atencao: 0, parada: 0, inativa: 0 };
   Object.keys(FONTES).forEach((f) => n[saudeFonte(f, e).status.nivel]++);
@@ -1233,7 +1258,7 @@ function htmlMonitor(e) {
     return `<div class="cartao" data-fonte="${f}" data-saude="${status.nivel}">
       <div class="cartao-topo">
       <div class="titulo titulo-fonte"><span class="nome-fonte">${FONTES[f]}</span>${botao}</div>
-      <div class="meta estado-fonte">${selo}${motivos.filter((m) => m !== "sem login").map((m) => htmlBadge("warning", m, "alert")).join("")}${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}</div>
+      <div class="meta estado-fonte">${selo}${motivos.filter((m) => m !== "sem login").map((m) => htmlBadge("warning", m, "alert")).join("")}${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}${htmlMaquinaFonte(f, e)}</div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
       ${f === "youtube" ? htmlLoginYoutube(e) : ""}
       ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
@@ -1247,7 +1272,7 @@ function htmlMonitor(e) {
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
-    <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}</span>
+    <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span>
       <span class="direita"><button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>
       <button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
