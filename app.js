@@ -693,7 +693,8 @@ function htmlGrupoMonitor(rota, e) {
 function htmlSubmenuMonitor(rota, e) {
   const itens = FONTES_MENU.map((f) => {
     const n = sinaisAbertosDe(e, f);
-    return `<li><a href="#/${f}" ${rota.tipo === "analise" && rota.fonte === f ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>${FONTES[f]}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
+    const s = saudeFonte(f, e).status;
+    return `<li><a href="#/${f}" ${rota.tipo === "analise" && rota.fonte === f ? 'aria-current="page"' : ""}><i class="ponto saude-${s.nivel}" title="${esc(s.t)}" aria-hidden="true"></i>${FONTES[f]}${s.nivel === "ok" ? "" : `<span class="so-leitor"> (${esc(s.t)})</span>`}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
   }).join("") + `<li><a href="#/termometro" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>`;
   return `<ul class="submenu" id="menu-monitor" aria-label="Fontes do monitor"${menuMonitorAberto ? " data-aberto" : ""}>${itens}</ul>`;
 }
@@ -823,13 +824,14 @@ function htmlFaixaGeral(e) {
   const abertas = painel ? painel.pendencias.filter((p) => !p.feito) : null;
   const doDiogo = abertas ? abertas.filter((p) => p.responsavel === "Diogo").length : 0;
   const sinais = (e.monitorSinais ?? []).filter((s) => !s.ate || new Date(s.ate) > Date.now()).length;
-  const fontesNoAr = (e.monitorFontes ?? []).filter((f) => f.ligado && (Date.now() - new Date(f.atualizado_em)) / 6e4 <= 3).length;
+  const saudes = Object.keys(FONTES).map((f) => saudeFonte(f, e).status.nivel);
+  const fontesNoAr = saudes.filter((n) => n === "ok" || n === "atencao").length, paradas = saudes.filter((n) => n === "parada").length;
   const bloco = (icone, rotulo, valor, sub) => `<div><span class="rotulo">${ico(icone)}${rotulo}</span><span class="valor">${valor}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
   return `<div class="faixa">
     ${bloco("inbox", "Decisões pendentes", `<span data-contar="${e.pendentes.length}" data-fmt="int">${e.pendentes.length}</span>`, e.pendentes.length ? `a mais urgente vence em ${prazoRelativo(e.pendentes[0].prazo).texto}` : "nada esperando por você")}
     ${bloco("list", "Pendências abertas", abertas ? `<span data-contar="${abertas.length}" data-fmt="int">${abertas.length}</span>` : "—", abertas ? `${doDiogo} dependem do Diogo` : "rode sincronizar_painel.py")}
     ${bloco("target", "Lucro semanal (média 4 sem.)", `<span data-contar="${media4Total}" data-fmt="usd">${usd(media4Total)}</span>`, `meta realista desta semana ${usd(metaSemana)} · 28 dias ${usd(lucro28)}`)}
-    ${bloco("radio", "Monitor", `<span data-contar="${sinais}" data-fmt="int">${sinais}</span><small>sinais ativos</small>`, `${fontesNoAr} de ${Object.keys(FONTES).length} fontes no ar`)}
+    ${bloco("radio", "Monitor", `<span data-contar="${sinais}" data-fmt="int">${sinais}</span><small>sinais ativos</small>`, `${fontesNoAr} de ${Object.keys(FONTES).length} fontes no ar${paradas ? ` · <b class="neg">${paradas} parada${paradas > 1 ? "s" : ""}</b>` : ""}`)}
   </div>`;
 }
 
@@ -1170,23 +1172,49 @@ function htmlSinaisAtivos(e) {
   </section>`;
 }
 
+// Saúde de uma fonte, num lugar só (cartão do Monitor, resumo da seção, pontos do submenu e faixa da Visão geral):
+// ok = no ar sem problema; atencao = no ar com algo a resolver (login, itens sem dados) ou sem nenhum dado publicado;
+// parada = atrasada ou pausada sozinha; inativa = desligada pelo dashboard ou fim de semana (esperado).
+const NIVEL_SAUDE = { ok: ["good", "no ar", "check"], atencao: ["warning", "atenção", "alert"], parada: ["critical", "parada", "alert"], inativa: ["muted", "inativa", "pause"] };
+function saudeFonte(f, e) {
+  const info = (e.monitorFontes ?? []).find((x) => x.fonte === f);
+  const periodica = FONTES_PERIODICAS.has(f);
+  // fonte periódica (agentes): está "no ar" enquanto a próxima rodada prevista não atrasar mais de 10 min
+  const atraso = !info ? Infinity : periodica ? (info.proxima_execucao ? (Date.now() - new Date(info.proxima_execucao)) / 6e4 - 10 : 0)
+    : (Date.now() - new Date(info.atualizado_em)) / 6e4;
+  const querLigado = e.monitorComando?.[f] !== false;  // sem comando = ligado
+  const desligado = !!info && !info.ligado && /desligado pelo dashboard/.test(info.resumo ?? "");
+  // mercado fechado (sex 17:00 → dom 18:00 NY): o monitor para sozinho e volta na abertura (regra do Diogo, 30/10/2026)
+  const fimDeSemana = !!info && !info.ligado && /^fim de semana/.test(info.resumo ?? "");
+  const status = !info ? { t: "sem dados", nivel: "atencao" }
+    : atraso > 3 ? { t: periodica ? `rodada atrasada ${duracao(info.proxima_execucao)}` : `sem sinal há ${duracao(info.atualizado_em)}`, nivel: "parada" }
+    : desligado ? { t: "desligado", nivel: "inativa" } : fimDeSemana ? { t: "fim de semana", nivel: "inativa" }
+    : info.ligado ? { t: "no ar", nivel: "ok" } : { t: "pausado", nivel: "parada" };
+  // no ar, mas com algo a resolver: vira "atenção" e diz o quê
+  const motivos = [];
+  if (status.nivel === "ok") {
+    const login = e.loginFonte?.youtube;
+    if (f === "youtube" && (!login || login.estado !== "logado")) motivos.push("sem login");
+    const semDados = (e.monitorItens ?? []).filter((i) => i.fonte === f && (i.estado === "sem_dados" || i.estado === "erro")).length;
+    if (semDados) motivos.push(`${semDados} sem dados`);
+    if (motivos.length) status.nivel = "atencao";
+  }
+  status.c = NIVEL_SAUDE[status.nivel][0];
+  return { info, periodica, atraso, querLigado, desligado, status, motivos };
+}
+
+function htmlResumoSaude(e) {
+  const n = { ok: 0, atencao: 0, parada: 0, inativa: 0 };
+  Object.keys(FONTES).forEach((f) => n[saudeFonte(f, e).status.nivel]++);
+  return Object.entries(n).filter(([, v]) => v).map(([k, v]) => { const [cls, rot, icone] = NIVEL_SAUDE[k]; return htmlBadge(cls, `${v} ${v > 1 && k === "parada" ? "paradas" : v > 1 && k === "inativa" ? "inativas" : rot}`, icone); }).join("");
+}
+
 function htmlMonitor(e) {
   const fontes = Object.keys(FONTES).map((f) => {
-    const info = e.monitorFontes.find((x) => x.fonte === f);
     const itens = e.monitorItens.filter((i) => i.fonte === f)
       .sort((a, b) => (ORDEM_ESTADO[a.estado] ?? 9) - (ORDEM_ESTADO[b.estado] ?? 9) || (b.espectadores ?? 0) - (a.espectadores ?? 0));
     const visiveis = itens.filter((i) => !COMO_SITES.has(f) || !i.item.split(":").pop() || passaFiltro(i.item.split(":").pop()));
-    const periodica = FONTES_PERIODICAS.has(f);
-    // fonte periódica (agentes): está "no ar" enquanto a próxima rodada prevista não atrasar mais de 10 min
-    const atraso = !info ? Infinity : periodica ? (info.proxima_execucao ? (Date.now() - new Date(info.proxima_execucao)) / 6e4 - 10 : 0)
-      : (Date.now() - new Date(info.atualizado_em)) / 6e4;
-    const querLigado = e.monitorComando?.[f] !== false;  // sem comando = ligado
-    const desligado = info && !info.ligado && /desligado pelo dashboard/.test(info.resumo ?? "");
-    // mercado fechado (sex 17:00 → dom 18:00 NY): o monitor para sozinho e volta na abertura (regra do Diogo, 30/10/2026)
-    const fimDeSemana = info && !info.ligado && /^fim de semana/.test(info.resumo ?? "");
-    const status = !info ? { t: "sem dados", c: "muted" } : atraso > 3 ? { t: periodica ? `rodada atrasada ${duracao(info.proxima_execucao)}` : `sem sinal há ${duracao(info.atualizado_em)}`, c: "critical" }
-      : desligado ? { t: "desligado", c: "muted" } : fimDeSemana ? { t: "fim de semana", c: "muted" }
-      : info.ligado ? { t: "no ar", c: "good" } : { t: "pausado", c: "critical" };
+    const { info, periodica, atraso, querLigado, desligado, status, motivos } = saudeFonte(f, e);
     const rodada = periodica && info ? `<div class="meta">
         <span>último acionamento ${info.ultima_execucao ? `<b class="num" data-desde="${esc(info.ultima_execucao)}">${textoDesde(info.ultima_execucao)}</b>` : "<b>nunca</b>"}</span>
         ${info.proxima_execucao && info.ligado ? `<span>próximo em <b class="num" data-ate="${esc(info.proxima_execucao)}">${textoContador(info.proxima_execucao)}</b></span>` : ""}
@@ -1197,10 +1225,13 @@ function htmlMonitor(e) {
     const botao = `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}" aria-label="${querLigado ? "Desligar" : "Ligar"} ${esc(FONTES[f])}" title="${querLigado ? "Desligar" : "Ligar"} ${esc(FONTES[f])}">${ico(querLigado ? "power" : "play")}<span class="rotulo-btn">${querLigado ? "Desligar" : "Ligar"}</span></button>`;
     const aviso = pendente ? `<span class="badge warning">${ico("loader")}${querLigado ? "ligando…" : "desligando…"}</span>`
       : atraso > 3 && info ? `<span class="meta">${periodica ? "o executor dos agentes parou: conferir o launchd com.vinculo.agentes e o log em 05-monitor-lives/dados-agentes/logs/" : `o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code>`}</span>` : "";
-    return `<div class="cartao" data-fonte="${f}">
+    const selo = status.nivel === "ok" || (status.nivel === "atencao" && info)
+      ? `<span class="badge good"><i class="ponto vivo" aria-hidden="true"></i>${status.t}</span>`
+      : htmlBadge(status.c, status.t, NIVEL_SAUDE[status.nivel][2]);
+    return `<div class="cartao" data-fonte="${f}" data-saude="${status.nivel}">
       <div class="cartao-topo">
       <div class="titulo titulo-fonte"><span class="nome-fonte">${FONTES[f]}</span>${botao}</div>
-      <div class="meta estado-fonte"><span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span>${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}</div>
+      <div class="meta estado-fonte">${selo}${motivos.filter((m) => m !== "sem login").map((m) => htmlBadge("warning", m, "alert")).join("")}${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}</div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
       ${f === "youtube" ? htmlLoginYoutube(e) : ""}
       ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
@@ -1214,7 +1245,7 @@ function htmlMonitor(e) {
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
-    <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
+    <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}</span>
       <span class="direita"><button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>
       <button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
