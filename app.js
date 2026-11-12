@@ -930,8 +930,9 @@ function vistaProjeto(id) {
 function textoContador(iso) {
   const s = Math.round((new Date(iso) - Date.now()) / 1000);
   if (s <= 0) return "agora";
+  // por extenso ("22 min 44 s"): "22:44" ao lado de horários ("23:21") se lia como hora
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), seg = String(s % 60).padStart(2, "0");
-  return h ? `${h}:${String(m).padStart(2, "0")}:${seg}` : `${m}:${seg}`;
+  return h ? `${h} h ${String(m).padStart(2, "0")} min` : m ? `${m} min ${seg} s` : `${s} s`;
 }
 function textoDesde(iso) {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
@@ -1072,7 +1073,8 @@ function iconeAtivo(sym) { return ico(classeAtivo(sym), "ativo-ico"); }
 // casas decimais pela grandeza do preço (índices e ouro 2, petróleo 3, forex e cripto 5, abaixo de 1 até 6): os portes
 // e o ATR geram 28171.72125; o cartão mostra 28171.72 sem inventar precisão
 const casasDoPreco = (x) => (Math.abs(x) >= 100 ? 2 : Math.abs(x) >= 10 ? 3 : Math.abs(x) >= 1 ? 5 : 6);
-const precoCurto = (v) => (v == null ? "—" : String(v).replace(/\d+\.\d+/g, (m) => String(Number(Number(m).toFixed(casasDoPreco(Number(m)))))));
+// no formato do resto da tela (pt-BR: vírgula decimal, ponto de milhar): "1.117" virava mil cento e dezessete
+const precoCurto = (v) => (v == null ? "—" : String(v).replace(/\d+(?:\.\d+)?/g, (m) => Number(m).toLocaleString("pt-BR", { maximumFractionDigits: casasDoPreco(Number(m)) })));
 
 function htmlSinal(s) {
   const venda = s.direcao === "venda";
@@ -1512,7 +1514,9 @@ function svgSaldo(a) {
   const x = (t) => L + (w * (t - t0)) / Math.max(1, t1 - t0), y = (v) => T + h - (h * (v - yMin)) / (yMax - yMin);
   const d = pts.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const area = `${d} L${x(t1).toFixed(1)},${y(0).toFixed(1)} L${x(t0).toFixed(1)},${y(0).toFixed(1)} Z`;
-  const ticks = [yMin, (yMin + yMax) / 2, yMax];
+  // o zero sempre rotulado (é a linha de referência do saldo); rótulo a menos de 14 px de outro sai
+  const ticks = (yMin < 0 ? [yMin, 0, yMax] : [0, yMax / 2, yMax]).filter((t, i, l) => i === 0 || t === 0 || Math.abs(y(t) - y(l[i - 1])) >= 14)
+    .filter((t, i, l) => t === 0 || !l.includes(0) || Math.abs(y(t) - y(0)) >= 14);
   const trocas = (a.trocas ?? []).filter((m) => { const t = new Date(m.em).getTime(); return t >= t0 && t <= t1; });
   const ult = pts[pts.length - 1];
   const din = dinheiro(a), curto = a.unidade === "r" ? (t) => String(Math.round(t * 10) / 10).replace(".", ",") : usdCurto;

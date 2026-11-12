@@ -501,6 +501,7 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 .grafico .troca, .amostra-troca { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 2 3; }
 .grafico .troca-rot { fill: var(--ink-2); font-weight: 600; }
 .amostra-saldo { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
+.grafico.saldo.negativo .amostra-saldo { stroke: var(--critical); }  /* a legenda segue a cor da linha */
 .entrada .grafico .linha-saldo { stroke-dasharray: 1; stroke-dashoffset: 1; animation: traca .9s var(--saida) .15s both; }
 @media (max-width: 900px) { .agente-grade, .recortes { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 640px) { .zero .trilho { width: 72px; } .barras li { grid-template-columns: 3.6em auto; } .barras li .meta { grid-column: 2; justify-content: flex-start; } }
@@ -556,6 +557,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=50"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>
