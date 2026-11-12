@@ -355,6 +355,26 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 /* ---------- monitor ---------- */
 .fila { border-top: 1px dashed var(--line-2); padding-top: 8px; margin-top: 10px; }
 .fila .lista li { border-bottom-color: var(--line); }
+details.fila > summary { margin-top: 0; }
+.cabecalho-proj.compacto { padding: 12px 18px; }
+.cabecalho-proj.compacto .bloco { gap: 4px; }
+p.nota { margin-top: 8px; max-width: 75ch; text-wrap: pretty; }
+main.uma > p.nota { margin-top: 0; }
+/* termômetro compacto no Monitor: uma linha por ativo */
+.termo-compacto { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.termo-compacto li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 9px 14px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.termo-compacto li > a { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); text-decoration: none; }
+.termo-compacto li > a:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.termo-compacto .num.alta { color: var(--good); } .termo-compacto .num.baixa { color: var(--critical); }
+.termo-compacto .selos { display: flex; flex-wrap: wrap; gap: 4px; }
+/* placar resumido: uma linha por fonte */
+.tabela.placar th[scope="row"] { text-align: left; font-weight: 600; }
+.tabela.placar th[scope="row"] a { color: var(--ink); }
+.tabela.placar td.col-zero { min-width: 140px; width: 32%; }
+.tabela.placar .placar-barra { margin: 0; }
+.tabela.placar .amostra { display: block; color: var(--ink-3); font-size: 11.5px; font-weight: 400; }
+/* celular: sem a barra e os expirados, Fonte · Win · Loss · Acerto · R médio cabem sem rolar */
+@media (max-width: 560px) { .tabela.placar .col-zero, .tabela.placar .col-expirados { display: none; } }
 /* 5 fontes (TikTok, YouTube, Sites, Agentes, TradingView): 230 px cabem lado a lado a partir de ~1180 px de largura */
 .grade-cartoes.larga { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
 .grade-cartoes.larga.sinais { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }  /* 6 fontes numa linha a partir de ~1.200 px */
@@ -521,6 +541,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=48"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>

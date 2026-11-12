@@ -50,16 +50,6 @@ function linkCanal(fonte, item, nome) {
   const url = urlCanal(fonte, item);
   return url ? `<a class="canal" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Abrir em outra aba">${esc(nome)}${ico("external")}</a>` : esc(nome);
 }
-// origem (texto mostrado) → item, para o placar, que só guarda a origem
-function itemDaOrigem(fonte, origem, e) {
-  const achado = (e.monitorItens ?? []).find((i) => i.fonte === fonte && i.nome === origem)
-    ?? (e.monitorSinais ?? []).find((s) => s.fonte === fonte && s.origem === origem);
-  if (achado) return achado.item;
-  if (fonte === "tiktok" && /^@[\w.]+$/.test(origem)) return origem.slice(1);
-  if (fonte === "sites") { const id = Object.keys(SITES_URL).find((k) => origem.toLowerCase().startsWith(k)); return id ? `${id}:` : null; }
-  if (fonte === "telegram") { const i = (e.monitorItens ?? []).find((x) => x.fonte === fonte && x.nome.startsWith(`${origem} ·`)); return i ? i.item : null; }
-  return null;
-}
 const inteiro = (v) => Math.round(Number(v) || 0).toLocaleString("pt-BR");
 const usd = (v) => `US$ ${inteiro(v)}`;
 const brl = (v, taxa) => `R$ ${inteiro((Number(v) || 0) * taxa)}`;
@@ -171,7 +161,7 @@ function fonteSupabase(cfg) {
     demo: false,
     sb,
     async carregar() {
-      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, controle, monitorFontes, monitorItens, monitorSinais, monitorResultados, kpis, lancamentos, monitorConsensos, monitorOrdens] = await Promise.all([
+      const [projetos, pendentes, resolvidas, instrucoes, eventos, cambio, controle, monitorFontes, monitorItens, monitorSinais, monitorResultados, kpis, lancamentos, monitorOrdens] = await Promise.all([
         sb.from("v_estado_projetos").select("*").order("id").then(ok),
         sb.from("decisoes").select("*").eq("status", "pendente").order("impacto", { ascending: false }).order("prazo").then(ok),
         sb.from("decisoes").select("*").neq("status", "pendente").order("decidido_em", { ascending: false }).limit(20).then(ok),
@@ -185,13 +175,12 @@ function fonteSupabase(cfg) {
         sb.from("monitor_resultados").select("*").order("resolvido_em", { ascending: false }).then(ok),
         sb.from("kpis").select("data,projeto_id,kpi,valor").order("data", { ascending: false }).limit(600).then(ok),
         sb.from("v_lancamentos_usd").select("data,projeto_id,tipo,valor,moeda,valor_usd,descricao").order("data", { ascending: false }).limit(600).then(ok),
-        sb.from("monitor_consensos").select("criado_em,instrumento,direcao,canais").gte("criado_em", new Date(Date.now() - 31 * 864e5).toISOString()).order("criado_em", { ascending: false }).limit(500).then(ok),
         // ordens da ponte do MT5 (migração 0011); sem a tabela ainda, a página segue só com o placar teórico
         sb.from("monitor_ordens").select("*").gte("criado_em", new Date(Date.now() - 31 * 864e5).toISOString()).order("id").limit(3000).then(ok).catch(() => []),
       ]);
       const ctl = Object.fromEntries(controle.map((c) => [c.chave, c.valor]));
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
-               painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados, monitorConsensos,
+               painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
                termometro: ctl["termometro:painel"] ?? null,
@@ -326,7 +315,6 @@ function fonteDemo() {
       estado: { demo: { conectado: true, servidor: "ActivTrades-Demo", moeda: "USD", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), lote: 0.01 },
         real: { conectado: false, aviso: "faltam MT5_REAL_LOGIN, MT5_REAL_PASSWORD e MT5_REAL_SERVER no .env do monitor", atualizado_em: new Date(agora - 30e3).toISOString() } } },
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
-    monitorConsensos: [{ criado_em: new Date(agora - 4.2 * h).toISOString(), instrumento: "XAUUSD", direcao: "compra", canais: ["@canal.fx", "@mogotrading_off", "▶️ Forex & Crypto Live"] }],
     monitorResultados: [
       ...demoResultados(agora),
       { fonte: "tiktok", sinal_id: 5, origem: "Consenso de 3 canais", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", status: "alvo", resultado_r: 1.8, desde: new Date(agora - 4.2 * h).toISOString(), resolvido_em: new Date(agora - 3 * h).toISOString() },
@@ -502,6 +490,7 @@ function rotaAtual() {
   const m = h.match(/^#\/p\/(\w+)/);
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? { tipo: "monitor" } : { tipo: "projeto", id: m[1] };
   if (h.startsWith("#/monitor")) return { tipo: "monitor" };
+  if (h.startsWith("#/termometro")) return { tipo: "termometro" };
   const an = h.match(/^#\/(agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
   if (an) return { tipo: "analise", fonte: an[1], id: an[2] ? decodeURIComponent(an[2]) : undefined, modo: MODALIDADES.find(([k]) => k === new URLSearchParams(h.split("?")[1] ?? "").get("m"))?.[0] ?? "todos" };
   return { tipo: "geral" };
@@ -606,9 +595,10 @@ function htmlPendencias(c, { compacto = false } = {}) {
   const grupos = {};
   c.abertas.forEach((p) => (grupos[p.secao] ??= []).push(p));
   const total = c.pend.length, pct = total ? Math.round((100 * c.feitas.length) / total) : 0;
+  const umGrupo = Object.keys(grupos).length === 1;  // um grupo só: o h3 repetiria o título do bloco
   return `<div class="meta" style="margin-bottom:8px"><span><b class="num">${c.abertas.length}</b> abertas</span><span><b class="num">${c.feitas.length}</b> feitas</span><span>${pct}% concluído</span><span style="margin-left:auto">todo.md · ${haQuanto(estado.painel.gerado_em)}</span></div>
     <div class="progresso" aria-hidden="true" style="--cor:${cor(c.id)}"><i style="width:${pct}%"></i></div>
-    <div style="margin-top:6px">${Object.entries(grupos).map(([secao, itens]) => `<div class="pend-grupo"><h3>${esc(secao)}</h3>${(compacto ? itens.slice(0, 5) : itens).map(item).join("")}${compacto && itens.length > 5 ? `<p class="meta" style="padding:6px 0 0 28px">+ ${itens.length - 5} nesta seção</p>` : ""}</div>`).join("") || `<p class="vazio">Tudo feito por aqui.</p>`}</div>
+    <div style="margin-top:6px">${Object.entries(grupos).map(([secao, itens]) => `<div class="pend-grupo">${compacto && umGrupo ? "" : `<h3>${esc(secao)}</h3>`}${(compacto ? itens.slice(0, 5) : itens).map(item).join("")}${compacto && itens.length > 5 ? `<p class="meta" style="padding:6px 0 0 28px">+ ${itens.length - 5} nesta seção</p>` : ""}</div>`).join("") || `<p class="vazio">Tudo feito por aqui.</p>`}</div>
     ${c.feitas.length ? `<details><summary>${ico("chevron")}Feitas <span class="count">${c.feitas.length}</span></summary>${c.feitas.map(item).join("")}</details>` : ""}`;
 }
 
@@ -695,7 +685,7 @@ const sinaisAbertosDe = (e, f) => (e.monitorSinais ?? []).filter((s) => s.fonte 
 function htmlGrupoMonitor(rota, e) {
   const total = FONTES_MENU.reduce((n, f) => n + sinaisAbertosDe(e, f), 0);
   return `<div class="aba-grupo" data-menu="monitor"${menuMonitorAberto ? " data-aberto" : ""}>
-    <a class="aba" href="#/monitor" ${rota.tipo === "monitor" || rota.tipo === "analise" ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
+    <a class="aba" href="#/monitor" ${["monitor", "analise", "termometro"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
     <button type="button" class="aba-seta" data-menu-seta aria-expanded="${menuMonitorAberto}" aria-controls="menu-monitor" aria-label="Fontes do monitor">${ico("chevron")}</button>
   </div>`;
 }
@@ -704,7 +694,7 @@ function htmlSubmenuMonitor(rota, e) {
   const itens = FONTES_MENU.map((f) => {
     const n = sinaisAbertosDe(e, f);
     return `<li><a href="#/${f}" ${rota.tipo === "analise" && rota.fonte === f ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>${FONTES[f]}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
-  }).join("");
+  }).join("") + `<li><a href="#/termometro" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>`;
   return `<ul class="submenu" id="menu-monitor" aria-label="Fontes do monitor"${menuMonitorAberto ? " data-aberto" : ""}>${itens}</ul>`;
 }
 
@@ -863,6 +853,10 @@ function vistaGeral() {
         <h2 id="h-projetos">${ico("folder")} Projetos <span class="count">${renda.length}</span><span class="direita meta">clique para ver pendências, metas e gráfico</span></h2>
         <div class="proj-lista">${renda.map(htmlLinhaProjeto).join("")}</div>
       </section>
+      ${(() => { const cm = calcularProjeto("monitor", e); return `<section class="painel" aria-labelledby="h-pend-monitor">
+        <h2 id="h-pend-monitor">${ico("list")} Pendências do monitor <span class="count ${cm.abertas.length ? "alerta" : ""}">${cm.abertas.length}</span><a class="direita meta" href="#/monitor">abrir o Monitor</a></h2>
+        ${htmlPendencias(cm, { compacto: true })}
+      </section>`; })()}
       <section class="painel" aria-labelledby="h-atividade">
         <h2 id="h-atividade">${ico("activity")} Atividade dos agentes <span class="count">${e.eventos.length}</span></h2>
         ${htmlEventos(e.eventos, { filtros: true })}
@@ -1013,6 +1007,16 @@ function htmlStatusSites(itens, f = "sites") {
   }).join("");
 }
 
+// contagens por grupo numa linha (fica visível no cartão da fonte; as listas ficam no bloco recolhido)
+function resumoStatusFonte(f, itens) {
+  const cfg = GRUPOS_FONTE[f];
+  if (!cfg.grupos || !itens.length) return "";
+  const usados = new Set();
+  const partes = cfg.grupos.map((g) => { const n = itens.filter((i) => !usados.has(i) && g.f(i)); n.forEach((i) => usados.add(i)); return [n.length, g.t]; })
+    .concat([[itens.length - usados.size, cfg.resto]]).filter(([n]) => n);
+  return `<div class="meta">${partes.map(([n, t]) => `<span><b class="num">${n}</b> ${esc(t.toLowerCase())}</span>`).join("")}</div>`;
+}
+
 function htmlStatusFonte(f, itens) {
   const cfg = GRUPOS_FONTE[f], usados = new Set();
   if (!itens.length) return `<p class="vazio">${esc(cfg.vazio)}</p>`;
@@ -1022,10 +1026,7 @@ function htmlStatusFonte(f, itens) {
     return { ...g, l };
   });
   const resto = itens.filter((i) => !usados.has(i));
-  const resumo = blocos.map((b) => `<span><b class="num">${b.l.length}</b> ${esc(b.t.toLowerCase())}</span>`).join("")
-    + (resto.length ? `<span><b class="num">${resto.length}</b> ${esc(cfg.resto.toLowerCase())}</span>` : "");
-  return `<div class="meta">${resumo}</div>`
-    + blocos.filter((b) => b.l.length && !b.semLista).map((b) => `<div class="grupo-live"><div class="meta"><b>${esc(b.t)}</b><span>${esc(b.d)}</span></div>
+  return blocos.filter((b) => b.l.length && !b.semLista).map((b) => `<div class="grupo-live"><div class="meta"><b>${esc(b.t)}</b><span>${esc(b.d)}</span></div>
         <ul class="lista">${b.l.map(htmlItemMonitor).join("")}</ul></div>`).join("")
     + (resto.length ? `<details><summary>${ico("chevron")}${esc(cfg.resto)} ${resto.length}</summary><ul class="lista">${resto.map(htmlItemMonitor).join("")}</ul></details>` : "");
 }
@@ -1102,64 +1103,49 @@ function htmlFiltroAtivo(e) {
   </div>`;
 }
 
-const ROTULO_RESULTADO = { alvo: ["good", "win", "check"], stop: ["critical", "loss", "x"], expirado: ["muted", "expirou", "clock"],
-  nao_acionada: ["muted", "não acionada", "clock"], sem_dados: ["muted", "sem preço", "loader"] };
-const badgeResultado = (st) => { const [cls, txt, icone] = ROTULO_RESULTADO[st] ?? ["muted", st, "clock"]; return htmlBadge(cls, txt, icone); };
 
-// canais que formaram um consenso: cruza o resultado com monitor_consensos (mesmo ativo e direção, criado até 3 min do sinal)
-function canaisDoConsenso(r, e) {
-  const t = new Date(r.desde).getTime();
-  const c = (e.monitorConsensos ?? []).find((x) => x.instrumento === r.instrumento && x.direcao === r.direcao && Math.abs(new Date(x.criado_em).getTime() - t) <= 3 * 6e4);
-  return c ? (Array.isArray(c.canais) ? c.canais : []) : [];
-}
-const ehConsenso = (r) => /^consenso/i.test(r.origem ?? "");
-// nome do canal do consenso como texto, com link quando dá (TikTok @handle)
-function nomeCanalConsenso(fonte, nome) {
-  const url = /^@[\w.]+$/.test(nome) ? `https://www.tiktok.com/${nome}/live` : null;
-  return url ? `<a class="canal" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Abrir em outra aba">${esc(nome)}${ico("external")}</a>` : esc(nome);
-}
 
+// Placar no Monitor: uma linha por fonte (acerto e R médio); a lista por canal, site, layout ou agente fica na página da fonte
 function htmlPlacar(e) {
   const resultados = e.monitorResultados ?? [];
   const pct = (w, l) => (w + l ? `${Math.round((100 * w) / (w + l))}%` : "—");
-  const cartoes = Object.keys(FONTES).map((f) => {
+  const linhas = Object.keys(FONTES).map((f) => {
     const lista = resultados.filter((r) => r.fonte === f && passaFiltro(r.instrumento));
     const w = lista.filter((r) => r.status === "alvo").length, l = lista.filter((r) => r.status === "stop").length;
-    const outros = lista.length - w - l;
+    const outros = lista.length - w - l, total = lista.length || 1;
     const rs = lista.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number);
-    const rMedio = rs.length ? (rs.reduce((a, b) => a + b, 0) / rs.length).toFixed(2) : null;
-    const porOrigem = {};
-    lista.forEach((r) => { const o = (porOrigem[r.origem] ??= { w: 0, l: 0 }); if (r.status === "alvo") o.w++; if (r.status === "stop") o.l++; });
-    const origens = Object.entries(porOrigem).sort((a, b) => (b[1].w + b[1].l) - (a[1].w + a[1].l));
-    // canais nos consensos (TikTok e YouTube): cada canal recebe o resultado dos consensos de que participou
-    const porCanal = {};
-    // o consenso mistura canais do TikTok (@handle) e do YouTube (▶️ nome) e fica no cartão de quem avisou: cada cartão lista os canais da sua plataforma
-    if (f === "tiktok" || f === "youtube") resultados.filter((r) => (r.fonte === "tiktok" || r.fonte === "youtube") && ehConsenso(r) && passaFiltro(r.instrumento)).forEach((r) => canaisDoConsenso(r, e)
-      .filter((c) => (f === "tiktok") === c.startsWith("@")).forEach((c) => {
-        const o = (porCanal[c] ??= { w: 0, l: 0, n: 0 }); o.n++; if (r.status === "alvo") o.w++; if (r.status === "stop") o.l++;
-      }));
-    const canaisConsenso = Object.entries(porCanal).sort((a, b) => b[1].n - a[1].n);
-    const amostra = w + l < 10 ? `<span class="meta">amostra pequena (${w + l} decididas): não conclua nada ainda</span>` : "";
-    const resultado = (r) => r.resultado_pontos != null ? `${Number(r.resultado_pontos) > 0 ? "+" : ""}${r.resultado_pontos} ${esc(r.resultado_unidade ?? "")}`
-      : r.resultado_r != null ? `${Number(r.resultado_r) > 0 ? "+" : ""}${Number(r.resultado_r).toFixed(2)} R` : "";
-    const total = lista.length || 1;
-    const barra = lista.length ? `<div class="placar-barra" role="img" aria-label="${w} win, ${l} loss, ${outros} outros"><i class="w" style="width:${(100 * w) / total}%"></i><i class="l" style="width:${(100 * l) / total}%"></i><i class="o" style="width:${(100 * outros) / total}%"></i></div>` : "";
-    return `<div class="cartao">
-      <div class="titulo">${FONTES[f]}${["agentes", "tiktok", "youtube", "sites", "tradingview", "telegram"].includes(f) ? ` <a class="meta" href="#/${f}">análise completa</a>` : ""}</div>
-      ${barra}
-      <div class="meta"><span class="badge compra">${w} win</span><span class="badge venda">${l} loss</span>
-        <span>acerto <b class="num">${pct(w, l)}</b></span>${rMedio ? `<span>R médio <b class="num">${rMedio}</b></span>` : ""}
-        ${outros ? `<span>${outros} expirados/não acionados</span>` : ""}</div>
-      ${amostra}
-      ${canaisConsenso.length ? `<div class="meta"><b>Canais nos consensos</b></div><ul class="lista">${canaisConsenso.map(([c, v]) => `<li>${nomeCanalConsenso(f, c)}<div class="meta"><span>${v.n} consenso${v.n > 1 ? "s" : ""}</span><span>${v.w} win · ${v.l} loss</span><span>acerto ${pct(v.w, v.l)}</span></div></li>`).join("")}</ul>` : ""}
-      ${origens.length ? `<ul class="lista">${origens.map(([o, c]) => `<li>${linkCanal(f, itemDaOrigem(f, o, e), o)}<div class="meta"><span>${c.w} win · ${c.l} loss</span><span>acerto ${pct(c.w, c.l)}</span></div></li>`).join("")}</ul>` : `<p class="vazio">Nenhum sinal resolvido ainda.</p>`}
-      ${lista.length ? `<details><summary>${ico("chevron")}Últimos resultados</summary><ul class="lista">${lista.slice(0, 15).map((r) => `<li>${badgeResultado(r.status)} · ${iconeAtivo(r.instrumento)} <b>${esc(r.instrumento)}</b> ${esc((r.direcao || "").toUpperCase())} ${esc(r.entrada ?? "")}<div class="meta"><span>${linkCanal(f, itemDaOrigem(f, r.origem, e), r.origem)}</span><span>${resultado(r)}</span><span>${quando(r.resolvido_em)}</span><span>${r.resultado_fonte === "site" ? "resultado do site" : "pelo preço"}</span></div>${ehConsenso(r) && canaisDoConsenso(r, e).length ? `<div class="meta"><span>canais: ${canaisDoConsenso(r, e).map((c) => nomeCanalConsenso(f, c)).join(", ")}</span></div>` : ""}</li>`).join("")}</ul></details>` : ""}
-    </div>`;
+    const rMedio = rs.length ? (rs.reduce((a, b) => a + b, 0) / rs.length).toFixed(2).replace(".", ",") : "—";
+    const barra = lista.length ? `<div class="placar-barra" role="img" aria-label="${w} win, ${l} loss, ${outros} outros"><i class="w" style="width:${(100 * w) / total}%"></i><i class="l" style="width:${(100 * l) / total}%"></i><i class="o" style="width:${(100 * outros) / total}%"></i></div>` : `<span class="meta">nenhum resolvido</span>`;
+    return `<tr><th scope="row"><a href="#/${f}">${FONTES[f]}</a></th><td class="col-zero">${barra}</td>
+      <td class="num">${w}</td><td class="num">${l}</td>
+      <td class="num">${pct(w, l)}${w + l && w + l < 10 ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td>
+      <td class="num">${rMedio}</td><td class="num col-expirados">${outros}</td></tr>`;
   });
   return `<section class="painel" aria-labelledby="h-placar">
     <h2 id="h-placar">${ico("target")} Placar dos sinais <span class="count">últimos 30 dias</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
-    <div class="grade-cartoes">${cartoes.join("")}</div>
-    <p class="meta" style="margin-top:8px">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Sites: o resultado publicado pelo próprio site; lives, canais do Telegram e sureshotfx: velas de preço (Binance para cripto, Twelve Data para forex e ouro); agentes: velas M15 do TradingView. Não é recomendação.</p>
+    <div class="rolagem"><table class="tabela placar">
+      <thead><tr><th scope="col">Fonte</th><th scope="col" class="col-zero">Win · loss · outros</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R médio</th><th scope="col" class="col-expirados">Expirados</th></tr></thead>
+      <tbody>${linhas.join("")}</tbody></table></div>
+    <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Clique na fonte para ver cada canal, site, layout ou agente.</p>
+  </section>`;
+}
+
+// Termômetro no Monitor: uma linha por ativo; leitura completa em #/termometro
+function htmlTermometroCompacto(e) {
+  const t = e.termometro;
+  const titulo = (extra = "") => `<h2 id="h-termo">${ico("activity")} Termômetro ${extra}<a class="direita meta" href="#/termometro">termômetro completo</a></h2>`;
+  if (!t?.ativos?.length) return `<section class="painel" aria-labelledby="h-termo">${titulo()}<p class="vazio">Ainda sem leitura: o executor publica a cada ~15 min.</p></section>`;
+  const fechado = t.mercado === "fechado";
+  const linha = (a) => {
+    const [rot, cls] = ROTULO_DIRECAO[a.direcao] ?? ["Sem leitura", "muted"];
+    const velho = a.idade_min != null && a.idade_min > 45;
+    return `<li><a href="#/termometro">${iconeAtivo(a.id)}<b>${esc(a.nome)}</b></a>
+      ${a.preco != null ? `<span class="num">${esc(preco2(a.preco))}</span><span class="num ${a.variacao_dia_pct > 0 ? "alta" : a.variacao_dia_pct < 0 ? "baixa" : ""}">${pctSinal(a.variacao_dia_pct)}</span>` : `<span class="meta">sem cotação</span>`}
+      <span class="selos">${htmlBadge(cls, rot + (a.forca ? " forte" : ""), a.direcao === "alta" ? "alta" : a.direcao === "baixa" ? "baixa" : undefined)}${a.divergencia ? htmlBadge("warning", "Divergência", "alert") : ""}${a.corretora?.spread_alto ? htmlBadge("warning", `Spread ${Number(a.corretora.spread_x).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}×`, "alert") : ""}${velho ? htmlBadge("muted", `velas de há ${duracaoMin(a.idade_min)}`, "clock") : ""}</span></li>`;
+  };
+  return `<section class="painel" aria-labelledby="h-termo">
+    ${titulo(`<span class="meta">atualizado <b class="num" data-desde="${esc(t.atualizado_em)}">${textoDesde(t.atualizado_em)}</b></span>${fechado ? htmlBadge("muted", "mercado fechado", "clock") : ""}`)}
+    <ul class="termo-compacto">${t.ativos.map(linha).join("")}</ul>
   </section>`;
 }
 
@@ -1171,14 +1157,16 @@ function sinaisVigentes(e, f) {
 function htmlSinaisAtivos(e) {
   const por = Object.keys(FONTES).map((f) => [f, sinaisVigentes(e, f)]);
   const total = por.reduce((n, [, l]) => n + l.length, 0);
-  const cartoes = por.map(([f, l]) => `<div class="cartao">
+  // fonte sem sinal não ganha cartão vazio: entra numa linha só, embaixo da grade
+  const cartoes = por.filter(([, l]) => l.length).map(([f, l]) => `<div class="cartao">
       <div class="titulo">${FONTES[f]} <span class="count">${l.length}</span></div>
-      <ul class="lista">${l.map(htmlSinal).join("") || `<li class="vazio">Nenhum sinal ativo.</li>`}</ul></div>`);
+      <ul class="lista">${l.map(htmlSinal).join("")}</ul></div>`);
+  const semSinal = por.filter(([, l]) => !l.length).map(([f]) => FONTES[f]);
   return `<section class="painel" aria-labelledby="h-sinais">
     <h2 id="h-sinais">${ico("zap")} Sinais ativos <span class="count">${total}</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
     ${htmlFiltroAtivo(e)}
-    <div class="grade-cartoes larga sinais">${cartoes.join("")}</div>
-    <p class="meta" style="margin-top:8px">Uso pessoal: sinais só para o Diogo, nunca compartilhar. Não é recomendação.</p>
+    ${cartoes.length ? `<div class="grade-cartoes larga sinais">${cartoes.join("")}</div>` : `<p class="vazio">Nenhum sinal ativo${filtroAtivo ? ` em ${esc(filtroAtivo)}` : ""}.</p>`}
+    ${cartoes.length && semSinal.length ? `<p class="meta nota">Sem sinal ativo: ${semSinal.join(", ")}.</p>` : ""}
   </section>`;
 }
 
@@ -1202,14 +1190,14 @@ function htmlMonitor(e) {
     const rodada = periodica && info ? `<div class="meta">
         <span>último acionamento ${info.ultima_execucao ? `<b class="num" data-desde="${esc(info.ultima_execucao)}">${textoDesde(info.ultima_execucao)}</b>` : "<b>nunca</b>"}</span>
         ${info.proxima_execucao && info.ligado ? `<span>próximo em <b class="num" data-ate="${esc(info.proxima_execucao)}">${textoContador(info.proxima_execucao)}</b></span>` : ""}
-        ${info.intervalo_min ? `<span>a cada ${info.intervalo_min} min</span>` : ""}</div>
-      ${f === "agentes" ? htmlModosAgentes(e) : ""}` : "";
+        ${info.intervalo_min ? `<span>a cada ${info.intervalo_min} min</span>` : ""}</div>` : "";
+    const nItens = COMO_SITES.has(f) ? new Set(visiveis.map((i) => i.item.split(":")[0])).size : visiveis.length;
     // o comando leva até ~10 s para chegar e ~1 min para o estado voltar ao painel
     const pendente = info && atraso <= 3 && querLigado === desligado;
     const botao = `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}" aria-label="${querLigado ? "Desligar" : "Ligar"} ${esc(FONTES[f])}" title="${querLigado ? "Desligar" : "Ligar"} ${esc(FONTES[f])}">${ico(querLigado ? "power" : "play")}<span class="rotulo-btn">${querLigado ? "Desligar" : "Ligar"}</span></button>`;
     const aviso = pendente ? `<span class="badge warning">${ico("loader")}${querLigado ? "ligando…" : "desligando…"}</span>`
       : atraso > 3 && info ? `<span class="meta">${periodica ? "o executor dos agentes parou: conferir o launchd com.vinculo.agentes e o log em 05-monitor-lives/dados-agentes/logs/" : `o contêiner não responde: no Mac/VPS, <code>docker compose up -d ${f}</code>`}</span>` : "";
-    return `<div class="cartao">
+    return `<div class="cartao" data-fonte="${f}">
       <div class="cartao-topo">
       <div class="titulo titulo-fonte"><span class="nome-fonte">${FONTES[f]}</span>${botao}</div>
       <div class="meta estado-fonte"><span class="badge ${status.c}">${status.c === "good" ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${status.t}</span>${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}</div>
@@ -1217,15 +1205,16 @@ function htmlMonitor(e) {
       ${f === "youtube" ? htmlLoginYoutube(e) : ""}
       ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
       ${rodada}
+      ${resumoStatusFonte(f, visiveis)}
       </div>
-      <div class="fila"><div class="meta"><b>${GRUPOS_FONTE[f].titulo}</b> <span class="count">${COMO_SITES.has(f) ? new Set(visiveis.map((i) => i.item.split(":")[0])).size : visiveis.length}</span></div>
-        ${COMO_SITES.has(f) ? htmlStatusSites(visiveis, f) : htmlStatusFonte(f, visiveis)}</div>
+      <details class="fila"><summary>${ico("chevron")}${GRUPOS_FONTE[f].titulo} <span class="count">${nItens}</span></summary>
+        ${(COMO_SITES.has(f) ? htmlStatusSites(visiveis, f) : htmlStatusFonte(f, visiveis)) || `<p class="vazio">Os itens com sinal aberto estão em Sinais ativos.</p>`}
+        ${f === "agentes" && info ? htmlModosAgentes(e) : ""}</details>
     </div>`;
   });
   const algum = Object.keys(FONTES).some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
-    <h2 id="h-monitor">${ico("radio")} Monitor de lives e agentes <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
-      <span class="count">${Object.keys(FONTES).reduce((n, f) => n + sinaisVigentes(e, f).length, 0)} sinais</span>
+    <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="count">${e.monitorItens.filter((i) => i.ativo).length} ativos</span>
       <span class="direita"><button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>
       <button class="btn pequeno" data-acao="monitor" data-fontes="${Object.keys(FONTES).join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
@@ -1367,7 +1356,7 @@ function htmlTermometro(e) {
   const fechado = t.mercado === "fechado";
   const sent = SENTIMENTO_TXT[t.sentimento] ?? (t.sentimento === "capital.com" ? "Capital.com: sentimento dos clientes" : `Capital.com: ${t.sentimento}`);
   return `<section class="painel" aria-labelledby="h-termo">
-    <h2 id="h-termo">${ico("activity")} Termômetro <span class="count">${t.ativos.length} ativos</span>${fechado ? htmlBadge("muted", "mercado fechado", "clock") : ""}</h2>
+    <h2 id="h-termo">${ico("activity")} Situação por ativo <span class="count">${t.ativos.length} ativos</span>${fechado ? htmlBadge("muted", "mercado fechado", "clock") : ""}</h2>
     <div class="meta termo-fonte">
       <span>atualizado <b class="num" data-desde="${esc(t.atualizado_em)}">${textoDesde(t.atualizado_em)}</b></span>
       ${t.proxima_em && !fechado ? `<span>próxima em ~<b class="num" data-ate="${esc(t.proxima_em)}">${textoContador(t.proxima_em)}</b> (a cada ${t.intervalo_min} min)</span>` : ""}
@@ -1380,29 +1369,43 @@ function htmlTermometro(e) {
   </section>`;
 }
 
+// Monitor: o que muda minuto a minuto (sinais e saúde das fontes) em cima; termômetro e placar resumidos, com link para o detalhe.
+// Pendências do monitor ficam na Visão geral; o termômetro completo em #/termometro (decisões do Diogo, 11/11/2026).
+const NOTA_USO = `<p class="meta nota">Uso pessoal: sinais só para o Diogo, nunca compartilhar. Não é recomendação.</p>`;
+const avisoErro = () => erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : "";
+
 function vistaMonitor() {
   const e = estado;
   const p = e.projetos.find((x) => x.id === "monitor");
   const c = calcularProjeto("monitor", e);
   return `<main class="uma">
-    ${erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : ""}
-    <div class="cabecalho-proj" style="--cor:${cor("monitor")}">
+    ${avisoErro()}
+    <div class="cabecalho-proj compacto" style="--cor:${cor("monitor")}">
       <div class="bloco">
         <a class="voltar" href="#/">${ico("back")} Visão geral</a>
         <h1><i class="ponto" aria-hidden="true"></i>${esc(PROJETOS.monitor.longo)}</h1>
-        <div class="meta">${c.cfg.trilho ? `<span class="chip">${ico("compass")}${esc(c.cfg.trilho)}</span>` : ""}<span class="chip">${ico("folder")}05-monitor-lives</span></div>
-        ${p?.fase ? `<div><b>Fase:</b> ${esc(p.fase)}</div>` : ""}
-        ${c.cfg.status ? `<p class="resumo">${esc(c.cfg.status)}</p>` : ""}
+        ${p?.fase || c.cfg.status ? `<div class="meta">${p?.fase ? `<span>${esc(p.fase)}</span>` : ""}${c.cfg.status ? `<span>${esc(c.cfg.status)}</span>` : ""}</div>` : ""}
       </div>
     </div>
     ${htmlSinaisAtivos(e)}
-    ${htmlTermometro(e)}
     ${htmlMonitor(e)}
+    ${htmlTermometroCompacto(e)}
     ${htmlPlacar(e)}
-    <section class="painel" aria-labelledby="h-pend">
-      <h2 id="h-pend">${ico("list")} Pendências do monitor <span class="count ${c.abertas.length ? "alerta" : ""}">${c.abertas.length}</span></h2>
-      ${htmlPendencias(c)}
-    </section>
+    ${NOTA_USO}
+  </main>`;
+}
+
+function vistaTermometro() {
+  return `<main class="uma">
+    ${avisoErro()}
+    <div class="cabecalho-proj compacto" style="--cor:${cor("monitor")}">
+      <div class="bloco">
+        <a class="voltar" href="#/monitor">${ico("back")} Monitor</a>
+        <h1><i class="ponto" aria-hidden="true"></i>Termômetro</h1>
+        <div class="meta"><span>Situação de cada ativo: tendência, direcionadores, faixa do dia, corretora e clientes da Capital.com.</span></div>
+      </div>
+    </div>
+    ${htmlTermometro(estado)}
   </main>`;
 }
 
@@ -1912,7 +1915,8 @@ function vistaAnalise(f, id, modo = "todos") {
 function detalhesComChave(raiz) {
   const cartoes = [...raiz.querySelectorAll(".cartao")], vistos = {};
   return [...raiz.querySelectorAll("details")].map((d) => {
-    const base = `${cartoes.indexOf(d.closest(".cartao"))}|${(d.querySelector("summary")?.textContent ?? "").replace(/\d+/g, "#").trim()}`;
+    // cartão com data-fonte: a chave é a fonte (os cartões de Sinais ativos acima variam em número e deslocariam o índice)
+    const base = `${d.closest("[data-fonte]")?.dataset.fonte ?? cartoes.indexOf(d.closest(".cartao"))}|${(d.querySelector("summary")?.textContent ?? "").replace(/\d+/g, "#").trim()}`;
     vistos[base] = (vistos[base] ?? 0) + 1;
     return [d, `${base}|${vistos[base]}`];
   });
@@ -1923,14 +1927,14 @@ function render() {
   const nova = chaveRota(rota) !== rotaRenderizada;
   rotaRenderizada = chaveRota(rota);
   const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor()
-    : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo) : vistaGeral();
+    : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo) : vistaGeral();
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
   const focoMenu = focoNoMenu();
   app.innerHTML = htmlTopo(rota) + corpo;
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
-  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte]} · Central de Comando` : "Central de Comando";
+  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte]} · Central de Comando` : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
     main.classList.add("entrada");
