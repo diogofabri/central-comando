@@ -323,7 +323,8 @@ function fonteDemo() {
       ],
     },
     monitorMaquinas: ["tiktok", "youtube", "sites", "telegram", "agentes", "tradingview"]
-      .concat(["youtube@bovespa"]).map((fonte) => ({ fonte, maquina: "vps", visto_em: new Date(agora - 6e4).toISOString() })),
+      .concat(["youtube@bovespa"]).map((fonte) => ({ fonte, maquina: /^(tiktok|youtube|sites)/.test(fonte) ? "mac" : "vps",
+        visto_em: new Date(agora - 6e4).toISOString() })),
     monitorFontes: [
       { fonte: "tiktok", ligado: true, vagas: "5 vagas", resumo: "1 gravando, 0 na fila, 1 em análise", atualizado_em: new Date(agora).toISOString() },
       { fonte: "telegram", ligado: true, vagas: "2 canais", resumo: "SureShotFX, SureShotFX Signals (FREE): 1 sinais abertos, leitura a cada 5 min", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), ultima_execucao: new Date(agora - 2 * 6e4).toISOString(), proxima_execucao: new Date(agora + 3 * 6e4).toISOString(), intervalo_min: 5 },
@@ -1290,11 +1291,13 @@ function htmlMaquinaFonte(f, e) {
     : `<span title="Nenhuma máquina renovou a posse desta fonte há ${duracao(m.visto)}">sem máquina (última: <b>${esc(m.nome)}</b>)</span>`;
 }
 
+// quem opera o quê (13/11/2026): cada fonte opera numa só máquina, então Mac e VPS ao mesmo tempo é a divisão
+// normal, não alerta; a máquina sem nenhuma fonte está em modo leitura e não aparece. Fonte sem dono já pinta a saúde.
 function htmlOperacao(e) {
-  const vivas = [...new Set(fontesDoCtx().map((f) => maquinaDaFonte(f, e)).filter((m) => m?.viva).map((m) => m.nome))];
-  if (!vivas.length) return "";
-  return vivas.length === 1 ? htmlBadge("muted", `operando em ${vivas[0]}`, "radio")
-    : htmlBadge("warning", `operando em ${vivas.join(" e ")}`, "alert");
+  const porMaquina = {};
+  fontesDoCtx().forEach((f) => { const m = maquinaDaFonte(f, e); if (m?.viva) (porMaquina[m.nome] ??= []).push(f); });
+  return Object.entries(porMaquina).sort(([a], [b]) => a.localeCompare(b))
+    .map(([maq, fs]) => htmlBadge("muted", `${maq}: ${fs.map((f) => FONTES[f] ?? f).join(", ")}`, "radio")).join("");
 }
 
 function htmlResumoSaude(e) {
