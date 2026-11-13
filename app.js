@@ -221,7 +221,9 @@ function fonteSupabase(cfg) {
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
                termometro: ctl["termometro:painel"] ?? null,
                loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
-               consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl) };
+               consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl),
+               // modo de cada máquina (controle.maquina:<nome>, gravado por `maquinas operar|leitura|aplicar`)
+               maquinasModo: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("maquina:")).map(([k, v]) => [k.slice(8), v])) };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -1296,8 +1298,13 @@ function htmlMaquinaFonte(f, e) {
 function htmlOperacao(e) {
   const porMaquina = {};
   fontesDoCtx().forEach((f) => { const m = maquinaDaFonte(f, e); if (m?.viva) (porMaquina[m.nome] ??= []).push(f); });
-  return Object.entries(porMaquina).sort(([a], [b]) => a.localeCompare(b))
+  const operando = Object.entries(porMaquina).sort(([a], [b]) => a.localeCompare(b))
     .map(([maq, fs]) => htmlBadge("muted", `${maq}: ${fs.map((f) => FONTES[f] ?? f).join(", ")}`, "radio")).join("");
+  // máquina em leitura não tem posse de nenhuma fonte: vem do modo que ela mesma gravou ao trocar
+  const leitura = Object.entries(e.maquinasModo ?? {}).filter(([maq, v]) => v?.modo === "leitura" && !porMaquina[maq])
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([maq, v]) => `<span title="Em modo leitura desde ${esc(quando(v.em))}: não monitora nada, só consome o banco único">${htmlBadge("muted", `${maq}: só leitura`, "eye")}</span>`).join("");
+  return operando + leitura;
 }
 
 function htmlResumoSaude(e) {
