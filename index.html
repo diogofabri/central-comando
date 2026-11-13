@@ -135,7 +135,7 @@ main.uma { grid-template-columns: minmax(0, 1fr); }
 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 section.painel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--raio); padding: 16px; min-width: 0; box-shadow: var(--sombra); }
 section.painel > h2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-section.painel > h2 .direita { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
+section.painel > h2 .direita { margin-left: auto; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; }
 .count { font-size: 12px; font-weight: 500; background: var(--chip); border-radius: 999px; padding: 1px 8px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .count.alerta { background: var(--critical-soft); color: var(--critical); }
 .meta { font-size: 12.5px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
@@ -166,7 +166,7 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .btn.perigo:hover { border-color: var(--critical); color: var(--critical); background: var(--critical-soft); }
 .btn.pequeno { min-height: 32px; padding: 0 10px; font-size: 13px; }
 .btn:disabled { opacity: .5; cursor: default; transform: none; }
-.btn.ocupado .ico { animation: giro 1s linear infinite; }
+.btn.ocupado .ico, .badge.girando .ico { animation: giro 1s linear infinite; }
 @keyframes giro { to { transform: rotate(360deg); } }
 .acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 textarea, select, input { width: 100%; border: 1px solid var(--line-2); border-radius: var(--raio-s); background: var(--surface-2); padding: 9px 11px; transition: border-color var(--t-rapido), box-shadow var(--t-rapido); }
@@ -566,6 +566,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=60"></script>
+<script src="app.js?v=62"></script>
 </body>
 </html>

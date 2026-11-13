@@ -223,7 +223,9 @@ function fonteSupabase(cfg) {
                loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
                consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl),
                // modo de cada máquina (controle.maquina:<nome>, gravado por `maquinas operar|leitura|aplicar`)
-               maquinasModo: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("maquina:")).map(([k, v]) => [k.slice(8), v])) };
+               maquinasModo: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("maquina:")).map(([k, v]) => [k.slice(8), v])),
+               // botão de troca (13/11/2026): pedido do dashboard e plano vigente gravado pelo seguidor das máquinas
+               maquinasPedido: ctl["maquinas:pedido"] ?? null, maquinasPlano: ctl["maquinas:plano"] ?? null };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -239,6 +241,8 @@ function fonteSupabase(cfg) {
     comandarConsenso: (ligar) => sb.from("controle").upsert({ chave: "consenso:modo", valor: ligar }).then(ok),
     // pede ao monitor que abra a janela de login da conta Google (a senha é digitada só no noVNC; nada de credencial passa por aqui)
     pedirLogin: (f) => sb.from("controle").upsert({ chave: `login:${f}:pedido`, valor: true }).then(ok),
+    // troca de máquina: o seguidor de cada máquina (`maquinas seguir`, a cada minuto) lê o pedido e aplica
+    pedirTroca: (maquina) => sb.from("controle").upsert({ chave: "maquinas:pedido", valor: { operar: maquina, em: new Date().toISOString() } }).then(ok),
     // seleção do que a ponte do MT5 executa (lida a cada ciclo de ~15 s): {fontes: {tiktok: true}, unidades: {tiktok: {"@canal": false}}}
     comandarExecucao: (modo, selecao) => sb.from("controle").upsert({ chave: `execucao:${modo}`, valor: selecao }).then(ok),
     aoMudar(fn) {
@@ -405,6 +409,7 @@ function fonteDemo() {
     async comandarConsenso(ligar) { s.consensoLigado = ligar; },
     async comandarExecucao(modo, selecao) { s.execucao.selecao[modo] = selecao; },
     async pedirLogin(f) { s.loginFonte[f] = { ...s.loginFonte[f], estado: "aguardando", atualizado_em: new Date().toISOString() }; },
+    async pedirTroca(maquina) { s.maquinasPedido = { operar: maquina, em: new Date().toISOString() }; },
     aoMudar() {},
   };
 }
@@ -1012,9 +1017,15 @@ function textoDesde(iso) {
   const hora = new Date(iso).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
   return `${hora} (há ${s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`})`;
 }
+// tempo decorrido curto, para selos ("0:42", "3:05"): cabe no celular
+function textoDecorrido(iso) {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 function atualizarContadores() {
   document.querySelectorAll("[data-ate]").forEach((el) => { el.textContent = textoContador(el.dataset.ate); });
   document.querySelectorAll("[data-desde]").forEach((el) => { el.textContent = textoDesde(el.dataset.desde); });
+  document.querySelectorAll("[data-decorrido]").forEach((el) => { el.textContent = textoDecorrido(el.dataset.decorrido); });
 }
 setInterval(atualizarContadores, 1000);
 
@@ -1307,6 +1318,48 @@ function htmlOperacao(e) {
   return operando + leitura;
 }
 
+// troca de máquina pelo dashboard (13/11/2026): as fontes que rodam nas duas máquinas passam para a outra; MT5 e o
+// YouTube da B3 só existem no Windows e ficam sempre no VPS. Quem aplica é o seguidor de cada máquina, a cada minuto.
+const FONTES_MOVEIS = ["tiktok", "youtube", "sites", "agentes", "tradingview", "telegram"];
+const NOME_MAQUINA = { mac: "Mac", vps: "VPS" };
+
+function quemOpera(e) {
+  const plano = e.maquinasPlano?.maquinas;
+  const n = { mac: 0, vps: 0 };
+  if (plano) FONTES_MOVEIS.forEach((f) => ["mac", "vps"].forEach((m) => { if ((plano[m] ?? []).includes(f)) n[m]++; }));
+  else FONTES_MOVEIS.forEach((f) => { const m = maquinaDaFonte(f, e); if (m?.viva && m.nome in n) n[m.nome]++; });
+  return n.mac > n.vps ? "mac" : "vps";
+}
+
+// aguardando = nenhuma máquina leu o pedido ainda; aplicando = plano novo gravado, falta máquina registrar o modo
+function estadoTroca(e) {
+  const pedido = e.maquinasPedido, plano = e.maquinasPlano;
+  if (!pedido?.em) return null;
+  const desde = (Date.now() - new Date(pedido.em)) / 6e4;
+  if (!(plano?.pedido_em >= pedido.em)) return { fase: "aguardando", alvo: pedido.operar, desde };
+  if (plano.pedido_em !== pedido.em) return null;
+  const igual = (a, b) => [...(a ?? [])].sort().join() === [...(b ?? [])].sort().join();
+  const atras = ["mac", "vps"].filter((m) => !igual(e.maquinasModo?.[m]?.fontes, plano.maquinas?.[m]));
+  return atras.length ? { fase: "aplicando", alvo: pedido.operar, atras, desde } : null;
+}
+
+function htmlTrocaMaquina(e) {
+  const t = estadoTroca(e);
+  if (t) {
+    // etapas: 1 pedido enviado (as máquinas leem a cada minuto) → 2 a outra para → 3 o alvo liga e registra o modo
+    const sai = t.alvo === "mac" ? "vps" : "mac";
+    const etapa = t.fase === "aguardando" ? "pedido enviado" : t.atras.includes(sai) ? `parando o ${NOME_MAQUINA[sai]}` : `ligando o ${NOME_MAQUINA[t.alvo]}`;
+    // passou de 10 min: provavelmente o Mac está dormindo, sem o Rancher aberto ou sem o seguidor instalado
+    const lento = t.desde > 10;
+    const dica = `Pedido de ${quando(e.maquinasPedido.em)}. Etapas: pedido enviado (cada máquina confere a cada minuto) → parando a máquina que sai → ligando a que entra. Leva de 1 a 5 min; as fontes do navegador só assumem na máquina nova depois de a outra soltar a posse.`
+      + (lento ? " Passou de 10 min: confira se a máquina está ligada, com o Rancher aberto (Mac) e com o seguidor instalado." : "");
+    // texto curto (cabe no celular); o detalhe vai na dica
+    return `<span class="badge ${lento ? "critical" : "warning girando"}" role="status" title="${esc(dica)}">${ico(lento ? "alert" : "loader")}${lento ? `troca para o ${NOME_MAQUINA[t.alvo]} parada` : `${NOME_MAQUINA[t.alvo]}: ${etapa}`} · <span class="num" data-decorrido="${esc(e.maquinasPedido.em)}">${textoDecorrido(e.maquinasPedido.em)}</span></span>`;
+  }
+  const atual = quemOpera(e), outra = atual === "mac" ? "vps" : "mac";
+  return `<button class="btn pequeno" data-acao="trocar-maquina" data-maquina="${outra}" title="As fontes operam hoje no ${NOME_MAQUINA[atual]}. Passa TikTok, YouTube, Sites, Agentes, TradingView e Telegram para o ${NOME_MAQUINA[outra]}; o MT5 e o YouTube da Bovespa ficam no VPS.">${ico("radio")} Operar no ${NOME_MAQUINA[outra]}</button>`;
+}
+
 function htmlResumoSaude(e) {
   const n = { ok: 0, atencao: 0, parada: 0, inativa: 0 };
   fontesDoCtx().forEach((f) => n[saudeFonte(f, e).status.nivel]++);
@@ -1350,7 +1403,7 @@ function htmlMonitor(e) {
   const algum = fontesDoCtx().some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span>
-      <span class="direita">${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
+      <span class="direita">${htmlTrocaMaquina(e)}${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
       <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
@@ -2271,6 +2324,12 @@ document.addEventListener("click", (ev) => {
     } else sel.unidades[f] = { ...(sel.unidades[f] ?? {}), [u]: ligar };
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarExecucao(modo, sel));
+  }
+  if (acao === "trocar-maquina") {
+    const alvo = b.dataset.maquina, nome = NOME_MAQUINA[alvo];
+    if (!confirm(`Passar o monitor para o ${nome}? TikTok, YouTube, Sites, Agentes, TradingView e Telegram param na outra máquina e ligam no ${nome} em 1 a 3 min; as gravações em andamento são encerradas. O MT5 e o YouTube da Bovespa continuam no VPS.${alvo === "mac" ? " O Mac precisa estar acordado e com o Rancher Desktop aberto." : ""}`)) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.pedirTroca(alvo));
   }
   if (acao === "login") {
     b.disabled = true; b.classList.add("ocupado");
