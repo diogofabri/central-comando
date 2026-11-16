@@ -1278,7 +1278,7 @@ function htmlBotaoAudio(f, e) {
   const titulo = ligado ? `Parar de escutar o áudio das lives do ${FONTES[f]} (as leituras seguem só com os prints)`
     : `Escutar o áudio das lives do ${FONTES[f]}: a fala do apresentador é transcrita (Groq, grátis com limite diário) e ajuda a ler entrada, stop e alvo`;
   return `<div class="meta"><button class="btn pequeno exec ${ligado ? "ligado" : ""}" data-acao="audio" data-chave="${esc(chave)}" data-ligar="${!ligado}"
-    aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico("radio")}Áudio<span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button></div>`;
+    aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico("radio")}Escutar live<span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button></div>`;
 }
 
 // Atraso da leitura (16/11/2026, migração 0016): "atrasado" = o canal já tinha executado a posição na live há mais que a
