@@ -1924,6 +1924,9 @@ function controleSelfLearning(p, { compacto = false } = {}) {
 
 function svgSaldo(a) {
   const pts = a.curva.map(([t, v]) => [new Date(t).getTime(), v]);
+  // a curva começa no zero, como um extrato (16/11/2026): antes, o 1.º ponto já era o resultado da 1.ª operação e um
+  // loss inicial parecia saldo que "nasceu" negativo
+  if (pts.length && pts[0][1] !== 0) pts.unshift([pts[0][0] - 60e3, 0]);
   if (pts.length < 2) return `<p class="vazio">A curva aparece a partir de 2 operações resolvidas (${a.metricas.ops} até agora).</p>`;
   const estreito = innerWidth < 560;
   const W = estreito ? 360 : 640, H = estreito ? 180 : 210, L = 52, R = 12, T = 12, B = 26, w = W - L - R, h = H - T - B;
