@@ -1239,12 +1239,23 @@ function lucroTeorico(s) {
   }
   return { valor, moeda, base, r: risco ? mov / risco : null, preco: Number(cot.preco), em: cot.em, fonte: cot.fonte };
 }
+// entrada do sinal já tocada? (controle.cotacoes:sinais.acionados, chave "<fonte com contexto>:<id>"): null = ainda não;
+// ausente = não se sabe (sinal fora do registro), e o lucro aparece como antes
+function entradaTocada(s) {
+  const mapa = estado.cotacoes?.acionados;
+  if (!mapa || s.encerrado) return true;
+  const k = `${s.fonte}${ctxLente === "forex" ? "" : `@${ctxLente}`}:${s.sinal_id}`;
+  return !(k in mapa) || mapa[k] != null;
+}
 function htmlLucroTeorico(s) {
+  if (!entradaTocada(s)) {
+    return `<span class="exec-ordem st-pendente" title="O preço ainda não chegou à entrada do sinal: o lucro teórico começa quando ela for tocada.">${ico("clock")}<span>aguardando entrada</span></span>`;
+  }
   const t = lucroTeorico(s);
   if (!t || (t.valor == null && t.r == null)) return "";
   const rTxt = t.r == null ? "" : `${t.r > 0 ? "+" : t.r < 0 ? "−" : ""}${Math.abs(t.r).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} R`;
   const titulo = `Lucro teórico pelo preço de agora (${precoCurto(t.preco)}, ${t.fonte}, ${t.em ? `há ${duracao(t.em)}` : ""}), `
-    + `supondo a entrada no preço do sinal${t.base ? `; ${t.base}` : ""}. Não é o resultado da corretora.`;
+    + `com a entrada já tocada, no preço do sinal${t.base ? `; ${t.base}` : ""}. Não é o resultado da corretora.`;
   const valor = t.valor != null ? dinheiroSinal(t.valor, t.moeda) : `<b class="lucro-sinal ${t.r > 0 ? "ganho" : t.r < 0 ? "perda" : ""}">${rTxt}</b>`;
   return `<span class="exec-ordem st-teorico" title="${esc(titulo)}">${ico("activity")}<span>teórico</span>${valor}${t.valor != null && rTxt ? `<span class="meta">${rTxt}</span>` : ""}</span>`;
 }
@@ -2340,63 +2351,6 @@ function vistaComparar() {
         <tbody>${linhas.join("")}</tbody></table></div>
       <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. Promover algo de um mercado ao outro é decisão sua (N1) e exige backtest no mercado de destino.</p>
     </section>
-  </main>`;
-}
-
-// Análise de uma fonte fora do Forex: um canal por linha, só em R. O resultado em dinheiro (R$) depende dos contratos e custos da B3,
-// que entram na etapa seguinte; até lá a página não mostra dinheiro para não afirmar o que não foi medido.
-function vistaAnaliseR(f) {
-  const porCanal = new Map();
-  // agrupa pelo nome da unidade (o mesmo da ponte: "Sinal do canal @x" e "@x" são o mesmo canal)
-  resultadosDaFonte(f, estado).forEach((r) => { const k = nomeDaUnidade(f, r.origem ?? "—"); if (!porCanal.has(k)) porCanal.set(k, []); porCanal.get(k).push(r); });
-  // canal com sinal ativo e nada resolvido ainda também ganha linha (para ligar a execução dele)
-  (estado.monitorSinais ?? []).filter((s) => s.fonte === f && s.origem).map((s) => nomeDaUnidade(f, s.origem))
-    .forEach((k) => { if (!porCanal.has(k)) porCanal.set(k, []); });
-  const resumo = (rs) => {
-    const w = rs.filter((r) => r.status === "alvo").length, l = rs.filter((r) => r.status === "stop").length;
-    const rr = rs.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number), soma = rr.reduce((a, b) => a + b, 0);
-    return { w, l, acerto: w + l ? `${Math.round((100 * w) / (w + l))}%` : "—", total: rr.length ? fmtR(soma) : "—", medio: rr.length ? fmtR(soma / rr.length) : "—", poucos: w + l > 0 && w + l < 10 };
-  };
-  // execução na CLEAR (16/11/2026): Demo/Real por canal e da fonte inteira, com as chaves execucao@bovespa:*
-  const exec = CONTEXTOS[ctxLente]?.execucao;
-  const botoes = (nome) => (exec ? `<td class="exec-unidade">${botaoExecucao("demo", f, nomeDaUnidade(f, nome))}${botaoExecucao("real", f, nomeDaUnidade(f, nome))}</td>` : "");
-  const linha = (nome, rs, forte) => { const s = resumo(rs); return `<tr${forte ? ' class="linha-total"' : ""}><th scope="row" class="esq">${esc(forte ? nome : nomeDaUnidade(f, nome))}</th><td class="num">${rs.length}</td><td class="num">${s.w}</td><td class="num">${s.l}</td>
-      <td class="num">${s.acerto}${s.poucos ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td><td class="num">${s.total}</td><td class="num">${s.medio}</td>${exec ? (forte ? "<td></td>" : botoes(nome)) : ""}</tr>`; };
-  const todos = [...porCanal.values()].flat();
-  const ordens = (estado.monitorOrdens ?? []).filter((o) => o.pagina === f).sort((a, b) => b.id - a.id).slice(0, 40);
-  const modalidadeDe = (o) => (!DAY_TRADE_B3.test(o.instrumento ?? "") ? "swing" : estado.execucao?.swing?.[`${o.fonte}@bovespa:${o.sinal_id}`] === true ? "swing" : "day trade");
-  const brl = (v) => (v == null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
-  const secaoOrdens = !exec ? "" : `<section class="painel" aria-labelledby="h-ordens">
-      <h2 id="h-ordens">${ico("send")} Ordens na CLEAR <span class="count">${ordens.length}</span></h2>
-      ${htmlEstadoExecucao("demo")}${htmlEstadoExecucao("real")}
-      ${ordens.length ? `<div class="rolagem"><table class="tabela placar">
-        <thead><tr><th scope="col" class="esq">Quando</th><th scope="col" class="esq">Conta</th><th scope="col" class="esq">Canal</th><th scope="col" class="esq">Ativo</th><th scope="col" class="esq">Lado</th><th scope="col" class="esq">Modalidade</th><th scope="col" class="esq">Situação</th><th scope="col">Resultado</th></tr></thead>
-        <tbody>${ordens.map((o) => `<tr><td class="esq">${quando(o.criado_em)}</td><td class="esq">${o.modo === "real" ? "<b>real</b>" : "demo"}</td><td class="esq">${esc(o.unidade)}</td>
-          <td class="esq">${esc(o.simbolo ?? o.instrumento)}</td><td class="esq">${esc(o.direcao)}</td><td class="esq">${modalidadeDe(o)}</td>
-          <td class="esq">${esc(o.status === "fechada" ? (DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "fechada") : o.status)}${o.motivo ? ` <small class="meta" title="${esc(o.motivo)}">(${esc(String(o.motivo).slice(0, 60))})</small>` : ""}</td>
-          <td class="num">${brl(o.resultado)}</td></tr>`).join("")}</tbody></table></div>`
-        : `<p class="meta">Nenhuma ordem ainda. Ligue o botão Demo de um canal (ou de todo o ${esc(FONTES[f])}): os sinais novos de WIN, WDO e ações passam a abrir ordens na conta demo da CLEAR.</p>`}
-      <p class="meta nota">WIN e WDO são day trade: sem entrada nova depois das 17:45 e zerados às 18:15 (Brasília), salvo a operação marcada como swing no cartão do sinal. Ações são swing: saem no alvo ou no stop. Resultado real da conta, em R$.</p>
-    </section>`;
-  return `<main class="uma">
-    ${avisoErro()}
-    <div class="cabecalho-proj" style="--cor:${cor("monitor")}">
-      <div class="bloco">
-        <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Monitor</a>
-        <h1><i class="ponto" aria-hidden="true"></i>${f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por canal`}</h1>
-        <p class="resumo">${RESUMO_B3}</p>
-      </div>
-      ${exec ? `<div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>` : ""}
-    </div>
-    <section class="painel" aria-labelledby="h-canais">
-      <h2 id="h-canais">${ico("target")} Resultado por canal <span class="count">${porCanal.size} canais</span></h2>
-      ${todos.length ? `<div class="rolagem"><table class="tabela placar">
-        <thead><tr><th scope="col" class="esq">Canal</th><th scope="col">Resolvidos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th>${exec ? '<th scope="col">Execução</th>' : ""}</tr></thead>
-        <tbody>${linha("Todos", todos, true)}${[...porCanal].map(([nome, rs]) => linha(nome, rs, false)).join("")}</tbody></table></div>`
-        : `<p class="meta">Nenhum sinal do ${esc(FONTES[f])} foi resolvido nos últimos 30 dias. A tabela aparece quando o placar resolver o primeiro.</p>`}
-      <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. O placar teórico segue em R; o dinheiro real fica nas ordens abaixo.</p>
-    </section>
-    ${secaoOrdens}
   </main>`;
 }
 
