@@ -224,7 +224,7 @@ function fonteSupabase(cfg) {
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
-               termometro: ctl["termometro:painel"] ?? null,
+               termometro: ctl["termometro:painel"] ?? null, cotacoes: ctl["cotacoes:sinais"] ?? null,
                loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
                consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl),
                execucaoBovespa: execucaoDoControle(ctl, "@bovespa"),
@@ -368,6 +368,10 @@ function fonteDemo() {
     termometro: demoTermometro(agora),
     consensoLigado: false,
     monitorOrdens: demoOrdens(agora),
+    cotacoes: { atualizado_em: new Date(agora - 90e3).toISOString(), ativos: {
+      XAUUSD: { preco: 4014.6, fonte: "capitalcom", em: new Date(agora - 90e3).toISOString() },
+      EURUSD: { preco: 1.1158, fonte: "capitalcom", em: new Date(agora - 90e3).toISOString() },
+      WIN: { preco: 130095, fonte: "mt5-clear", em: new Date(agora - 60e3).toISOString() } } },
     execucao: { selecao: { demo: { fontes: { tiktok: true }, unidades: { tiktok: { "@mogotrading_off": false } } }, real: { fontes: {}, unidades: {} } },
       estado: { demo: { conectado: true, servidor: "ActivTrades-Demo", moeda: "USD", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), lote: 0.01,
                       flutuante: { 5: { lucro: -1.8, preco: 4009.2 }, 7: { lucro: 3.4, preco: 4014.6 } } },
@@ -1210,7 +1214,42 @@ function dinheiroSinal(v, moeda) {
   const sinal = n > 0 ? "+" : n < 0 ? "−" : "";
   return `<b class="lucro-sinal ${n > 0 ? "ganho" : n < 0 ? "perda" : ""}">${sinal}${txt}</b>`;
 }
+// Lucro TEÓRICO do sinal (16/11/2026, pedido do Diogo): pelo preço de agora (controle.cotacoes:sinais, publicado pelo
+// executor a cada ~5 min), supondo a entrada no preço do sinal. Forex: lote 0,01, líquido do spread real (CONTRATOS);
+// Bovespa: 1 minicontrato (WIN R$ 0,20 e WDO R$ 10 por ponto [NV]) ou 100 ações. Sem tabela de contrato, só o R.
+const PONTO_B3 = { WIN: 0.2, WDO: 10 };
+function lucroTeorico(s) {
+  const cot = estado.cotacoes?.ativos?.[String(s.instrumento ?? "").toUpperCase()];
+  const ent = numerosDe(s.entrada), dir = s.direcao === "compra" ? 1 : s.direcao === "venda" ? -1 : 0;
+  if (!cot || !ent.length || !dir) return null;
+  const entrada = ent.length > 1 ? (ent[0] + ent[1]) / 2 : ent[0], mov = (Number(cot.preco) - entrada) * dir;
+  const stop = Number(s.stop), risco = Number.isFinite(stop) ? Math.abs(entrada - stop) : 0;
+  let valor = null, moeda = null, base = "";
+  const inst = String(s.instrumento).toUpperCase(), raiz = Object.keys(PONTO_B3).find((r) => inst.startsWith(r));
+  if (ctxLente === "bovespa") {
+    if (raiz) { valor = mov * PONTO_B3[raiz]; moeda = "BRL"; base = "1 minicontrato"; }
+    else if (/^[A-Z]{4}(\d{1,2})$/.test(inst)) { valor = mov * 100; moeda = "BRL"; base = "100 ações"; }
+  } else {
+    const c = contratoDe(s.instrumento);
+    if (c) { valor = (mov - (c.pct ? c.pct * entrada : c.spread)) * c.un * (c.cota ?? 1); moeda = "USD"; base = "lote 0,01, líquido de spread"; }
+  }
+  return { valor, moeda, base, r: risco ? mov / risco : null, preco: Number(cot.preco), em: cot.em, fonte: cot.fonte };
+}
+function htmlLucroTeorico(s) {
+  const t = lucroTeorico(s);
+  if (!t || (t.valor == null && t.r == null)) return "";
+  const rTxt = t.r == null ? "" : `${t.r > 0 ? "+" : t.r < 0 ? "−" : ""}${Math.abs(t.r).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} R`;
+  const titulo = `Lucro teórico pelo preço de agora (${precoCurto(t.preco)}, ${t.fonte}, ${t.em ? `há ${duracao(t.em)}` : ""}), `
+    + `supondo a entrada no preço do sinal${t.base ? `; ${t.base}` : ""}. Não é o resultado da corretora.`;
+  const valor = t.valor != null ? dinheiroSinal(t.valor, t.moeda) : `<b class="lucro-sinal ${t.r > 0 ? "ganho" : t.r < 0 ? "perda" : ""}">${rTxt}</b>`;
+  return `<span class="exec-ordem st-teorico" title="${esc(titulo)}">${ico("activity")}<span>teórico</span>${valor}${t.valor != null && rTxt ? `<span class="meta">${rTxt}</span>` : ""}</span>`;
+}
+
 function htmlExecucaoSinal(s) {
+  const dentro = htmlLucroTeorico(s) + htmlOrdensDoSinal(s);
+  return dentro ? `<div class="exec-sinal">${dentro}</div>` : "";
+}
+function htmlOrdensDoSinal(s) {
   const ordens = (estado.monitorOrdens ?? []).filter((o) => o.fonte === s.fonte && String(o.sinal_id) === String(s.sinal_id))
     .sort((a, b) => (a.modo === b.modo ? 0 : a.modo === "demo" ? -1 : 1));
   if (!ordens.length) {
@@ -1221,9 +1260,9 @@ function htmlExecucaoSinal(s) {
     const motivo = conectada
       ? "Nenhuma ordem para este sinal: o canal não está com Demo/Real ligado, o sinal chegou velho (mais de 30 min) ou fora do horário de entrada."
       : `Nenhuma ordem: a execução na ${corretoraExec()} não está conectada (a ponte do MT5 não está rodando para este mercado).`;
-    return `<div class="exec-sinal"><span class="exec-ordem st-sem" title="${esc(motivo)}">${ico("pause")}<span>${conectada ? "sem ordem" : "execução desligada"}</span></span></div>`;
+    return `<span class="exec-ordem st-sem" title="${esc(motivo)}">${ico("pause")}<span>${conectada ? "sem ordem" : "execução desligada"}</span></span>`;
   }
-  return `<div class="exec-sinal">${ordens.map((o) => {
+  return ordens.map((o) => {
     const [rotulo, icone, explica] = ESTADO_ORDEM[o.status] ?? [o.status, "alert", o.status];
     const est = estado.execucao?.estado?.[o.modo] ?? {}, moeda = o.moeda ?? est.moeda;
     const flut = o.status === "aberta" ? est.flutuante?.[String(o.id)] : null;
@@ -1232,7 +1271,7 @@ function htmlExecucaoSinal(s) {
     const titulo = `${o.modo === "real" ? "Conta real" : "Conta demo"}: ${explica}${preco}${o.motivo ? ` (${o.motivo})` : ""}`
       + (o.status === "aberta" ? (flut ? ", lucro até agora" : ", lucro ainda não publicado pela ponte") : "");
     return `<span class="exec-ordem st-${esc(o.status)}" title="${esc(titulo)}">${ico(icone)}<span>${o.modo === "real" ? "Real" : "Demo"} · ${rotulo}</span>${valor != null ? dinheiroSinal(valor, moeda) : ""}</span>`;
-  }).join("")}</div>`;
+  }).join("");
 }
 
 // filtro por ativo da seção Monitor de lives (vale para sinais ativos, pares dos sites e placar)
