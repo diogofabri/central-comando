@@ -581,7 +581,7 @@ function rotaAtual() {
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? doMonitor({ tipo: "monitor" }) : { tipo: "projeto", id: m[1], ctx: "forex" };
   if (h.startsWith("#/monitor")) return doMonitor({ tipo: "monitor" });
   if (h.startsWith("#/termometro")) return doMonitor({ tipo: "termometro" });
-  const an = h.match(/^#\/(agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
+  const an = h.match(/^#\/(consolidado|agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
   if (an) return doMonitor({ tipo: "analise", fonte: an[1], id: an[2] ? decodeURIComponent(an[2]) : undefined, modo: MODALIDADES.find(([k]) => k === new URLSearchParams(h.split("?")[1] ?? "").get("m"))?.[0] ?? "todos" });
   return { tipo: "geral", ctx: "forex" };
 }
@@ -790,7 +790,8 @@ function htmlSubmenuMonitor(rota, e) {
     `<a href="${hrefCtx(c)}" ${c === ctxAtual ? 'aria-current="true"' : ""}>${NOME_CTX[c]}</a>`).join("")}</li>`;
   const itens = ctxAtual === "todos"
     ? `<li><a href="#/todos/comparar" ${rota.tipo === "comparar" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Comparar</a></li>`
-    : CONTEXTOS[ctxAtual].fontes.map((f) => {
+    : `<li><a href="${hrefCtx(ctxAtual, CONSOLIDADO)}" ${rota.tipo === "analise" && rota.fonte === CONSOLIDADO && rota.ctx === ctxAtual ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Consolidado</a></li>`
+    + CONTEXTOS[ctxAtual].fontes.map((f) => {
       const n = sinaisAbertosDe(el, f);
       const s = saudeFonte(f, el).status;
       return `<li><a href="${hrefCtx(ctxAtual, f)}" ${rota.tipo === "analise" && rota.fonte === f && rota.ctx === ctxAtual ? 'aria-current="page"' : ""}><i class="ponto saude-${s.nivel}" title="${esc(s.t)}" aria-hidden="true"></i>${FONTES[f]}${s.nivel === "ok" ? "" : `<span class="so-leitor"> (${esc(s.t)})</span>`}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
@@ -2059,7 +2060,10 @@ function htmlAgente(a) {
 // resultados já resolvidos (monitor_resultados, últimos 30 dias). O saldo é em US$ no lote mínimo 0,01: o R do resultado vira
 // contrato e o spread em US$ vêm da tabela CONTRATOS (lote 0,01). As chaves seguem a forma dos agentes, para a mesma página servir às quatro fontes.
 
-const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"], tradingview: ["layout", "layouts"], telegram: ["canal", "canais"] };
+// Consolidado do mercado (16/11/2026, pedido do Diogo): a página de análise com cada FONTE do contexto como unidade e a aba
+// Todos com o mercado inteiro (Forex em US$ no lote 0,01, Bovespa em R$ por 1 minicontrato ou 100 ações; Demo e Real com as ordens).
+const CONSOLIDADO = "consolidado";
+const SUBSTANTIVO = { consolidado: ["fonte", "fontes"], agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"], tradingview: ["layout", "layouts"], telegram: ["canal", "canais"] };
 const RESUMO_B3 = "Cada canal com o seu saldo teórico em R$ por 1 minicontrato (WIN R$ 0,20 e WDO R$ 10 por ponto [NV]) ou 100 ações, sem corretagem nem emolumentos. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. O resultado real das ordens da CLEAR está nas abas Demo e Real. Uso pessoal: não é recomendação.";
 const RESUMO_ANALISE = {
   agentes: "Cada agente com o seu saldo teórico em US$ no lote 0,01, líquido de spread, pelos sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
@@ -2068,6 +2072,10 @@ const RESUMO_ANALISE = {
   sites: "Cada site com o seu saldo em US$ no lote mínimo de 0,01 (forex: 1.000 unidades; cripto: 0,01 moeda), líquido do spread real da Capital.com. Quando o site só publica pips ou pontos, o resultado sai da entrada, do stop e do primeiro alvo (stop = −1 R). Soma os sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
   telegram: "Cada canal público do Telegram com o seu saldo em US$ no lote mínimo de 0,01, líquido do spread real da Capital.com. O resultado sai do preço (Twelve Data e Binance), nunca do que o canal anuncia: stop = −1 R, alvo = distância até o 1.º alvo ÷ o risco. Soma os sinais resolvidos nos últimos 30 dias. Fonte em teste: o placar decide quais canais ficam. Uso pessoal: não é recomendação.",
   tradingview: "Cada layout do TradingView (portes dos indicadores e alertas criados à mão) com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias. Fonte em teste: o placar decide quais layouts ficam. Uso pessoal: não é recomendação.",
+};
+const RESUMO_CONSOLIDADO = {
+  forex: "O Forex inteiro e cada fonte (TikTok, YouTube, Sites, Telegram, Agentes, TradingView) com o saldo teórico em US$ no lote 0,01, líquido do spread real da Capital.com. Soma os sinais resolvidos nos últimos 30 dias, sem os consensos (repetem os sinais dos canais). Os Agentes aqui saem do placar, não do painel do executor. Uso pessoal: não é recomendação.",
+  bovespa: "A Bovespa inteira e cada fonte com o saldo teórico em R$ por 1 minicontrato (WIN R$ 0,20 e WDO R$ 10 por ponto [NV]) ou 100 ações, sem corretagem nem emolumentos. Soma os sinais resolvidos nos últimos 30 dias, sem os consensos. O resultado real das ordens da CLEAR está nas abas Demo e Real. Uso pessoal: não é recomendação.",
 };
 const TODOS = "Todos";
 const STATUS_COM_R = new Set(["alvo", "stop", "expirado"]);
@@ -2206,14 +2214,33 @@ function unidadeDeOps(f, nome, ops, abertos, base, extra = {}) {
   return a;
 }
 
+// Forex: US$ no lote 0,01 líquido de spread; Bovespa (16/11/2026): R$ por 1 minicontrato ou 100 ações (dinheiroDoResultado)
+const opsDeResultados = (linhas) => linhas.filter((r) => STATUS_COM_R.has(r.status) && r.resolvido_em)
+  .map((r) => ({ r: rDoResultado(r), v: dinheiroDoResultado(r), momento: r.resolvido_em, aberto_em: r.desde ?? r.resolvido_em, ativo: r.instrumento, lado: r.direcao, status: r.status }));
+const extraDoCtx = () => (ctxLente === "bovespa" ? { moeda: "BRL", legenda: "saldo acumulado (1 minicontrato de WIN/WDO ou 100 ações, em R$, sem custos)" } : {});
+
 function unidadeDeResultados(f, nome, linhas, abertos, prefixo = "") {
-  const ops = linhas.filter((r) => STATUS_COM_R.has(r.status) && r.resolvido_em)
-    // Forex: US$ no lote 0,01 líquido de spread; Bovespa (16/11/2026): R$ por 1 minicontrato ou 100 ações (dinheiroDoResultado)
-    .map((r) => ({ r: rDoResultado(r), v: dinheiroDoResultado(r), momento: r.resolvido_em, aberto_em: r.desde ?? r.resolvido_em, ativo: r.instrumento, lado: r.direcao, status: r.status }));
+  const ops = opsDeResultados(linhas);
   const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${COMO_SITES.has(f) || f === "tradingview" || f === "agentes" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : f === "telegram" ? "Sinais publicados no canal do Telegram" : f === "tradingview" ? "Sinais deste layout do TradingView" : f === "agentes" ? "Sinais deste agente" : `Sinal do canal no ${FONTES[f]}`;
-  const b3 = ctxLente === "bovespa";
-  return unidadeDeOps(f, nome, ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length,
-    ...(b3 ? { moeda: "BRL", legenda: "saldo acumulado (1 minicontrato de WIN/WDO ou 100 ações, em R$, sem custos)" } : {}) });
+  return unidadeDeOps(f, nome, ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx() });
+}
+
+const abertosDaFonte = (f, e) => (e.monitorSinais ?? []).filter((s) => pertenceAFonte(f, s.fonte, s.origem) && (!s.ate || new Date(s.ate) > Date.now()));
+
+// Consolidado (todos os sinais ou sem disparo): uma unidade por fonte do contexto + Todos = o mercado. Sem consensos, como na aba
+// Todos de cada fonte; o mesmo sinal de canal dos dois monitores já sai uma vez só em resultadosDaFonte.
+function painelConsolidado(e, modo = "todos") {
+  const ordens = modo === "sem" ? (e.monitorOrdens ?? []).filter((o) => o.ticket != null) : null, prefixo = modo === "sem" ? "Sem disparo · " : "";
+  const porFonte = fontesDoCtx().map((f) => {
+    const semConsenso = (x) => nomeDaUnidade(f, x.origem) !== "Consenso" && !(ordens && foiDisparado(f, x, ordens));
+    return { f, linhas: resultadosDaFonte(f, e).filter(semConsenso), abertos: abertosDaFonte(f, e).filter(semConsenso) };
+  }).filter((x) => x.linhas.length || x.abertos.length);
+  const unidade = (nome, linhas, abertos, base, f) => Object.assign(
+    unidadeDeOps(CONSOLIDADO, nome, opsDeResultados(linhas), abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx() }), { fonte: f });
+  const agentes = porFonte.map((x) => unidade(FONTES[x.f], x.linhas, x.abertos, `Todos os sinais do ${FONTES[x.f]} (sem consenso)`, x.f))
+    .sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
+  if (agentes.length) agentes.unshift(unidade(TODOS, porFonte.flatMap((x) => x.linhas), porFonte.flatMap((x) => x.abertos), `Soma de todas as fontes do ${CONTEXTOS[ctxLente].nome}`));
+  return { unidade: "usd", agentes, ...(ctxLente === "bovespa" ? { moeda: "BRL" } : {}) };
 }
 
 // nome do canal, site, agente ou layout (a ponte do MT5 usa a mesma regra: execucao.unidade_de)
@@ -2228,7 +2255,7 @@ function foiDisparado(f, r, ordens) {
 
 function painelDeResultados(f, e, modo = "todos") {
   let linhas = resultadosDaFonte(f, e);
-  let abertos = (e.monitorSinais ?? []).filter((s) => pertenceAFonte(f, s.fonte, s.origem) && (!s.ate || new Date(s.ate) > Date.now()));
+  let abertos = abertosDaFonte(f, e);
   if (modo === "sem") {
     const ordens = (e.monitorOrdens ?? []).filter((o) => o.ticket != null);
     linhas = linhas.filter((r) => !foiDisparado(f, r, ordens));
@@ -2296,7 +2323,9 @@ const rDaOrdem = (o) => {
 };
 
 function painelDeOrdens(f, e, modo) {
-  const ordens = (e.monitorOrdens ?? []).filter((o) => o.modo === modo && o.pagina === f);
+  const consol = f === CONSOLIDADO, fontes = fontesDoCtx();
+  const ordens = (e.monitorOrdens ?? []).filter((o) => o.modo === modo && (consol ? fontes.includes(o.pagina) : o.pagina === f));
+  const chave = consol ? (o) => FONTES[o.pagina] ?? o.pagina : (o) => o.unidade;
   const moeda = e.execucao?.estado?.[modo]?.moeda ?? ordens.find((o) => o.moeda)?.moeda ?? "USD";
   const conta = modo === "demo" ? "da conta demo" : "da conta real";
   const unidade = (nome, lista) => {
@@ -2309,14 +2338,15 @@ function painelDeOrdens(f, e, modo) {
     return unidadeDeOps(f, nome, ops, abertos, base + (recusas ? ` · ${recusas} recusadas` : ""),
       { sinais: lista.length, executadas: lista.filter((o) => o.preco_execucao != null).length, moeda, legenda: `resultado real das ordens ${conta} (com swap e comissão, em ${moeda})` });
   };
-  const nomes = [...new Set(ordens.map((o) => o.unidade))];
-  const agentes = nomes.map((n) => unidade(n, ordens.filter((o) => o.unidade === n))).sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
+  const nomes = [...new Set(ordens.map(chave))];
+  const agentes = nomes.map((n) => Object.assign(unidade(n, ordens.filter((o) => chave(o) === n)), consol ? { fonte: fontes.find((x) => FONTES[x] === n) } : {})).sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
   if (agentes.length) agentes.unshift(unidade(TODOS, ordens));
   return { unidade: "usd", moeda, agentes };
 }
 
 function painelDaModalidade(f, e, modo) {
   if (modo === "demo" || modo === "real") return painelDeOrdens(f, e, modo);
+  if (f === CONSOLIDADO) return painelConsolidado(e, modo);
   return f === "agentes" && modo === "todos" && ctxLente === "forex" ? e.agentesPainel : painelDeResultados(f, e, modo);
 }
 
@@ -2340,7 +2370,7 @@ function htmlEstadoExecucao(modo) {
 // comparativo da unidade aberta nas quatro modalidades (Todos e Sem disparo no placar teórico; Demo e Real com o resultado real)
 function htmlPorModalidade(f, id) {
   const linhas = [["todos", "Todos os sinais"], ["demo", "Demo"], ["real", "Real"], ["sem", "Sem disparo"]].map(([k, rotulo]) => {
-    const p = k === "todos" ? painelDeResultados(f, estado) : painelDaModalidade(f, estado, k);
+    const p = k === "todos" && f !== CONSOLIDADO ? painelDeResultados(f, estado) : painelDaModalidade(f, estado, k);
     const a = p?.agentes?.find((x) => x.id === id), din = dinheiro(a ?? { moeda: p?.moeda });
     if (!a) return `<tr><th scope="row"><a href="${hrefAnalise(f, id, k)}">${rotulo}</a></th><td class="num">0</td><td class="num">0</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
     const m = a.metricas;
@@ -2397,19 +2427,19 @@ function vistaComparar() {
 }
 
 function vistaAnalise(f, id, modo = "todos") {
-  if (ctxLente !== "forex" && !(estado.monitorFontes ?? []).some((x) => x.fonte === f) && !(estado.monitorResultados ?? []).some((x) => x.fonte === f)) return vistaContextoVazio(`${FONTES[f]} · ${CONTEXTOS[ctxLente].nome}`);
+  if (f !== CONSOLIDADO && ctxLente !== "forex" && !(estado.monitorFontes ?? []).some((x) => x.fonte === f) && !(estado.monitorResultados ?? []).some((x) => x.fonte === f)) return vistaContextoVazio(`${FONTES[f]} · ${CONTEXTOS[ctxLente].nome}`);
   // Bovespa (16/11/2026, pedido do Diogo): a mesma página do Forex, com a aba Todos e cada canal em R$ (antes era só R,
   // em vistaAnaliseR). O painel dos agentes do executor só existe no Forex; na Bovespa os agentes saem do placar.
   const ehAgentes = f === "agentes" && modo === "todos" && ctxLente === "forex", p = painelDaModalidade(f, estado, modo), [um, varios] = SUBSTANTIVO[f];
-  const din = dinheiro(p ?? {}), comOrdens = modo === "demo" || modo === "real";
+  const din = dinheiro(p ?? {}), comOrdens = modo === "demo" || modo === "real", consol = f === CONSOLIDADO;
   const cab = `<div class="cabecalho-proj" style="--cor:${cor("monitor")}">
       <div class="bloco">
         <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Monitor</a>
-        <h1><i class="ponto" aria-hidden="true"></i>${f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
-        <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : comOrdens || modo === "sem" ? DESCRICAO_MODALIDADE[modo] : ctxLente !== "forex" ? RESUMO_B3 : RESUMO_ANALISE[f]}</p>
+        <h1><i class="ponto" aria-hidden="true"></i>${consol ? `${CONTEXTOS[ctxLente].nome}: resultado consolidado` : f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
+        <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : comOrdens || modo === "sem" ? DESCRICAO_MODALIDADE[modo] : consol ? RESUMO_CONSOLIDADO[ctxLente] : ctxLente !== "forex" ? RESUMO_B3 : RESUMO_ANALISE[f]}</p>
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
-      ${CONTEXTOS[ctxLente]?.execucao ?? true ? `<div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>` : ""}
+      ${!consol && (CONTEXTOS[ctxLente]?.execucao ?? true) ? `<div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>` : ""}
       ${ehAgentes ? controleSelfLearning(p) : ""}
     </div>`;
   const modalidades = !(CONTEXTOS[ctxLente]?.execucao ?? true) ? "" : `<nav class="abas-agentes modalidades" aria-label="Modalidade">${[["todos", "Todos os sinais"], ["demo", "Demo"], ["real", "Real"], ["sem", "Sem disparo"]]
@@ -2436,7 +2466,7 @@ function vistaAnalise(f, id, modo = "todos") {
           <td class="col-zero">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
           <td class="num">${a.metricas.fator_lucro == null ? "—" : String(a.metricas.fator_lucro).replace(".", ",")}</td>
           <td class="num">${din(-a.metricas.drawdown_usd)}</td>
-          <td>${a.tipo === "todos" ? "" : `<div class="exec-botoes">${botaoExecucao("demo", f, a.id)}${botaoExecucao("real", f, a.id)}</div>`}</td></tr>`).join("")}</tbody></table></div>
+          <td>${a.tipo === "todos" ? "" : consol ? (a.fonte ? `<div class="exec-botoes">${botaoExecucao("demo", a.fonte)}${botaoExecucao("real", a.fonte)}</div>` : "") : `<div class="exec-botoes">${botaoExecucao("demo", f, a.id)}${botaoExecucao("real", f, a.id)}</div>`}</td></tr>`).join("")}</tbody></table></div>
     </section>`;
   const abas = `<nav class="abas-agentes" aria-label="${varios[0].toUpperCase() + varios.slice(1)}">${p.agentes.map((a) => `<a href="${hrefAnalise(f, a.id)}" ${a.id === atual.id ? 'aria-current="page"' : ""}>${esc(a.id)}${a.self_learning ? ` ${ico("bulb")}` : ""}</a>`).join("")}</nav>`;
   return `<main class="uma">
@@ -2482,7 +2512,7 @@ function render() {
   app.innerHTML = htmlTopo(rota) + corpo;
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
-  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte]}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
+  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
     main.classList.add("entrada");
