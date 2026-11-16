@@ -225,6 +225,7 @@ function fonteSupabase(cfg) {
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
                termometro: ctl["termometro:painel"] ?? null, cotacoes: ctl["cotacoes:sinais"] ?? null,
+               audio: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("audio:")).map(([k, v]) => [k.slice(6), v === true])),
                loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
                consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl),
                execucaoBovespa: execucaoDoControle(ctl, "@bovespa"),
@@ -245,6 +246,8 @@ function fonteSupabase(cfg) {
     comandarSelfLearning: (ligar) => sb.from("controle").upsert({ chave: "agentes:self_learning", valor: ligar }).then(ok),
     // modo consenso do TikTok e do YouTube: true = vários canais precisam concordar; false (padrão) = cada canal gera o seu sinal
     comandarConsenso: (ligar) => sb.from("controle").upsert({ chave: "consenso:modo", valor: ligar }).then(ok),
+    // escutar o áudio da live (feature flag por fonte e contexto, 16/11/2026): controle.audio:<fonte>[@contexto]
+    comandarAudio: (fonteCtx, ligar) => sb.from("controle").upsert({ chave: `audio:${fonteCtx}`, valor: ligar }).then(ok),
     // pede ao monitor que abra a janela de login da conta Google (a senha é digitada só no noVNC; nada de credencial passa por aqui)
     pedirLogin: (f) => sb.from("controle").upsert({ chave: `login:${f}:pedido`, valor: true }).then(ok),
     // troca de máquina: o seguidor de cada máquina (`maquinas seguir`, a cada minuto) lê o pedido e aplica
@@ -428,6 +431,7 @@ function fonteDemo() {
     },
     async comandarSelfLearning(ligar) { s.selfLearning = ligar; s.agentesPainel.self_learning.ligado = ligar; },
     async comandarConsenso(ligar) { s.consensoLigado = ligar; },
+    async comandarAudio(fonteCtx, ligar) { s.audio = { ...(s.audio ?? {}), [fonteCtx]: ligar }; },
     async comandarExecucao(modo, selecao, suf = "") { (suf ? s.execucaoBovespa : s.execucao).selecao[modo] = selecao; },
     async comandarSwing(suf, mapa) { s.execucaoBovespa.swing = mapa; },
     async pedirLogin(f) { s.loginFonte[f] = { ...s.loginFonte[f], estado: "aguardando", atualizado_em: new Date().toISOString() }; },
@@ -1264,6 +1268,19 @@ function htmlExecucaoSinal(s) {
   const dentro = htmlLucroTeorico(s) + htmlOrdensDoSinal(s) + (s.situacao === "atrasado" ? "" : htmlAtrasoSinal(s));
   return dentro ? `<div class="exec-sinal">${dentro}</div>` : "";
 }
+// Escutar o áudio da live (16/11/2026, pedido do Diogo): feature flag por fonte de VÍDEO e por contexto
+// (controle.audio:<fonte>[@contexto]); o monitor lê a chave a cada ~10 s e vale a partir da próxima passagem. Sites e
+// fontes sem vídeo (agentes, TradingView, Telegram) não têm áudio para escutar.
+const FONTES_COM_VIDEO = new Set(["tiktok", "youtube"]);
+function htmlBotaoAudio(f, e) {
+  if (!FONTES_COM_VIDEO.has(f)) return "";
+  const chave = `${f}${sufixoDe(ctxLente)}`, ligado = e.audio?.[chave] === true;
+  const titulo = ligado ? `Parar de escutar o áudio das lives do ${FONTES[f]} (as leituras seguem só com os prints)`
+    : `Escutar o áudio das lives do ${FONTES[f]}: a fala do apresentador é transcrita (Groq, grátis com limite diário) e ajuda a ler entrada, stop e alvo`;
+  return `<div class="meta"><button class="btn pequeno exec ${ligado ? "ligado" : ""}" data-acao="audio" data-chave="${esc(chave)}" data-ligar="${!ligado}"
+    aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico("radio")}Áudio<span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button></div>`;
+}
+
 // Atraso da leitura (16/11/2026, migração 0016): "atrasado" = o canal já tinha executado a posição na live há mais que a
 // tolerância (15 min); o sinal nunca vira ordem nem aviso, mas o placar mede o que ele daria
 const minTexto = (m) => (m == null ? "?" : m >= 90 ? `${(m / 60).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h` : `${Math.round(m)} min`);
@@ -1609,6 +1626,7 @@ function htmlMonitor(e) {
       <div class="meta estado-fonte">${selo}${motivos.filter((m) => m !== "sem login").map((m) => htmlBadge("warning", m, "alert")).join("")}${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}${htmlMaquinaFonte(f, e)}</div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
       ${f === "youtube" ? htmlLoginYoutube(e) : ""}
+      ${htmlBotaoAudio(f, e)}
       ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
       ${rodada}
       ${resumoStatusFonte(f, visiveis)}
@@ -2528,6 +2546,12 @@ document.addEventListener("click", (ev) => {
     if (ligar && !confirm("Ligar o consenso? O TikTok e o YouTube só geram sinal quando vários canais concordam (mínimo de canais, tolerância e bloqueio do lado oposto). Os sinais já abertos continuam. Vale em até ~10 s, sem reiniciar.")) return;
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarConsenso(ligar));
+  }
+  if (acao === "audio") {
+    const ligar = b.dataset.ligar === "true";
+    if (ligar && !confirm("Escutar o áudio das lives desta fonte? A fala é enviada ao Groq para transcrição (grátis até ~8 h de áudio por dia) e entra na leitura das próximas passagens.")) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarAudio(b.dataset.chave, ligar));
   }
   if (acao === "execucao") {
     const modo = b.dataset.modo, f = b.dataset.fonte, u = b.dataset.unidade, ligar = b.dataset.ligar === "true";
