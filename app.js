@@ -1187,7 +1187,7 @@ function htmlSinal(s) {
     <div class="sinal-topo"><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
       <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span><b>${esc(s.instrumento)}</b>${selo}</div>
     <dl class="sinal-niveis">${nivel("Entrada", s.entrada)}${nivel("Stop", s.stop)}${nivel("Alvo", s.alvos)}</dl>
-    <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}${htmlModalidadeOperacao(s)}</div>
+    <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}${s.encerrado ? `<span title="O sinal saiu da lista de ativos, mas a ordem continua viva na corretora">sinal encerrado, ordem segue</span>` : ""}${htmlModalidadeOperacao(s)}</div>
     ${htmlExecucaoSinal(s)}</li>`;
 }
 
@@ -1213,7 +1213,16 @@ function dinheiroSinal(v, moeda) {
 function htmlExecucaoSinal(s) {
   const ordens = (estado.monitorOrdens ?? []).filter((o) => o.fonte === s.fonte && String(o.sinal_id) === String(s.sinal_id))
     .sort((a, b) => (a.modo === b.modo ? 0 : a.modo === "demo" ? -1 : 1));
-  if (!ordens.length) return "";
+  if (!ordens.length) {
+    // sem ordem: diz por quê, em vez de não mostrar nada (pedido do Diogo, 16/11/2026)
+    if (!CONTEXTOS[ctxLente]?.execucao && ctxLente !== "forex") return "";
+    const est = estado.execucao?.estado ?? {};
+    const conectada = ["demo", "real"].some((m) => est[m]?.conectado);
+    const motivo = conectada
+      ? "Nenhuma ordem para este sinal: o canal não está com Demo/Real ligado, o sinal chegou velho (mais de 30 min) ou fora do horário de entrada."
+      : `Nenhuma ordem: a execução na ${corretoraExec()} não está conectada (a ponte do MT5 não está rodando para este mercado).`;
+    return `<div class="exec-sinal"><span class="exec-ordem st-sem" title="${esc(motivo)}">${ico("pause")}<span>${conectada ? "sem ordem" : "execução desligada"}</span></span></div>`;
+  }
   return `<div class="exec-sinal">${ordens.map((o) => {
     const [rotulo, icone, explica] = ESTADO_ORDEM[o.status] ?? [o.status, "alert", o.status];
     const est = estado.execucao?.estado?.[o.modo] ?? {}, moeda = o.moeda ?? est.moeda;
@@ -1293,8 +1302,16 @@ function htmlTermometroCompacto(e) {
 }
 
 function sinaisVigentes(e, f) {
-  return (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now()) && passaFiltro(s.instrumento))
-    .sort((a, b) => new Date(b.desde) - new Date(a.desde));
+  const ativos = (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now()) && passaFiltro(s.instrumento));
+  // ordem ainda viva na corretora (aberta ou aguardando) cujo sinal já saiu da lista: continua aqui, com o lucro, até sair
+  const tem = new Set(ativos.map((s) => String(s.sinal_id)));
+  const orfas = (e.monitorOrdens ?? []).filter((o) => o.fonte === f && (o.status === "aberta" || o.status === "pendente")
+      && !tem.has(String(o.sinal_id)) && passaFiltro(o.instrumento))
+    .filter((o, i, l) => l.findIndex((x) => String(x.sinal_id) === String(o.sinal_id)) === i)
+    .map((o) => ({ fonte: f, sinal_id: o.sinal_id, item: null, origem: o.origem || o.unidade, instrumento: o.instrumento,
+                   direcao: o.direcao, entrada: o.preco_execucao ?? o.preco_pedido ?? o.entrada_sinal, stop: o.stop, alvos: o.alvo,
+                   desde: o.aberto_em || o.sinal_desde || o.criado_em, ate: null, encerrado: true }));
+  return [...ativos, ...orfas].sort((a, b) => new Date(b.desde) - new Date(a.desde));
 }
 
 function htmlSinaisAtivos(e) {
