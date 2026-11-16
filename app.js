@@ -1838,7 +1838,8 @@ function vistaTermometro() {
 const usd2 = (v) => { v = Number(v) || 0; return `${v < 0 ? "−" : v > 0 ? "+" : ""}US$ ${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
 const r2 = (v) => { v = Number(v) || 0; return `${v < 0 ? "−" : v > 0 ? "+" : ""}${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} R`; };
 // agentes: saldo em US$ (lote do otimizador); tiktok, youtube e sites: saldo em R (múltiplos do risco), calculado dos resultados do placar
-const moedaConta = (m) => (v) => { v = Number(v) || 0; return `${v < 0 ? "−" : v > 0 ? "+" : ""}${m} ${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
+const SIMBOLO_MOEDA = { BRL: "R$", EUR: "€", USD: "US$" };
+const moedaConta = (m) => (v) => { v = Number(v) || 0; return `${v < 0 ? "−" : v > 0 ? "+" : ""}${SIMBOLO_MOEDA[m] ?? m} ${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
 const dinheiro = (a) => (a.unidade === "r" ? r2 : a.moeda && a.moeda !== "USD" ? moedaConta(a.moeda) : usd2);
 const pct = (v) => v == null ? "—" : `${String(v).replace(".", ",")}%`;
 const ESTADO_AUTO = { satisfeito: "good", "em ajuste": "warning", aprendendo: "muted" };
@@ -2006,7 +2007,7 @@ function htmlAgente(a) {
 // contrato e o spread em US$ vêm da tabela CONTRATOS (lote 0,01). As chaves seguem a forma dos agentes, para a mesma página servir às quatro fontes.
 
 const SUBSTANTIVO = { agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"], tradingview: ["layout", "layouts"], telegram: ["canal", "canais"] };
-const RESUMO_B3 = "Cada canal com o seu resultado em múltiplos do risco (R): o stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias. Dinheiro em R$ (contratos e custos da B3) entra na etapa seguinte. Uso pessoal: não é recomendação.";
+const RESUMO_B3 = "Cada canal com o seu saldo teórico em R$ por 1 minicontrato (WIN R$ 0,20 e WDO R$ 10 por ponto [NV]) ou 100 ações, sem corretagem nem emolumentos. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. O resultado real das ordens da CLEAR está nas abas Demo e Real. Uso pessoal: não é recomendação.";
 const RESUMO_ANALISE = {
   agentes: "Cada agente com o seu saldo teórico em US$ no lote 0,01, líquido de spread, pelos sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
   tiktok: "Cada canal do TikTok com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
@@ -2154,9 +2155,12 @@ function unidadeDeOps(f, nome, ops, abertos, base, extra = {}) {
 
 function unidadeDeResultados(f, nome, linhas, abertos, prefixo = "") {
   const ops = linhas.filter((r) => STATUS_COM_R.has(r.status) && r.resolvido_em)
-    .map((r) => ({ r: rDoResultado(r), v: usdDoResultado(r, rDoResultado(r)), momento: r.resolvido_em, aberto_em: r.desde ?? r.resolvido_em, ativo: r.instrumento, lado: r.direcao, status: r.status }));
+    // Forex: US$ no lote 0,01 líquido de spread; Bovespa (16/11/2026): R$ por 1 minicontrato ou 100 ações (dinheiroDoResultado)
+    .map((r) => ({ r: rDoResultado(r), v: dinheiroDoResultado(r), momento: r.resolvido_em, aberto_em: r.desde ?? r.resolvido_em, ativo: r.instrumento, lado: r.direcao, status: r.status }));
   const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${COMO_SITES.has(f) || f === "tradingview" || f === "agentes" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : f === "telegram" ? "Sinais publicados no canal do Telegram" : f === "tradingview" ? "Sinais deste layout do TradingView" : f === "agentes" ? "Sinais deste agente" : `Sinal do canal no ${FONTES[f]}`;
-  return unidadeDeOps(f, nome, ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length });
+  const b3 = ctxLente === "bovespa";
+  return unidadeDeOps(f, nome, ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length,
+    ...(b3 ? { moeda: "BRL", legenda: "saldo acumulado (1 minicontrato de WIN/WDO ou 100 ações, em R$, sem custos)" } : {}) });
 }
 
 // nome do canal, site, agente ou layout (a ponte do MT5 usa a mesma regra: execucao.unidade_de)
@@ -2184,7 +2188,7 @@ function painelDeResultados(f, e, modo = "todos") {
   // aba "Todos": soma dos canais ou sites; o consenso fica fora porque repete os sinais dos canais
   const semConsenso = (x) => nomeDaUnidade(f, x.origem) !== "Consenso";
   if (agentes.some((a) => a.id !== "Consenso")) agentes.unshift(unidadeDeResultados(f, TODOS, linhas.filter(semConsenso), abertos.filter(semConsenso), prefixo));
-  return { unidade: "usd", agentes };
+  return { unidade: "usd", agentes, ...(ctxLente === "bovespa" ? { moeda: "BRL" } : {}) };
 }
 
 // ---------- execução no MT5 (ActivTrades): ordens reais, seleção por canal e modalidades ----------
@@ -2260,7 +2264,7 @@ function painelDeOrdens(f, e, modo) {
 
 function painelDaModalidade(f, e, modo) {
   if (modo === "demo" || modo === "real") return painelDeOrdens(f, e, modo);
-  return f === "agentes" && modo === "todos" ? e.agentesPainel : painelDeResultados(f, e, modo);
+  return f === "agentes" && modo === "todos" && ctxLente === "forex" ? e.agentesPainel : painelDeResultados(f, e, modo);
 }
 
 function htmlEstadoExecucao(modo) {
@@ -2398,12 +2402,13 @@ function vistaAnaliseR(f) {
 
 function vistaAnalise(f, id, modo = "todos") {
   if (ctxLente !== "forex" && !(estado.monitorFontes ?? []).some((x) => x.fonte === f) && !(estado.monitorResultados ?? []).some((x) => x.fonte === f)) return vistaContextoVazio(`${FONTES[f]} · ${CONTEXTOS[ctxLente].nome}`);
-  if (ctxLente !== "forex") return vistaAnaliseR(f);
-  const ehAgentes = f === "agentes" && modo === "todos", p = painelDaModalidade(f, estado, modo), [um, varios] = SUBSTANTIVO[f];
+  // Bovespa (16/11/2026, pedido do Diogo): a mesma página do Forex, com a aba Todos e cada canal em R$ (antes era só R,
+  // em vistaAnaliseR). O painel dos agentes do executor só existe no Forex; na Bovespa os agentes saem do placar.
+  const ehAgentes = f === "agentes" && modo === "todos" && ctxLente === "forex", p = painelDaModalidade(f, estado, modo), [um, varios] = SUBSTANTIVO[f];
   const din = dinheiro(p ?? {}), comOrdens = modo === "demo" || modo === "real";
   const cab = `<div class="cabecalho-proj" style="--cor:${cor("monitor")}">
       <div class="bloco">
-        <a class="voltar" href="#/monitor">${ico("back")} Monitor</a>
+        <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>${f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
         <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : comOrdens || modo === "sem" ? DESCRICAO_MODALIDADE[modo] : ctxLente !== "forex" ? RESUMO_B3 : RESUMO_ANALISE[f]}</p>
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
