@@ -77,7 +77,8 @@ function urlCanal(fonte, item) {
   if (fonte === "youtube") {
     if (item.startsWith("v=")) return `https://www.youtube.com/watch?v=${encodeURIComponent(item.slice(2))}`;
     if (/^UC[\w-]{20,}$/.test(item)) return `https://www.youtube.com/channel/${item}/live`;
-    return `https://www.youtube.com/@${encodeURIComponent(item.replace(/^@/, ""))}/live`;
+    // "canal~2": 2.ª live do mesmo canal (opção x2 do canais-youtube.txt); o link é o do canal
+    return `https://www.youtube.com/@${encodeURIComponent(item.replace(/^@/, "").replace(/~\d+$/, ""))}/live`;
   }
   if (fonte === "sites") return SITES_URL[item.split(":")[0]] ?? null;
   if (fonte === "telegram") { const c = item.split(":")[0]; return /^-\d+$/.test(c) ? null : `https://t.me/${encodeURIComponent(c)}`; }  // canal privado (id numérico): sem link público
@@ -368,11 +369,12 @@ function fonteDemo() {
     consensoLigado: false,
     monitorOrdens: demoOrdens(agora),
     execucao: { selecao: { demo: { fontes: { tiktok: true }, unidades: { tiktok: { "@mogotrading_off": false } } }, real: { fontes: {}, unidades: {} } },
-      estado: { demo: { conectado: true, servidor: "ActivTrades-Demo", moeda: "USD", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), lote: 0.01 },
+      estado: { demo: { conectado: true, servidor: "ActivTrades-Demo", moeda: "USD", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), lote: 0.01,
+                      flutuante: { 5: { lucro: -1.8, preco: 4009.2 }, 7: { lucro: 3.4, preco: 4014.6 } } },
         real: { conectado: false, aviso: "faltam MT5_REAL_LOGIN, MT5_REAL_PASSWORD e MT5_REAL_SERVER no .env do monitor", atualizado_em: new Date(agora - 30e3).toISOString() } } },
     execucaoBovespa: { selecao: { demo: { fontes: { agentes: true } }, real: {} }, swing: {},
       estado: { demo: { conectado: true, servidor: "ClearInvestimentos-DEMO", moeda: "BRL", abertas: 0, pendentes: 0, resultado_dia: 0, atualizado_em: new Date(agora - 15e3).toISOString(),
-                        corretora: "CLEAR", volumes: { WIN: 1, WDO: 1, acoes: 100 }, day_trade: { ativos: ["WIN", "WDO"], ultima_entrada: "17:45", zerar_as: "18:15" } }, real: null } },
+                        corretora: "CLEAR", volumes: { WIN: 1, WDO: 1, acoes: 100 }, flutuante: { 9: { lucro: -12, preco: 130095 } }, day_trade: { ativos: ["WIN", "WDO"], ultima_entrada: "17:45", zerar_as: "18:15" } }, real: null } },
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
     monitorResultados: [
       ...demoResultados(agora),
@@ -440,6 +442,10 @@ function demoOrdens(agora) {
     o(4, "@mogotrading_off", "venda", 4033.1, 4021, 4041, 4021, 11.7, "tp", 9),
     o(5, "@canal.fx", "compra", 4011.0, null, 4000, 4030, null, null, 0.3),
     { ...o(6, "@canal.fx", "compra", null, null, 4000, 4030, null, null, 2), status: "recusada", motivo: "perda no stop 52.00 acima do limite 50", ticket: null, preco_execucao: null },
+    // ordens dos sinais ativos da demonstração: executada com lucro (TikTok), aguardando (agentes) e a da Bovespa
+    { ...o(7, "@canal.fx", "compra", 4011.2, null, 4000, 4030, null, null, 0.25), sinal_id: 1 },
+    { ...o(8, "cruzamento-medias", "compra", null, null, 4002, 4019.6, null, null, 0.45), fonte: "agentes", pagina: "agentes", sinal_id: 1, status: "pendente", preco_execucao: null, posicao: null },
+    { ...o(9, "@canal.win", "compra", 130155, null, 129950, 130350, null, null, 0.15), fonte: "youtube@bovespa", pagina: "youtube", sinal_id: 31, instrumento: "WIN", simbolo: "WINZ26", volume: 1, moeda: "BRL" },
   ];
 }
 
@@ -1181,7 +1187,43 @@ function htmlSinal(s) {
     <div class="sinal-topo"><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
       <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span><b>${esc(s.instrumento)}</b>${selo}</div>
     <dl class="sinal-niveis">${nivel("Entrada", s.entrada)}${nivel("Stop", s.stop)}${nivel("Alvo", s.alvos)}</dl>
-    <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}${htmlModalidadeOperacao(s)}</div></li>`;
+    <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}${htmlModalidadeOperacao(s)}</div>
+    ${htmlExecucaoSinal(s)}</li>`;
+}
+
+// Execução do sinal na corretora (16/11/2026, pedido do Diogo): ícone do estado da ordem (aguardando, executada,
+// encerrada, não executada) e o lucro até agora em verde ou vermelho. O lucro da ordem aberta vem da ponte
+// (controle.execucao[@bovespa]:estado:<modo>.flutuante, a cada ~15 s); o da encerrada é o resultado real.
+const ESTADO_ORDEM = {
+  pendente: ["aguardando", "clock", "aguardando a entrada na corretora"],
+  aberta: ["executada", "check", "ordem executada na corretora"],
+  fechada: ["encerrada", "flag", "operação encerrada na corretora"],
+  recusada: ["não executada", "x", "ordem recusada"], erro: ["não executada", "x", "erro no envio da ordem"],
+  cancelada: ["cancelada", "x", "ordem cancelada"],
+};
+function dinheiroSinal(v, moeda) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  let txt;
+  try { txt = Math.abs(n).toLocaleString("pt-BR", { style: "currency", currency: moeda || "USD" }); }
+  catch { txt = `${Math.abs(n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moeda ?? ""}`; }
+  const sinal = n > 0 ? "+" : n < 0 ? "−" : "";
+  return `<b class="lucro-sinal ${n > 0 ? "ganho" : n < 0 ? "perda" : ""}">${sinal}${txt}</b>`;
+}
+function htmlExecucaoSinal(s) {
+  const ordens = (estado.monitorOrdens ?? []).filter((o) => o.fonte === s.fonte && String(o.sinal_id) === String(s.sinal_id))
+    .sort((a, b) => (a.modo === b.modo ? 0 : a.modo === "demo" ? -1 : 1));
+  if (!ordens.length) return "";
+  return `<div class="exec-sinal">${ordens.map((o) => {
+    const [rotulo, icone, explica] = ESTADO_ORDEM[o.status] ?? [o.status, "alert", o.status];
+    const est = estado.execucao?.estado?.[o.modo] ?? {}, moeda = o.moeda ?? est.moeda;
+    const flut = o.status === "aberta" ? est.flutuante?.[String(o.id)] : null;
+    const valor = o.status === "aberta" ? flut?.lucro : o.status === "fechada" ? o.resultado : null;
+    const preco = o.status === "aberta" && o.preco_execucao != null ? ` a ${precoCurto(o.preco_execucao)}` : "";
+    const titulo = `${o.modo === "real" ? "Conta real" : "Conta demo"}: ${explica}${preco}${o.motivo ? ` (${o.motivo})` : ""}`
+      + (o.status === "aberta" ? (flut ? ", lucro até agora" : ", lucro ainda não publicado pela ponte") : "");
+    return `<span class="exec-ordem st-${esc(o.status)}" title="${esc(titulo)}">${ico(icone)}<span>${o.modo === "real" ? "Real" : "Demo"} · ${rotulo}</span>${valor != null ? dinheiroSinal(valor, moeda) : ""}</span>`;
+  }).join("")}</div>`;
 }
 
 // filtro por ativo da seção Monitor de lives (vale para sinais ativos, pares dos sites e placar)
