@@ -383,7 +383,10 @@ function fonteDemo() {
     monitorResultados: [
       ...demoResultados(agora),
       { fonte: "youtube@bovespa", sinal_id: 29, origem: "@canal.win", instrumento: "WIN", direcao: "compra", entrada: "129880", status: "alvo", resultado_r: 1.6, desde: new Date(agora - 5 * h).toISOString(), resolvido_em: new Date(agora - 4 * h).toISOString() },
-      { fonte: "youtube@bovespa", sinal_id: 30, origem: "@canal.wdo", instrumento: "WDO", direcao: "venda", entrada: "5410", status: "stop", resultado_r: -1, desde: new Date(agora - 3 * h).toISOString(), resolvido_em: new Date(agora - 2 * h).toISOString() },
+      { fonte: "youtube@bovespa", sinal_id: 30, origem: "@canal.wdo", instrumento: "WDO", direcao: "venda", entrada: "5410", status: "stop", resultado_r: -1, desde: new Date(agora - 3 * h).toISOString(), resolvido_em: new Date(agora - 2 * h).toISOString(), situacao: "normal", atraso_min: 4 },
+      // atraso da leitura (demonstração): um atrasado que bateu o stop e outro que bateu o alvo
+      { fonte: "youtube@bovespa", sinal_id: 32, origem: "Sinal do canal @canal.wdo", instrumento: "WDO", direcao: "compra", entrada: "5752", stop: 5741, alvos: "5774", status: "stop", resultado_r: -1, desde: new Date(agora - 2.5 * h).toISOString(), resolvido_em: new Date(agora - 2 * h).toISOString(), situacao: "atrasado", atraso_min: 120, entrada_canal: 5706.5 },
+      { fonte: "youtube@bovespa", sinal_id: 33, origem: "Sinal do canal @canal.win", instrumento: "WIN", direcao: "venda", entrada: "172265", stop: 172700, alvos: "171400", status: "alvo", resultado_r: 2, desde: new Date(agora - 1.5 * h).toISOString(), resolvido_em: new Date(agora - 1 * h).toISOString(), situacao: "atrasado", atraso_min: 35, entrada_canal: 172480 },
       { fonte: "tiktok", sinal_id: 5, origem: "Consenso de 3 canais", instrumento: "XAUUSD", direcao: "compra", entrada: "4010", status: "alvo", resultado_r: 1.8, desde: new Date(agora - 4.2 * h).toISOString(), resolvido_em: new Date(agora - 3 * h).toISOString() },
       { fonte: "tiktok", sinal_id: 4, origem: "@mogotrading_off", instrumento: "XAUUSD", direcao: "venda", entrada: "4031–4034", status: "alvo", resultado_r: 2.1, resolvido_em: new Date(agora - 2 * h).toISOString() },
       { fonte: "sites", sinal_id: 9, origem: "Foresignal", instrumento: "NZDUSD", direcao: "compra", entrada: "0.5682", status: "alvo", resultado_pontos: 12, resultado_unidade: "pips", resultado_fonte: "site", resolvido_em: new Date(agora - 1 * h).toISOString() },
@@ -394,7 +397,8 @@ function fonteDemo() {
       { fonte: "tradingview", sinal_id: 23, origem: "📐 novo-a (Novo A)", instrumento: "XAUUSD", direcao: "venda", entrada: "3960.8", status: "alvo", resultado_r: 2, desde: new Date(agora - 3 * h).toISOString(), resolvido_em: new Date(agora - 2.4 * h).toISOString() },
     ],
     monitorSinais: [
-      { fonte: "youtube@bovespa", sinal_id: 31, item: "canal.win", origem: "Sinal do canal @canal.win", instrumento: "WIN", direcao: "compra", entrada: "130150", stop: 129950, alvos: "130350 / 130550", desde: new Date(agora - 0.2 * h).toISOString(), ate: new Date(agora + 23.8 * h).toISOString() },
+      { fonte: "youtube@bovespa", sinal_id: 31, item: "canal.win", origem: "Sinal do canal @canal.win", instrumento: "WIN", direcao: "compra", entrada: "130150", stop: 129950, alvos: "130350 / 130550", desde: new Date(agora - 0.2 * h).toISOString(), ate: new Date(agora + 23.8 * h).toISOString(), situacao: "normal", atraso_min: 6 },
+      { fonte: "youtube@bovespa", sinal_id: 34, item: "canal.wdo", origem: "Sinal do canal @canal.wdo", instrumento: "WDO", direcao: "compra", entrada: "5752", stop: 5741, alvos: "5774", desde: new Date(agora - 0.1 * h).toISOString(), ate: new Date(agora + 0.4 * h).toISOString(), situacao: "atrasado", atraso_min: 125, entrada_canal: 5706.5 },
       { fonte: "tiktok", sinal_id: 1, item: "canal.fx", origem: "Sinal do canal @canal.fx", instrumento: "XAUUSD", direcao: "compra", entrada: "4010–4012", stop: 4000, alvos: "4030 / 4050", desde: new Date(agora - 0.3 * h).toISOString(), ate: new Date(agora + 23.7 * h).toISOString() },
       { fonte: "telegram", sinal_id: 5, item: "SureShotFX_Signals:XAUUSD", origem: "SureShotFX Signals (FREE)", instrumento: "XAUUSD", direcao: "compra", entrada: "3934–3944", stop: 3930, alvos: "3954 / 3964", desde: new Date(agora - 0.2 * h).toISOString(), ate: new Date(agora + 23.8 * h).toISOString() },
       { fonte: "sites", sinal_id: 2, item: "foresignal:EURUSD", origem: "Foresignal", instrumento: "EURUSD", direcao: "compra", entrada: "1.117", stop: 1.1149, alvos: "1.1187", desde: new Date(agora - 1 * h).toISOString(), ate: new Date(agora + 7 * h).toISOString() },
@@ -1246,10 +1250,25 @@ function htmlLucroTeorico(s) {
 }
 
 function htmlExecucaoSinal(s) {
-  const dentro = htmlLucroTeorico(s) + htmlOrdensDoSinal(s);
+  const dentro = htmlLucroTeorico(s) + htmlOrdensDoSinal(s) + (s.situacao === "atrasado" ? "" : htmlAtrasoSinal(s));
   return dentro ? `<div class="exec-sinal">${dentro}</div>` : "";
 }
+// Atraso da leitura (16/11/2026, migração 0016): "atrasado" = o canal já tinha executado a posição na live há mais que a
+// tolerância (15 min); o sinal nunca vira ordem nem aviso, mas o placar mede o que ele daria
+const minTexto = (m) => (m == null ? "?" : m >= 90 ? `${(m / 60).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h` : `${Math.round(m)} min`);
+function htmlAtrasoSinal(s) {
+  if (s.situacao === "atrasado") {
+    const titulo = `Leitura atrasada: o canal já tinha executado esta posição na live${s.atraso_min != null ? ` há ${minTexto(s.atraso_min)}` : " (há quanto tempo não deu para medir)"}`
+      + `${s.entrada_canal != null ? `, com entrada em ${precoCurto(s.entrada_canal)}` : ""}. Não vira ordem nem aviso; o placar acompanha o resultado à parte.`;
+    return `<span class="exec-ordem st-atrasado" title="${esc(titulo)}">${ico("alert")}<span>atrasado · ${minTexto(s.atraso_min)} · não executar</span></span>`;
+  }
+  if (Number(s.atraso_min) > 0) {
+    return `<span class="exec-ordem st-sem" title="${esc(`Leitura feita ${minTexto(s.atraso_min)} depois da execução na live (dentro da tolerância de 15 min)`)}">${ico("clock")}<span>atraso ${minTexto(s.atraso_min)}</span></span>`;
+  }
+  return "";
+}
 function htmlOrdensDoSinal(s) {
+  if (s.situacao === "atrasado") return htmlAtrasoSinal(s);
   const ordens = (estado.monitorOrdens ?? []).filter((o) => o.fonte === s.fonte && String(o.sinal_id) === String(s.sinal_id))
     .sort((a, b) => (a.modo === b.modo ? 0 : a.modo === "demo" ? -1 : 1));
   if (!ordens.length) {
@@ -1318,6 +1337,81 @@ function htmlPlacar(e) {
       <thead><tr><th scope="col">Fonte</th><th scope="col" class="col-zero">Win · loss · outros</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R médio</th><th scope="col" class="col-expirados">Expirados</th></tr></thead>
       <tbody>${linhas.join("")}</tbody></table></div>
     <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Clique na fonte para ver cada canal, site, layout ou agente.</p>
+  </section>`;
+}
+
+// Atraso das leituras (16/11/2026, pedido do Diogo): por canal, quantos sinais chegaram atrasados, o atraso mediano,
+// o que os atrasados dariam (win/loss e dinheiro, pelo placar) e quanto o atraso piora a entrada. Vale para Forex e
+// Bovespa (a lente já separa o contexto). Dinheiro: Forex em US$ no lote 0,01; Bovespa em R$ por 1 minicontrato.
+function dinheiroDoResultado(r) {
+  const rr = rDoResultado(r);
+  if (rr == null) return null;
+  if (ctxLente === "bovespa") {
+    const er = entradaERisco(r), inst = String(r.instrumento ?? "").toUpperCase();
+    const raiz = Object.keys(PONTO_B3).find((k) => inst.startsWith(k));
+    return er ? rr * er.risco * (raiz ? PONTO_B3[raiz] : 100) : null;
+  }
+  return usdDoResultado(r, rr);
+}
+function custoDoAtraso(s) {  // quanto a entrada do sinal ficou pior que a do canal (positivo = pior), em dinheiro
+  const ent = numerosDe(s.entrada), dir = s.direcao === "compra" ? 1 : s.direcao === "venda" ? -1 : 0;
+  if (s.entrada_canal == null || !ent.length || !dir) return null;
+  const entrada = ent.length > 1 ? (ent[0] + ent[1]) / 2 : ent[0], pior = (entrada - Number(s.entrada_canal)) * dir;
+  if (ctxLente === "bovespa") {
+    const inst = String(s.instrumento ?? "").toUpperCase(), raiz = Object.keys(PONTO_B3).find((k) => inst.startsWith(k));
+    return pior * (raiz ? PONTO_B3[raiz] : 100);
+  }
+  const c = contratoDe(s.instrumento);
+  return c ? pior * c.un * (c.cota ?? 1) : null;
+}
+function htmlAtrasos(e) {
+  const moeda = ctxLente === "bovespa" ? "BRL" : "USD";
+  const ativos = (e.monitorSinais ?? []).map((s) => ({ ...s, status: "ativo" }));
+  const vistos = new Set(ativos.map((s) => `${s.fonte}:${s.sinal_id}`));
+  const todos = [...ativos, ...(e.monitorResultados ?? []).filter((r) => !vistos.has(`${r.fonte}:${r.sinal_id}`))]
+    .filter((s) => s.situacao && fontesDoCtx().includes(s.fonte) && passaFiltro(s.instrumento));
+  const titulo = `<h2 id="h-atrasos">${ico("clock")} Atraso das leituras <span class="count">últimos 30 dias</span></h2>`;
+  if (!todos.length) {
+    return `<section class="painel" aria-labelledby="h-atrasos">${titulo}<p class="vazio">Ainda sem sinais com o atraso medido (começou em 16/11/2026, nos canais do TikTok e do YouTube).</p></section>`;
+  }
+  const grupos = new Map();
+  todos.forEach((s) => {
+    const k = `${s.fonte}|${nomeDaUnidadeBase(s.origem)}`;
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(s);
+  });
+  const soma = (l) => l.reduce((a, b) => a + b, 0);
+  const mediana = (l) => { const v = [...l].sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
+  const linhas = [...grupos.entries()].map(([k, l]) => {
+    const [f, canal] = k.split("|");
+    const atr = l.filter((s) => s.situacao === "atrasado"), comAtraso = l.filter((s) => s.situacao !== "atrasado" && Number(s.atraso_min) > 0);
+    const w = atr.filter((s) => s.status === "alvo").length, perda = atr.filter((s) => s.status === "stop").length;
+    const din = atr.map(dinheiroDoResultado).filter((x) => x != null);
+    const custo = l.map(custoDoAtraso).filter((x) => x != null);
+    return { f, canal, n: l.length, atr: atr.length, med: mediana(l.map((s) => s.atraso_min).filter((x) => x != null).map(Number)),
+             comAtraso: comAtraso.length, w, perda, abertos: atr.filter((s) => s.status === "ativo").length,
+             din: din.length ? soma(din) : null, custo: custo.length ? soma(custo) : null };
+  }).sort((a, b) => b.atr - a.atr || b.n - a.n);
+  const tot = { n: soma(linhas.map((x) => x.n)), atr: soma(linhas.map((x) => x.atr)) };
+  const dinTot = linhas.map((x) => x.din).filter((x) => x != null), custoTot = linhas.map((x) => x.custo).filter((x) => x != null);
+  const celDin = (v) => (v == null ? `<span class="meta">—</span>` : dinheiroSinal(v, moeda));
+  const pctTxt = (a, n) => (n ? `${Math.round((100 * a) / n)}%` : "—");
+  return `<section class="painel" aria-labelledby="h-atrasos">${titulo}
+    <p class="meta nota">${tot.atr} de ${tot.n} sinais medidos chegaram atrasados (${pctTxt(tot.atr, tot.n)}).
+      Os atrasados teriam dado ${dinTot.length ? dinheiroSinal(soma(dinTot), moeda) : "—"} pelo placar
+      ${custoTot.length ? `· o atraso piorou a entrada em ${dinheiroSinal(-soma(custoTot), moeda)}` : ""}.</p>
+    <div class="rolagem"><table class="tabela atrasos">
+      <thead><tr><th scope="col">Canal</th><th scope="col">Sinais</th><th scope="col">Atrasados</th><th scope="col">Atraso mediano</th>
+        <th scope="col" title="Sinais executáveis lidos com algum atraso, dentro da tolerância de 15 min">Com atraso ≤ 15 min</th>
+        <th scope="col" title="Atrasados resolvidos: alvo · stop (e ainda abertos)">Atrasados: win · loss</th>
+        <th scope="col" title="Quanto os sinais atrasados teriam dado pelo placar (Forex: lote 0,01 líquido de spread; Bovespa: 1 minicontrato)">Resultado dos atrasados</th>
+        <th scope="col" title="Diferença entre a entrada do sinal e a entrada do canal na live, quando conhecida (negativo = o atraso piorou a entrada)">Impacto na entrada</th></tr></thead>
+      <tbody>${linhas.map((x) => `<tr><th scope="row"><a href="#/${x.f}">${esc(x.canal)}</a> <span class="meta">${esc(FONTES[x.f] ?? x.f)}</span></th>
+        <td class="num">${x.n}</td><td class="num">${x.atr} (${pctTxt(x.atr, x.n)})</td>
+        <td class="num">${minTexto(x.med)}</td><td class="num">${x.comAtraso}</td>
+        <td class="num">${x.w} · ${x.perda}${x.abertos ? ` (+${x.abertos} aberto${x.abertos > 1 ? "s" : ""})` : ""}</td>
+        <td class="num">${celDin(x.din)}</td><td class="num">${celDin(x.custo == null ? null : -x.custo)}</td></tr>`).join("")}</tbody></table></div>
+    <p class="meta nota">Atrasado = o canal já tinha executado a posição na live há mais de 15 min quando o monitor leu (ou a posição já corria e a entrada não era legível). Esses sinais nunca viram ordem nem aviso; o placar mede o que dariam. Muitos atrasados num canal = a leitura dele precisa de mais frequência (foco) ou o canal não serve para seguir.</p>
   </section>`;
 }
 
@@ -1718,6 +1812,7 @@ function vistaMonitor() {
     ${htmlMonitor(e)}
     ${htmlTermometroCompacto(e)}
     ${htmlPlacar(e)}
+    ${htmlAtrasos(e)}
     ${NOTA_USO}
   </main>`;
 }
@@ -2115,7 +2210,7 @@ function execucaoDoControle(ctl, suf = "") {
 // Ações (PETR4, VALE3…) são swing por padrão e não têm o botão.
 const DAY_TRADE_B3 = /^(WIN|WDO)/i;
 function htmlModalidadeOperacao(s) {
-  if (ctxLente !== "bovespa") return "";
+  if (ctxLente !== "bovespa" || s.situacao === "atrasado") return "";  // atrasado nunca vira ordem: sem botão
   if (!DAY_TRADE_B3.test(String(s.instrumento ?? ""))) return `<span class="badge" title="Ações são swing trade por padrão: saem no alvo ou no stop">swing</span>`;
   const chave = `${s.fonte}@bovespa:${s.sinal_id}`, swing = estado.execucao?.swing?.[chave] === true;
   const titulo = swing ? "Swing: não zera no fim do pregão; sai no alvo ou no stop. Clique para voltar a day trade."

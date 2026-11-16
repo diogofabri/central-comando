@@ -416,6 +416,9 @@ main.uma > p.nota { margin-top: 0; }
 .exec-ordem.st-recusada .ico, .exec-ordem.st-erro .ico { color: var(--critical); }
 .exec-ordem.st-fechada .ico, .exec-ordem.st-cancelada .ico, .exec-ordem.st-sem .ico { color: var(--ink-3); }
 .exec-ordem.st-teorico .ico { color: var(--accent); }
+.exec-ordem.st-atrasado { color: var(--warning); font-weight: 600; } .exec-ordem.st-atrasado .ico { color: var(--warning); }
+.tabela.atrasos th[scope="row"] .meta { font-weight: 400; }
+.tabela.atrasos td.num { white-space: nowrap; }
 .exec-ordem .meta { font-size: 12px; }
 .lucro-sinal { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .lucro-sinal.ganho { color: var(--good); } .lucro-sinal.perda { color: var(--critical); }
@@ -580,6 +583,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=66"></script>
+<script src="app.js?v=67"></script>
 </body>
 </html>
