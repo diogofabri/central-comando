@@ -419,6 +419,9 @@ main.uma > p.nota { margin-top: 0; }
 .exec-ordem.st-atrasado { color: var(--warning); font-weight: 600; } .exec-ordem.st-atrasado .ico { color: var(--warning); }
 .tabela.atrasos th[scope="row"] .meta { font-weight: 400; }
 .tabela.atrasos td.num { white-space: nowrap; }
+.fora-execucao { margin-top: 10px; border-top: 1px solid var(--line-2); padding-top: 8px; }
+.fora-execucao > summary { cursor: pointer; font-size: 13px; color: var(--ink-2); min-height: 32px; display: flex; align-items: center; gap: 6px; }
+.fora-execucao .sinal { opacity: .8; }
 .exec-ordem .meta { font-size: 12px; }
 .lucro-sinal { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .lucro-sinal.ganho { color: var(--good); } .lucro-sinal.perda { color: var(--critical); }
@@ -583,6 +586,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=73"></script>
+<script src="app.js?v=75"></script>
 </body>
 </html>

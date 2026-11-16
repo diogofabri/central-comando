@@ -1265,7 +1265,7 @@ function htmlLucroTeorico(s) {
 }
 
 function htmlExecucaoSinal(s) {
-  const dentro = htmlLucroTeorico(s) + htmlOrdensDoSinal(s) + (s.situacao === "atrasado" ? "" : htmlAtrasoSinal(s));
+  const dentro = htmlLucroTeorico(s) + htmlOrdensDoSinal(s) + htmlAtrasoSinal(s);
   return dentro ? `<div class="exec-sinal">${dentro}</div>` : "";
 }
 // Escutar o áudio da live (16/11/2026, pedido do Diogo): feature flag por fonte de VÍDEO e por contexto
@@ -1287,8 +1287,11 @@ const minTexto = (m) => (m == null ? "?" : m >= 90 ? `${(m / 60).toLocaleString(
 function htmlAtrasoSinal(s) {
   if (s.situacao === "atrasado") {
     const titulo = `Leitura atrasada: o canal já tinha executado esta posição na live${s.atraso_min != null ? ` há ${minTexto(s.atraso_min)}` : " (há quanto tempo não deu para medir)"}`
-      + `${s.entrada_canal != null ? `, com entrada em ${precoCurto(s.entrada_canal)}` : ""}. Não vira ordem nem aviso; o placar acompanha o resultado à parte.`;
-    return `<span class="exec-ordem st-atrasado" title="${esc(titulo)}">${ico("alert")}<span>atrasado · ${minTexto(s.atraso_min)} · não executar</span></span>`;
+      + (s.entrada_canal != null
+        ? `, com entrada em ${precoCurto(s.entrada_canal)}. Na Bovespa a ordem só entra no preço do canal (limite; a mercado se o preço estiver a até 0,2 R dele), nunca no preço de agora.`
+        : ". Sem a entrada do canal, não vira ordem nem aviso; o placar acompanha o resultado à parte.");
+    const acao = s.entrada_canal != null ? `só no preço do canal (${precoCurto(s.entrada_canal)})` : "não executar";
+    return `<span class="exec-ordem st-atrasado" title="${esc(titulo)}">${ico("alert")}<span>atrasado · ${minTexto(s.atraso_min)} · ${acao}</span></span>`;
   }
   if (Number(s.atraso_min) > 0) {
     return `<span class="exec-ordem st-sem" title="${esc(`Leitura feita ${minTexto(s.atraso_min)} depois da execução na live (dentro da tolerância de 15 min)`)}">${ico("clock")}<span>atraso ${minTexto(s.atraso_min)}</span></span>`;
@@ -1296,9 +1299,9 @@ function htmlAtrasoSinal(s) {
   return "";
 }
 function htmlOrdensDoSinal(s) {
-  if (s.situacao === "atrasado") return htmlAtrasoSinal(s);
   const ordens = (estado.monitorOrdens ?? []).filter((o) => o.fonte === s.fonte && String(o.sinal_id) === String(s.sinal_id))
     .sort((a, b) => (a.modo === b.modo ? 0 : a.modo === "demo" ? -1 : 1));
+  if (s.situacao === "atrasado" && !ordens.length) return "";  // o selo do atraso já diz por quê
   if (!ordens.length) {
     // sem ordem: diz por quê, em vez de não mostrar nada (pedido do Diogo, 16/11/2026)
     if (!CONTEXTOS[ctxLente]?.execucao && ctxLente !== "forex") return "";
@@ -1478,13 +1481,28 @@ function sinaisVigentes(e, f) {
   return [...ativos, ...orfas].sort((a, b) => new Date(b.desde) - new Date(a.desde));
 }
 
+// sinal que não vai virar operação: tem ordem e nenhuma está viva (recusada, erro, cancelada) ou é atrasado sem ordem
+const ORDEM_VIVA = new Set(["aberta", "pendente"]);
+function foraDaExecucao(s) {
+  const ordens = (estado.monitorOrdens ?? []).filter((o) => o.fonte === s.fonte && String(o.sinal_id) === String(s.sinal_id));
+  if (ordens.some((o) => ORDEM_VIVA.has(o.status) || o.status === "fechada")) return false;
+  return ordens.length > 0 || s.situacao === "atrasado";
+}
+
 function htmlSinaisAtivos(e) {
   const por = fontesDoCtx().map((f) => [f, sinaisVigentes(e, f)]);
-  const total = por.reduce((n, [, l]) => n + l.length, 0);
-  // fonte sem sinal não ganha cartão vazio: entra numa linha só, embaixo da grade
-  const cartoes = por.filter(([, l]) => l.length).map(([f, l]) => `<div class="cartao">
-      <div class="titulo">${FONTES[f]} <span class="count">${l.length}</span></div>
-      <ul class="lista">${l.map(htmlSinal).join("")}</ul></div>`);
+  const total = por.reduce((n, [, l]) => n + l.filter((s) => !foraDaExecucao(s)).length, 0);
+  // fonte sem sinal não ganha cartão vazio: entra numa linha só, embaixo da grade. Os sinais que NÃO vão executar (ordem
+  // recusada, cancelada ou sinal atrasado sem ordem) ficam num bloco recolhido, para a lista bater com a corretora
+  // (pedido do Diogo, 16/11/2026); o placar continua medindo todos
+  const cartoes = por.filter(([, l]) => l.length).map(([f, l]) => {
+    const fora = l.filter(foraDaExecucao), dentro = l.filter((s) => !foraDaExecucao(s));
+    return `<div class="cartao">
+      <div class="titulo">${FONTES[f]} <span class="count">${dentro.length}</span></div>
+      ${dentro.length ? `<ul class="lista">${dentro.map(htmlSinal).join("")}</ul>` : `<p class="meta">Nenhum sinal em execução ou executável agora.</p>`}
+      ${fora.length ? `<details class="fora-execucao"><summary>Fora da execução <span class="count">${fora.length}</span></summary>
+        <ul class="lista">${fora.map(htmlSinal).join("")}</ul></details>` : ""}</div>`;
+  });
   const semSinal = por.filter(([, l]) => !l.length).map(([f]) => FONTES[f]);
   return `<section class="painel" aria-labelledby="h-sinais">
     <h2 id="h-sinais">${ico("zap")} Sinais ativos <span class="count">${total}</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
@@ -2249,7 +2267,7 @@ function execucaoDoControle(ctl, suf = "") {
 // Ações (PETR4, VALE3…) são swing por padrão e não têm o botão.
 const DAY_TRADE_B3 = /^(WIN|WDO)/i;
 function htmlModalidadeOperacao(s) {
-  if (ctxLente !== "bovespa" || s.situacao === "atrasado") return "";  // atrasado nunca vira ordem: sem botão
+  if (ctxLente !== "bovespa" || (s.situacao === "atrasado" && s.entrada_canal == null)) return "";  // nunca vira ordem: sem botão
   if (!DAY_TRADE_B3.test(String(s.instrumento ?? ""))) return `<span class="badge" title="Ações são swing trade por padrão: saem no alvo ou no stop">swing</span>`;
   const chave = `${s.fonte}@bovespa:${s.sinal_id}`, swing = estado.execucao?.swing?.[chave] === true;
   const titulo = swing ? "Swing: não zera no fim do pregão; sai no alvo ou no stop. Clique para voltar a day trade."
