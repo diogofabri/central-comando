@@ -470,6 +470,8 @@ main.uma > p.nota { margin-top: 0; }
 .modalidades { margin-top: 4px; }
 .exec-fonte, .exec-botoes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .exec-fonte { margin-left: auto; }
+.exec-unidade { white-space: nowrap; text-align: right; }
+.exec-unidade .btn + .btn { margin-left: 6px; }
 .btn.exec .estado-exec { font-weight: 400; color: var(--ink-2); }
 .btn.exec.ligado { background: var(--good-soft); border-color: transparent; color: var(--good); }
 .btn.exec.ligado .estado-exec { color: inherit; font-weight: 600; }
@@ -566,6 +568,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=62"></script>
+<script src="app.js?v=63"></script>
 </body>
 </html>

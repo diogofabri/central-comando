@@ -18,8 +18,10 @@ const FONTES = { tiktok: "TikTok", youtube: "YouTube", sites: "Sites", telegram:
 const CONTEXTOS = {
   forex: { nome: "Forex", fontes: ["tiktok", "youtube", "sites", "telegram", "agentes", "tradingview"], termometro: true, execucao: true,
            corretora: "dados Capital.com · execução ActivTrades" },
-  bovespa: { nome: "Bovespa", fontes: ["youtube", "telegram", "agentes"], termometro: false, execucao: false,
-             corretora: "dados e execução CLEAR · ainda sem execução, só sinais" },
+  // execução na CLEAR (16/11/2026): botões Demo/Real próprios (controle.execucao@bovespa:*), WIN/WDO em day trade por
+  // padrão com botão de swing por operação; ações em swing
+  bovespa: { nome: "Bovespa", fontes: ["youtube", "telegram", "agentes"], termometro: false, execucao: true,
+             corretora: "dados e execução CLEAR · WIN/WDO em day trade (swing por operação)" },
 };
 const ctxDe = (f) => String(f ?? "").split("@")[1] || "forex";
 const baseDe = (f) => String(f ?? "").split("@")[0];
@@ -42,8 +44,10 @@ function lente(bruto, ctx) {
     monitorFontes: doCtx(bruto.monitorFontes), monitorItens: doCtx(bruto.monitorItens), monitorSinais: doCtx(bruto.monitorSinais),
     monitorResultados: doCtx(bruto.monitorResultados), monitorOrdens: doCtx(bruto.monitorOrdens), monitorMaquinas: doCtx(bruto.monitorMaquinas),
     monitorComando: chaves(bruto.monitorComando),
-    // controles que ainda são só do Forex (painel dos agentes, termômetro, execução e login): vazios nos outros contextos
-    ...(ctx !== "forex" ? { agentesPainel: null, termometro: null, execucao: { selecao: { demo: {}, real: {} }, estado: { demo: null, real: null } }, loginFonte: {}, loginPedido: {} } : {}) };
+    // controles que ainda são só do Forex (painel dos agentes, termômetro e login): vazios nos outros contextos; a execução
+    // da Bovespa tem chaves próprias (execucao@bovespa:*), carregadas à parte
+    ...(ctx !== "forex" ? { agentesPainel: null, termometro: null, loginFonte: {}, loginPedido: {},
+      execucao: ctx === "bovespa" && bruto.execucaoBovespa ? bruto.execucaoBovespa : { selecao: { demo: {}, real: {} }, estado: { demo: null, real: null }, swing: {} } } : {}) };
 }
 
 // fontes no molde dos sites: uma linha por site/canal, com os pares recolhidos (item = "<site ou canal>:<par>")
@@ -222,6 +226,7 @@ function fonteSupabase(cfg) {
                termometro: ctl["termometro:painel"] ?? null,
                loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
                consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl),
+               execucaoBovespa: execucaoDoControle(ctl, "@bovespa"),
                // modo de cada máquina (controle.maquina:<nome>, gravado por `maquinas operar|leitura|aplicar`)
                maquinasModo: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("maquina:")).map(([k, v]) => [k.slice(8), v])),
                // botão de troca (13/11/2026): pedido do dashboard e plano vigente gravado pelo seguidor das máquinas
@@ -244,7 +249,10 @@ function fonteSupabase(cfg) {
     // troca de máquina: o seguidor de cada máquina (`maquinas seguir`, a cada minuto) lê o pedido e aplica
     pedirTroca: (maquina) => sb.from("controle").upsert({ chave: "maquinas:pedido", valor: { operar: maquina, em: new Date().toISOString() } }).then(ok),
     // seleção do que a ponte do MT5 executa (lida a cada ciclo de ~15 s): {fontes: {tiktok: true}, unidades: {tiktok: {"@canal": false}}}
-    comandarExecucao: (modo, selecao) => sb.from("controle").upsert({ chave: `execucao:${modo}`, valor: selecao }).then(ok),
+    // suf: "" no Forex, "@bovespa" na Bovespa (os botões de um contexto nunca ligam o outro)
+    comandarExecucao: (modo, selecao, suf = "") => sb.from("controle").upsert({ chave: `execucao${suf}:${modo}`, valor: selecao }).then(ok),
+    // operações de WIN/WDO marcadas como swing: {"<fonte>@bovespa:<sinal_id>": true} (a ponte não zera no fim do pregão)
+    comandarSwing: (suf, mapa) => sb.from("controle").upsert({ chave: `execucao${suf}:swing`, valor: mapa }).then(ok),
     aoMudar(fn) {
       sb.channel("central")
         .on("postgres_changes", { event: "*", schema: "public" }, fn)
@@ -362,6 +370,9 @@ function fonteDemo() {
     execucao: { selecao: { demo: { fontes: { tiktok: true }, unidades: { tiktok: { "@mogotrading_off": false } } }, real: { fontes: {}, unidades: {} } },
       estado: { demo: { conectado: true, servidor: "ActivTrades-Demo", moeda: "USD", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), lote: 0.01 },
         real: { conectado: false, aviso: "faltam MT5_REAL_LOGIN, MT5_REAL_PASSWORD e MT5_REAL_SERVER no .env do monitor", atualizado_em: new Date(agora - 30e3).toISOString() } } },
+    execucaoBovespa: { selecao: { demo: { fontes: { agentes: true } }, real: {} }, swing: {},
+      estado: { demo: { conectado: true, servidor: "ClearInvestimentos-DEMO", moeda: "BRL", abertas: 0, pendentes: 0, resultado_dia: 0, atualizado_em: new Date(agora - 15e3).toISOString(),
+                        corretora: "CLEAR", volumes: { WIN: 1, WDO: 1, acoes: 100 }, day_trade: { ativos: ["WIN", "WDO"], ultima_entrada: "17:45", zerar_as: "18:15" } }, real: null } },
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
     monitorResultados: [
       ...demoResultados(agora),
@@ -407,7 +418,8 @@ function fonteDemo() {
     },
     async comandarSelfLearning(ligar) { s.selfLearning = ligar; s.agentesPainel.self_learning.ligado = ligar; },
     async comandarConsenso(ligar) { s.consensoLigado = ligar; },
-    async comandarExecucao(modo, selecao) { s.execucao.selecao[modo] = selecao; },
+    async comandarExecucao(modo, selecao, suf = "") { (suf ? s.execucaoBovespa : s.execucao).selecao[modo] = selecao; },
+    async comandarSwing(suf, mapa) { s.execucaoBovespa.swing = mapa; },
     async pedirLogin(f) { s.loginFonte[f] = { ...s.loginFonte[f], estado: "aguardando", atualizado_em: new Date().toISOString() }; },
     async pedirTroca(maquina) { s.maquinasPedido = { operar: maquina, em: new Date().toISOString() }; },
     aoMudar() {},
@@ -1169,7 +1181,7 @@ function htmlSinal(s) {
     <div class="sinal-topo"><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span>
       <span aria-hidden="true">${iconeAtivo(s.instrumento)}</span><b>${esc(s.instrumento)}</b>${selo}</div>
     <dl class="sinal-niveis">${nivel("Entrada", s.entrada)}${nivel("Stop", s.stop)}${nivel("Alvo", s.alvos)}</dl>
-    <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}</div></li>`;
+    <div class="meta"><span>${linkCanal(s.fonte, s.item, s.origem)}</span><span>há ${duracao(s.desde)}</span>${ate ? `<span>válido até ${ate}</span>` : ""}${htmlModalidadeOperacao(s)}</div></li>`;
 }
 
 // filtro por ativo da seção Monitor de lives (vale para sinais ativos, pares dos sites e placar)
@@ -1273,9 +1285,12 @@ function saudeFonte(f, e) {
   const desligado = !!info && !info.ligado && /desligado pelo dashboard/.test(info.resumo ?? "");
   // mercado fechado (sex 17:00 → dom 18:00 NY): o monitor para sozinho e volta na abertura (regra do Diogo, 30/10/2026)
   const fimDeSemana = !!info && !info.ligado && /^fim de semana/.test(info.resumo ?? "");
+  // Bovespa (16/11/2026): fora do pregão da B3 a fonte para sozinha e volta na abertura; é esperado, não "pausado"
+  const foraDoPregao = !!info && !info.ligado && /fora do pregão/.test(info.resumo ?? "");
   const status = !info ? (e.contexto && e.contexto !== "forex" ? { t: "ainda não configurada", nivel: "inativa" } : { t: "sem dados", nivel: "atencao" })
     : atraso > 3 ? { t: periodica ? `rodada atrasada ${duracao(info.proxima_execucao)}` : `sem sinal há ${duracao(info.atualizado_em)}`, nivel: "parada" }
     : desligado ? { t: "desligado", nivel: "inativa" } : fimDeSemana ? { t: "fim de semana", nivel: "inativa" }
+    : foraDoPregao ? { t: "fora do pregão", nivel: "inativa" }
     : info.ligado ? { t: "no ar", nivel: "ok" } : { t: "pausado", nivel: "parada" };
   // no ar, mas com algo a resolver: vira "atenção" e diz o quê
   const motivos = [];
@@ -1983,15 +1998,32 @@ function painelDeResultados(f, e, modo = "todos") {
 // A ponte (05-monitor-lives/monitor_lives/execucao.py, no VPS Windows) grava monitor_ordens e lê controle.execucao:<modo>.
 const DESCRICAO_MODALIDADE = {
   todos: "Todos os sinais, executados ou não, no placar teórico pelo preço (lote 0,01, spread real). Não depende da seleção de execução.",
-  demo: "Ordens executadas na conta DEMO da ActivTrades: preço executado, swap e comissão reais, na moeda da conta.",
-  real: "Ordens executadas na conta REAL da ActivTrades: resultado real, na moeda da conta.",
+  demo: "Ordens executadas na conta DEMO da corretora: preço executado, swap e comissão reais, na moeda da conta.",
+  real: "Ordens executadas na conta REAL da corretora: resultado real, na moeda da conta.",
   sem: "Sinais que não viraram ordem nem no demo nem no real (canal desligado ou ordem recusada), no placar teórico.",
 };
-const DESFECHO_ORDEM = { tp: "alvo", sl: "stop", vencimento: "expirado" };
+const DESFECHO_ORDEM = { tp: "alvo", sl: "stop", vencimento: "expirado", zerado: "zerado no fim do pregão" };
+const CORRETORA_EXEC = { forex: "ActivTrades", bovespa: "CLEAR" };
+const corretoraExec = () => CORRETORA_EXEC[ctxLente] ?? "corretora";
 
-function execucaoDoControle(ctl) {
-  return { selecao: { demo: ctl["execucao:demo"] ?? {}, real: ctl["execucao:real"] ?? {} },
-           estado: { demo: ctl["execucao:estado:demo"] ?? null, real: ctl["execucao:estado:real"] ?? null } };
+// suf: "" (Forex: execucao:demo…) ou "@bovespa" (execucao@bovespa:demo…, com as operações marcadas como swing)
+function execucaoDoControle(ctl, suf = "") {
+  return { selecao: { demo: ctl[`execucao${suf}:demo`] ?? {}, real: ctl[`execucao${suf}:real`] ?? {} },
+           estado: { demo: ctl[`execucao${suf}:estado:demo`] ?? null, real: ctl[`execucao${suf}:estado:real`] ?? null },
+           swing: ctl[`execucao${suf}:swing`] ?? {} };
+}
+
+// Bovespa (16/11/2026): WIN/WDO são day trade por padrão (a ponte zera no fim do pregão); cada operação pode virar swing.
+// Ações (PETR4, VALE3…) são swing por padrão e não têm o botão.
+const DAY_TRADE_B3 = /^(WIN|WDO)/i;
+function htmlModalidadeOperacao(s) {
+  if (ctxLente !== "bovespa") return "";
+  if (!DAY_TRADE_B3.test(String(s.instrumento ?? ""))) return `<span class="badge" title="Ações são swing trade por padrão: saem no alvo ou no stop">swing</span>`;
+  const chave = `${s.fonte}@bovespa:${s.sinal_id}`, swing = estado.execucao?.swing?.[chave] === true;
+  const titulo = swing ? "Swing: não zera no fim do pregão; sai no alvo ou no stop. Clique para voltar a day trade."
+                       : "Day trade: zerado até o fim do pregão se o alvo não vier. Clique para tornar swing.";
+  return `<button class="btn pequeno exec ${swing ? "ligado" : ""}" data-acao="swing" data-chave="${esc(chave)}" data-ligar="${!swing}"
+    aria-pressed="${swing}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico(swing ? "activity" : "clock")}${swing ? "Swing" : "Day trade"}</button>`;
 }
 // o canal vale mais que a fonte; sem registro = desligado (mesma regra de execucao.selecionado)
 function execucaoLigada(modo, f, id) {
@@ -2022,7 +2054,7 @@ function painelDeOrdens(f, e, modo) {
       .map((o) => ({ r: rDaOrdem(o), v: Number(o.resultado), momento: o.fechado_em, aberto_em: o.aberto_em ?? o.sinal_desde, ativo: o.instrumento, lado: o.direcao, status: DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "outro" }));
     const abertos = lista.filter((o) => o.status === "aberta" || o.status === "pendente")
       .map((o) => ({ instrumento: o.instrumento, direcao: o.direcao, entrada: o.preco_execucao ?? o.preco_pedido, stop: o.stop, alvos: o.alvo }));
-    const base = nome === TODOS ? `Soma das ordens ${conta} de todos os ${SUBSTANTIVO[f][1]}` : `Ordens ${conta} da ActivTrades`;
+    const base = nome === TODOS ? `Soma das ordens ${conta} de todos os ${SUBSTANTIVO[f][1]}` : `Ordens ${conta} da ${corretoraExec()}`;
     const recusas = lista.filter((o) => o.status === "recusada" || o.status === "erro").length;
     return unidadeDeOps(f, nome, ops, abertos, base + (recusas ? ` · ${recusas} recusadas` : ""),
       { sinais: lista.length, executadas: lista.filter((o) => o.preco_execucao != null).length, moeda, legenda: `resultado real das ordens ${conta} (com swap e comissão, em ${moeda})` });
@@ -2040,13 +2072,15 @@ function painelDaModalidade(f, e, modo) {
 
 function htmlEstadoExecucao(modo) {
   const s = estado.execucao?.estado?.[modo], conta = modo === "demo" ? "Conta demo" : "Conta real";
-  if (!s) return `<div class="aviso neutro">${ico("radio")}<span>${conta}: a ponte do MT5 ainda não rodou. Ela roda no VPS Windows com o MetaTrader 5 da ActivTrades (roteiro em <code>05-monitor-lives/docs/execucao-automatica.md</code>).</span></div>`;
+  if (!s) return `<div class="aviso neutro">${ico("radio")}<span>${conta}: a ponte do MT5 ainda não rodou. Ela roda no VPS Windows com o MetaTrader 5 da ${corretoraExec()} (roteiro em <code>05-monitor-lives/docs/execucao-automatica.md</code>).</span></div>`;
   const parada = Date.now() - new Date(s.atualizado_em).getTime() > 120e3;
   if (!s.conectado || parada) return `<div class="aviso erro">${ico("alert")}<span>${conta}: ${!s.conectado ? `desconectada (${esc(s.aviso ?? "sem motivo")})` : "sem notícia da ponte"} · atualizado ${quando(s.atualizado_em)}</span></div>`;
   const din = dinheiro({ moeda: s.moeda });
   const partes = [`<span class="badge good"><i class="ponto vivo" aria-hidden="true"></i>${conta} conectada</span>`, `<span>${esc(s.servidor ?? "")}</span>`,
     `<span>${s.abertas} abertas · ${s.pendentes} pendentes</span>`, `<span>resultado do dia <b class="num">${din(s.resultado_dia)}</b></span>`];
   if (s.lote != null) partes.push(`<span>lote ${String(s.lote).replace(".", ",")}</span>`);
+  if (s.volumes) partes.push(`<span>${Object.entries(s.volumes).map(([k, v]) => `${k === "acoes" ? "ações" : k} ${v}`).join(" · ")}</span>`);
+  if (s.day_trade) partes.push(`<span>${esc((s.day_trade.ativos ?? []).join("/"))} day trade: sem entrada após ${esc(s.day_trade.ultima_entrada)}, zera às ${esc(s.day_trade.zerar_as)}</span>`);
   if (s.parado) partes.push(`<span class="badge warning">${ico("pause")}parada: ${esc(s.parado)}</span>`);
   if (s.aviso) partes.push(`<span class="badge warning">${ico("alert")}${esc(s.aviso)}</span>`);
   partes.push(`<span>atualizado ${quando(s.atualizado_em)}</span>`);
@@ -2116,15 +2150,37 @@ function vistaComparar() {
 // que entram na etapa seguinte; até lá a página não mostra dinheiro para não afirmar o que não foi medido.
 function vistaAnaliseR(f) {
   const porCanal = new Map();
-  resultadosDaFonte(f, estado).forEach((r) => { const k = r.origem ?? "—"; if (!porCanal.has(k)) porCanal.set(k, []); porCanal.get(k).push(r); });
+  // agrupa pelo nome da unidade (o mesmo da ponte: "Sinal do canal @x" e "@x" são o mesmo canal)
+  resultadosDaFonte(f, estado).forEach((r) => { const k = nomeDaUnidade(f, r.origem ?? "—"); if (!porCanal.has(k)) porCanal.set(k, []); porCanal.get(k).push(r); });
+  // canal com sinal ativo e nada resolvido ainda também ganha linha (para ligar a execução dele)
+  (estado.monitorSinais ?? []).filter((s) => s.fonte === f && s.origem).map((s) => nomeDaUnidade(f, s.origem))
+    .forEach((k) => { if (!porCanal.has(k)) porCanal.set(k, []); });
   const resumo = (rs) => {
     const w = rs.filter((r) => r.status === "alvo").length, l = rs.filter((r) => r.status === "stop").length;
     const rr = rs.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number), soma = rr.reduce((a, b) => a + b, 0);
     return { w, l, acerto: w + l ? `${Math.round((100 * w) / (w + l))}%` : "—", total: rr.length ? fmtR(soma) : "—", medio: rr.length ? fmtR(soma / rr.length) : "—", poucos: w + l > 0 && w + l < 10 };
   };
-  const linha = (nome, rs, forte) => { const s = resumo(rs); return `<tr${forte ? ' class="linha-total"' : ""}><th scope="row" class="esq">${esc(nome)}</th><td class="num">${rs.length}</td><td class="num">${s.w}</td><td class="num">${s.l}</td>
-      <td class="num">${s.acerto}${s.poucos ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td><td class="num">${s.total}</td><td class="num">${s.medio}</td></tr>`; };
+  // execução na CLEAR (16/11/2026): Demo/Real por canal e da fonte inteira, com as chaves execucao@bovespa:*
+  const exec = CONTEXTOS[ctxLente]?.execucao;
+  const botoes = (nome) => (exec ? `<td class="exec-unidade">${botaoExecucao("demo", f, nomeDaUnidade(f, nome))}${botaoExecucao("real", f, nomeDaUnidade(f, nome))}</td>` : "");
+  const linha = (nome, rs, forte) => { const s = resumo(rs); return `<tr${forte ? ' class="linha-total"' : ""}><th scope="row" class="esq">${esc(forte ? nome : nomeDaUnidade(f, nome))}</th><td class="num">${rs.length}</td><td class="num">${s.w}</td><td class="num">${s.l}</td>
+      <td class="num">${s.acerto}${s.poucos ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td><td class="num">${s.total}</td><td class="num">${s.medio}</td>${exec ? (forte ? "<td></td>" : botoes(nome)) : ""}</tr>`; };
   const todos = [...porCanal.values()].flat();
+  const ordens = (estado.monitorOrdens ?? []).filter((o) => o.pagina === f).sort((a, b) => b.id - a.id).slice(0, 40);
+  const modalidadeDe = (o) => (!DAY_TRADE_B3.test(o.instrumento ?? "") ? "swing" : estado.execucao?.swing?.[`${o.fonte}@bovespa:${o.sinal_id}`] === true ? "swing" : "day trade");
+  const brl = (v) => (v == null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+  const secaoOrdens = !exec ? "" : `<section class="painel" aria-labelledby="h-ordens">
+      <h2 id="h-ordens">${ico("send")} Ordens na CLEAR <span class="count">${ordens.length}</span></h2>
+      ${htmlEstadoExecucao("demo")}${htmlEstadoExecucao("real")}
+      ${ordens.length ? `<div class="rolagem"><table class="tabela placar">
+        <thead><tr><th scope="col" class="esq">Quando</th><th scope="col" class="esq">Conta</th><th scope="col" class="esq">Canal</th><th scope="col" class="esq">Ativo</th><th scope="col" class="esq">Lado</th><th scope="col" class="esq">Modalidade</th><th scope="col" class="esq">Situação</th><th scope="col">Resultado</th></tr></thead>
+        <tbody>${ordens.map((o) => `<tr><td class="esq">${quando(o.criado_em)}</td><td class="esq">${o.modo === "real" ? "<b>real</b>" : "demo"}</td><td class="esq">${esc(o.unidade)}</td>
+          <td class="esq">${esc(o.simbolo ?? o.instrumento)}</td><td class="esq">${esc(o.direcao)}</td><td class="esq">${modalidadeDe(o)}</td>
+          <td class="esq">${esc(o.status === "fechada" ? (DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "fechada") : o.status)}${o.motivo ? ` <small class="meta" title="${esc(o.motivo)}">(${esc(String(o.motivo).slice(0, 60))})</small>` : ""}</td>
+          <td class="num">${brl(o.resultado)}</td></tr>`).join("")}</tbody></table></div>`
+        : `<p class="meta">Nenhuma ordem ainda. Ligue o botão Demo de um canal (ou de todo o ${esc(FONTES[f])}): os sinais novos de WIN, WDO e ações passam a abrir ordens na conta demo da CLEAR.</p>`}
+      <p class="meta nota">WIN e WDO são day trade: sem entrada nova depois das 17:45 e zerados às 18:15 (Brasília), salvo a operação marcada como swing no cartão do sinal. Ações são swing: saem no alvo ou no stop. Resultado real da conta, em R$.</p>
+    </section>`;
   return `<main class="uma">
     ${avisoErro()}
     <div class="cabecalho-proj" style="--cor:${cor("monitor")}">
@@ -2133,15 +2189,17 @@ function vistaAnaliseR(f) {
         <h1><i class="ponto" aria-hidden="true"></i>${f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por canal`}</h1>
         <p class="resumo">${RESUMO_B3}</p>
       </div>
+      ${exec ? `<div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>` : ""}
     </div>
     <section class="painel" aria-labelledby="h-canais">
       <h2 id="h-canais">${ico("target")} Resultado por canal <span class="count">${porCanal.size} canais</span></h2>
       ${todos.length ? `<div class="rolagem"><table class="tabela placar">
-        <thead><tr><th scope="col" class="esq">Canal</th><th scope="col">Resolvidos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th></tr></thead>
+        <thead><tr><th scope="col" class="esq">Canal</th><th scope="col">Resolvidos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th>${exec ? '<th scope="col">Execução</th>' : ""}</tr></thead>
         <tbody>${linha("Todos", todos, true)}${[...porCanal].map(([nome, rs]) => linha(nome, rs, false)).join("")}</tbody></table></div>`
         : `<p class="meta">Nenhum sinal do ${esc(FONTES[f])} foi resolvido nos últimos 30 dias. A tabela aparece quando o placar resolver o primeiro.</p>`}
-      <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. Execução e dinheiro em R$ ainda não existem na Bovespa.</p>
+      <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. O placar teórico segue em R; o dinheiro real fica nas ordens abaixo.</p>
     </section>
+    ${secaoOrdens}
   </main>`;
 }
 
@@ -2293,10 +2351,19 @@ document.addEventListener("click", (ev) => {
   if (acao === "pausa") { b.disabled = true; return agir(() => fonte.pausar(!estado.pausado)); }
   if (acao === "filtro") return definirFiltro(b.dataset.ativo);
   if (acao === "filtro-eventos") { filtroEventos = b.dataset.projeto; return render(); }
-  // self-learning, consenso, execução e login gravam em chaves globais que hoje são do Forex: fora dele, nada é gravado
-  if (["self-learning", "consenso", "execucao", "login"].includes(acao) && ctxLente !== "forex") {
-    erro = "Este controle ainda é só do Forex. Na Bovespa não há execução nem self-learning ligados.";
+  // self-learning, consenso e login gravam em chaves globais que hoje são do Forex: fora dele, nada é gravado. A execução
+  // tem chaves por contexto (execucao:* no Forex, execucao@bovespa:* na Bovespa) e vale onde o contexto a tiver.
+  if ((["self-learning", "consenso", "login"].includes(acao) && ctxLente !== "forex")
+      || (["execucao", "swing"].includes(acao) && !CONTEXTOS[ctxLente]?.execucao)) {
+    erro = "Este controle não existe neste contexto.";
     return render();
+  }
+  if (acao === "swing") {
+    const chave = b.dataset.chave, ligar = b.dataset.ligar === "true";
+    const mapa = { ...(estado.execucao?.swing ?? {}) };
+    if (ligar) mapa[chave] = true; else delete mapa[chave];
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarSwing(sufixoDe(ctxLente), mapa));
   }
   if (acao === "self-learning") {
     const ligar = b.dataset.ligar === "true";
@@ -2313,7 +2380,7 @@ document.addEventListener("click", (ev) => {
   if (acao === "execucao") {
     const modo = b.dataset.modo, f = b.dataset.fonte, u = b.dataset.unidade, ligar = b.dataset.ligar === "true";
     const alvo = u ?? `todo o ${FONTES[f]}`;
-    if (ligar && modo === "real" && !confirm(`Ligar a execução na conta REAL para ${alvo}? Os sinais novos passam a abrir ordens com dinheiro real.`)) return;
+    if (ligar && modo === "real" && !confirm(`Ligar a execução na conta REAL da ${corretoraExec()} para ${alvo}? Os sinais novos passam a abrir ordens com dinheiro real.`)) return;
     if (!ligar && u == null && !confirm(`Desligar a execução ${modo === "demo" ? "demo" : "real"} de todo o ${FONTES[f]}? Os canais ligados um a um também desligam. As ordens já abertas continuam com stop e alvo.`)) return;
     const sel = structuredClone(estado.execucao?.selecao?.[modo] ?? {});
     sel.fontes = { ...(sel.fontes ?? {}) };
@@ -2323,7 +2390,7 @@ document.addEventListener("click", (ev) => {
       if (!ligar) sel.unidades[f] = Object.fromEntries(Object.entries(sel.unidades[f] ?? {}).filter(([, v]) => v === false));
     } else sel.unidades[f] = { ...(sel.unidades[f] ?? {}), [u]: ligar };
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarExecucao(modo, sel));
+    return agir(() => fonte.comandarExecucao(modo, sel, sufixoDe(ctxLente)));
   }
   if (acao === "trocar-maquina") {
     const alvo = b.dataset.maquina, nome = NOME_MAQUINA[alvo];
