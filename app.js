@@ -1317,7 +1317,10 @@ function htmlOrdensDoSinal(s) {
     const preco = o.status === "aberta" && o.preco_execucao != null ? ` a ${precoCurto(o.preco_execucao)}` : "";
     const titulo = `${o.modo === "real" ? "Conta real" : "Conta demo"}: ${explica}${preco}${o.motivo ? ` (${o.motivo})` : ""}`
       + (o.status === "aberta" ? (flut ? ", lucro até agora" : ", lucro ainda não publicado pela ponte") : "");
-    return `<span class="exec-ordem st-${esc(o.status)}" title="${esc(titulo)}">${ico(icone)}<span>${o.modo === "real" ? "Real" : "Demo"} · ${rotulo}</span>${valor != null ? dinheiroSinal(valor, moeda) : ""}</span>`;
+    // stop e alvo DA ORDEM (no tick da corretora; no livro virtual a ponte é quem os executa, o MT5 não mostra o TP)
+    const niveis = (o.status === "aberta" || o.status === "pendente") && (o.stop != null || o.alvo != null)
+      ? `<span class="meta" title="Stop e alvo da ordem, vigiados pela ponte (na conta netting a corretora só tem o stop de proteção)">stop ${precoCurto(o.stop)} · alvo ${precoCurto(o.alvo)}</span>` : "";
+    return `<span class="exec-ordem st-${esc(o.status)}" title="${esc(titulo)}">${ico(icone)}<span>${o.modo === "real" ? "Real" : "Demo"} · ${rotulo}</span>${valor != null ? dinheiroSinal(valor, moeda) : ""}${niveis}</span>`;
   }).join("");
 }
 
