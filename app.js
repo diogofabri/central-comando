@@ -2479,19 +2479,22 @@ const hrefAnalise = (f, id, modo = rotaAtual().modo ?? "todos") => `#/${f}/${enc
 function vistaComparar() {
   const ctxs = ["forex", "bovespa"];
   const pct = (w, l) => (w + l ? `${Math.round((100 * w) / (w + l))}%` : "—");
-  const linhas = ctxs.flatMap((ctx) => {
+  // agrupado por mercado, com uma linha de subtotal (auditoria de 17/11/2026: o mercado se repetia em toda linha)
+  const celulas = (abertos, w, perd, rs) => `<td class="num">${abertos}</td><td class="num">${w}</td><td class="num">${perd}</td>
+        <td class="num">${pct(w, perd)}${w + perd && w + perd < 10 ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td>
+        <td class="num">${rs.length ? fmtR(rs.reduce((a, b) => a + b, 0)) : "—"}</td><td class="num">${rs.length ? fmtR(rs.reduce((a, b) => a + b, 0) / rs.length) : "—"}</td>`;
+  const linhas = ctxs.map((ctx) => {
     const l = lente(estadoBruto, ctx);
-    return CONTEXTOS[ctx].fontes.map((f) => {
+    const tot = { abertos: 0, w: 0, perd: 0, rs: [] };
+    const fontes = CONTEXTOS[ctx].fontes.map((f) => {
       const lista = (l.monitorResultados ?? []).filter((r) => r.fonte === f);
       const w = lista.filter((r) => r.status === "alvo").length, perd = lista.filter((r) => r.status === "stop").length;
       const rs = lista.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number);
-      const soma = rs.reduce((a, b) => a + b, 0);
       const abertos = sinaisAbertosDe(l, f);
-      return `<tr><th scope="row" class="esq">${esc(NOME_CTX[ctx])}</th><td class="esq"><a href="${hrefCtx(ctx, f)}">${esc(FONTES[f])}</a></td>
-        <td class="num">${abertos}</td><td class="num">${w}</td><td class="num">${perd}</td>
-        <td class="num">${pct(w, perd)}${w + perd && w + perd < 10 ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td>
-        <td class="num">${rs.length ? fmtR(soma) : "—"}</td><td class="num">${rs.length ? fmtR(soma / rs.length) : "—"}</td></tr>`;
+      tot.abertos += abertos; tot.w += w; tot.perd += perd; tot.rs.push(...rs);
+      return `<tr><th scope="row" class="esq recuo"><a href="${hrefCtx(ctx, f)}">${esc(FONTES[f])}</a></th>${celulas(abertos, w, perd, rs)}</tr>`;
     });
+    return `<tbody><tr class="subtotal"><th scope="row" class="esq">${esc(NOME_CTX[ctx])}</th>${celulas(tot.abertos, tot.w, tot.perd, tot.rs)}</tr>${fontes.join("")}</tbody>`;
   });
   return `<main class="uma">
     ${avisoErro()}
@@ -2505,8 +2508,8 @@ function vistaComparar() {
     <section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Placar por mercado <span class="count">últimos 30 dias</span></h2>
       <div class="rolagem"><table class="tabela placar">
-        <thead><tr><th scope="col" class="esq">Mercado</th><th scope="col" class="esq">Fonte</th><th scope="col">Abertos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th></tr></thead>
-        <tbody>${linhas.join("")}</tbody></table></div>
+        <thead><tr><th scope="col" class="esq">Mercado e fonte</th><th scope="col">Abertos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th></tr></thead>
+        ${linhas.join("")}</table></div>
       <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. Promover algo de um mercado ao outro é decisão sua (N1) e exige backtest no mercado de destino.</p>
     </section>
   </main>`;
@@ -2557,11 +2560,11 @@ function vistaAnalise(f, id, modo = "todos") {
         <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
           <td><a href="${hrefAnalise(f, a.id)}">${esc(a.id)}</a></td>
           ${ehAgentes ? `<td>${a.tipo === "todos" ? "" : a.self_learning ? seloAuto("self-learning") : `<span class="badge muted">fixo</span>`}</td>` : ""}
-          <td class="num">${a.metricas.ops}</td><td class="num">${pct(a.metricas.acerto_pct)}</td>
-          <td class="col-zero">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
-          <td class="num">${a.metricas.fator_lucro == null ? "—" : String(a.metricas.fator_lucro).replace(".", ",")}</td>
-          <td class="num">${din(-a.metricas.drawdown_usd)}</td>
-          <td>${a.tipo === "todos" ? "" : consol ? (a.fonte ? `<div class="exec-botoes">${botaoExecucao("demo", a.fonte)}${botaoExecucao("real", a.fonte)}</div>` : "") : `<div class="exec-botoes">${botaoExecucao("demo", f, a.id)}${botaoExecucao("real", f, a.id)}</div>`}</td></tr>`).join("")}</tbody></table></div>
+          <td class="num" data-rot="Operações">${a.metricas.ops}</td><td class="num" data-rot="Acerto">${pct(a.metricas.acerto_pct)}</td>
+          <td class="col-zero" data-rot="${comOrdens ? "Resultado" : rotuloSaldo}">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
+          <td class="num" data-rot="Fator de lucro">${a.metricas.fator_lucro == null ? "—" : String(a.metricas.fator_lucro).replace(".", ",")}</td>
+          <td class="num" data-rot="Queda máxima">${din(-a.metricas.drawdown_usd)}</td>
+          <td class="exec-cel">${a.tipo === "todos" ? "" : consol ? (a.fonte ? `<div class="exec-botoes">${botaoExecucao("demo", a.fonte)}${botaoExecucao("real", a.fonte)}</div>` : "") : `<div class="exec-botoes">${botaoExecucao("demo", f, a.id)}${botaoExecucao("real", f, a.id)}</div>`}</td></tr>`).join("")}</tbody></table></div>
     </section>`;
   const abas = `<nav class="abas-agentes" aria-label="${varios[0].toUpperCase() + varios.slice(1)}">${p.agentes.map((a) => `<a href="${hrefAnalise(f, a.id)}" ${a.id === atual.id ? 'aria-current="page"' : ""}>${esc(a.id)}${a.self_learning ? ` ${ico("bulb")}` : ""}</a>`).join("")}</nav>`;
   return `<main class="uma">
