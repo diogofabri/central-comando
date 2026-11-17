@@ -490,13 +490,19 @@ main.uma > p.nota { margin-top: 0; }
 .tabela th.recuo { padding-left: 22px; font-weight: 500; }
 /* 17: no celular a comparação vira lista (nome em cima, números com rótulo), sem rolar para o lado */
 @media (max-width: 560px) {
-  .tabela.comparacao, .tabela.comparacao tbody, .tabela.comparacao tr, .tabela.comparacao td { display: block; width: auto; }
-  .tabela.comparacao thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .tabela.comparacao tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
-  .tabela.comparacao td { padding: 0; border: 0; text-align: left; }
-  .tabela.comparacao td:first-child, .tabela.comparacao td.col-zero, .tabela.comparacao td.exec-cel { grid-column: 1 / -1; }
-  .tabela.comparacao td[data-rot]::before { content: attr(data-rot) " "; color: var(--ink-3); font-weight: 400; font-size: 12px; }
+  .tabela.vira-lista, .tabela.vira-lista :is(tbody, tr, td, th) { display: block; width: auto; }
+  .tabela.vira-lista thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .tabela.vira-lista tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .tabela.vira-lista :is(td, th) { padding: 0; border: 0; text-align: left; white-space: normal; min-width: 0; }
+  .tabela.vira-lista :is(td, th) * { white-space: normal; }
+  .tabela.vira-lista :is(td, th):is(:first-child, .col-zero, .exec-cel, .agora) { grid-column: 1 / -1; }
+  .tabela.vira-lista :is(td, th)[data-rot]::before { content: attr(data-rot) " "; color: var(--ink-3); font-weight: 400; font-size: 12px; }
+  .tabela.vira-lista .col-zero, .tabela.vira-lista .col-expirados { display: block; }
   .tabela.comparacao td.exec-cel:empty { display: none; }
+  .tabela.vira-lista .exec-botoes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tabela.vira-lista .exec-botoes .btn { flex: 1 1 140px; min-width: 0; }
+  .rolagem:has(> .tabela.vira-lista) { overflow-x: clip; }  /* lista no celular: nada rola para o lado */
+  .tabela.vira-lista .exec-botoes .btn + .btn { margin-left: 0; }
 }
 .tabela td.agora .detalhe { display: block; color: var(--ink-2); font-size: 12px; max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabela.comparacao tr[aria-current] td { background: var(--accent-soft); }
@@ -534,9 +540,11 @@ details.como[open] > summary .ico { transform: rotate(90deg); }
 .btn.exec.ligado { background: var(--good-soft); border-color: transparent; color: var(--good); }
 .btn.exec.ligado .estado-exec { color: inherit; font-weight: 600; }
 /* Real = dinheiro de verdade: contorno e texto de perigo; ligado, preenchido (a confirmação continua no clique) */
-.btn.exec[data-modo="real"] { border-color: color-mix(in srgb, var(--critical) 55%, var(--line-2)); color: var(--critical); }
-.btn.exec[data-modo="real"] .estado-exec { color: inherit; }
-.btn.exec[data-modo="real"]:hover { background: var(--critical-soft); }
+/* Real (17/11/2026, recomendação da auditoria aceita pelo Diogo): desligado fica neutro, como o Demo; o vermelho aparece
+   no hover (antes de ligar) e preenche quando ligado. A confirmação do clique continua. Antes, 6 botões vermelhos
+   desligados na mesma tabela tiravam a força do vermelho quando ele importa. */
+.btn.exec[data-modo="real"]:hover { background: var(--critical-soft); border-color: color-mix(in srgb, var(--critical) 55%, var(--line-2)); color: var(--critical); }
+.btn.exec[data-modo="real"]:hover .estado-exec { color: inherit; }
 .btn.exec[data-modo="real"].ligado { background: var(--critical); border-color: var(--critical); color: var(--estado-ink); }
 .btn.exec[disabled] { opacity: 1; color: var(--ink-2); border-style: dashed; cursor: not-allowed; }
 .tabela.comparacao td .exec-botoes { flex-wrap: nowrap; }
@@ -629,6 +637,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=81"></script>
+<script src="app.js?v=82"></script>
 </body>
 </html>

@@ -1442,7 +1442,7 @@ function htmlAtrasos(e) {
     <p class="meta nota">${tot.atr} de ${tot.n} sinais medidos chegaram atrasados (${pctTxt(tot.atr, tot.n)}).
       Os atrasados teriam dado ${dinTot.length ? dinheiroSinal(soma(dinTot), moeda) : "—"} pelo placar
       ${custoTot.length ? `· o atraso piorou a entrada em ${dinheiroSinal(-soma(custoTot), moeda)}` : ""}.</p>
-    <div class="rolagem"><table class="tabela atrasos">
+    <div class="rolagem"><table class="tabela vira-lista atrasos">
       <thead><tr><th scope="col">Canal</th><th scope="col">Sinais</th><th scope="col">Atrasados</th><th scope="col">Atraso mediano</th>
         <th scope="col" title="Sinais executáveis lidos com algum atraso, dentro da tolerância de 15 min">Com atraso ≤ 15 min</th>
         <th scope="col" title="Atrasados resolvidos: alvo · stop (e ainda abertos)">Atrasados: win · loss</th>
@@ -2057,15 +2057,15 @@ function htmlLeitura(a) {
 
 function htmlAtuacao(a) {
   const max = Math.max(1, ...a.por_ativo.map((x) => Math.abs(x.metricas.lucro_usd)), ...a.por_ativo.map((x) => Math.abs(x.backtest?.lucro_usd ?? 0)));
-  return `<div class="rolagem"><table class="tabela atuacao">
+  return `<div class="rolagem"><table class="tabela atuacao vira-lista">
     <thead><tr><th scope="col">Ativo</th><th scope="col">Agora</th><th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${rotuloSaldo}</th>${a.self_learning ? `<th scope="col">Versão</th><th scope="col" class="col-zero">Backtest fora da amostra</th>` : ""}</tr></thead>
     <tbody>${a.por_ativo.map((x) => `<tr>
       <td><span class="ativo-nome">${iconeAtivo(x.ativo)}${esc(x.ativo)}</span></td>
-      <td class="agora">${x.status ? `<span class="badge ${STATUS_AGORA[x.status] ?? "muted"}">${esc(x.status.toLowerCase())}</span>` : `<span class="vazio">—</span>`}${x.texto ? `<span class="detalhe" title="${esc(x.texto)}">${esc(x.texto.replace(/^[A-ZÁÉÍÓÚÃÕÇ ]+ · /, ""))}</span>` : ""}</td>
-      <td class="num">${x.metricas.ops}</td><td class="num">${pct(x.metricas.acerto_pct)}</td>
-      <td class="col-zero">${x.metricas.ops ? barraZero(x.metricas.lucro_usd, max, dinheiro(a)(x.metricas.lucro_usd)) : `<span class="vazio">sem operações</span>`}</td>
-      ${a.self_learning ? `<td>${x.auto ? `<span class="badge ${ESTADO_AUTO[x.auto.estado] ?? "muted"}">v${x.auto.versao} · ${esc(x.auto.estado)}</span>` : "—"}</td>
-      <td class="col-zero">${x.backtest ? barraZero(x.backtest.lucro_usd, max, `${usd2(x.backtest.lucro_usd)} · ${x.backtest.ops} op.`) : `<span class="vazio">sem ciclo</span>`}</td>` : ""}
+      <td class="agora" data-rot="Agora">${x.status ? `<span class="badge ${STATUS_AGORA[x.status] ?? "muted"}">${esc(x.status.toLowerCase())}</span>` : `<span class="vazio">—</span>`}${x.texto ? `<span class="detalhe" title="${esc(x.texto)}">${esc(x.texto.replace(/^[A-ZÁÉÍÓÚÃÕÇ ]+ · /, ""))}</span>` : ""}</td>
+      <td class="num" data-rot="Operações">${x.metricas.ops}</td><td class="num" data-rot="Acerto">${pct(x.metricas.acerto_pct)}</td>
+      <td class="col-zero" data-rot="${rotuloSaldo}">${x.metricas.ops ? barraZero(x.metricas.lucro_usd, max, dinheiro(a)(x.metricas.lucro_usd)) : `<span class="vazio">sem operações</span>`}</td>
+      ${a.self_learning ? `<td data-rot="Versão">${x.auto ? `<span class="badge ${ESTADO_AUTO[x.auto.estado] ?? "muted"}">v${x.auto.versao} · ${esc(x.auto.estado)}</span>` : "—"}</td>
+      <td class="col-zero" data-rot="Backtest fora da amostra">${x.backtest ? barraZero(x.backtest.lucro_usd, max, `${usd2(x.backtest.lucro_usd)} · ${x.backtest.ops} op.`) : `<span class="vazio">sem ciclo</span>`}</td>` : ""}
     </tr>`).join("")}</tbody></table></div>`;
 }
 
@@ -2465,7 +2465,7 @@ function htmlPorModalidade(f, id) {
   });
   return `<section class="painel" aria-labelledby="h-modal">
     <h2 id="h-modal">${ico("target")} ${esc(id)} por modalidade</h2>
-    <div class="rolagem"><table class="tabela">
+    <div class="rolagem"><table class="tabela vira-lista">
       <thead><tr><th scope="col">Modalidade</th><th scope="col">Sinais</th><th scope="col">Executadas</th><th scope="col">Ganhos</th><th scope="col">Perdas</th><th scope="col">Acerto</th><th scope="col">Resultado</th></tr></thead>
       <tbody>${linhas.join("")}</tbody></table></div>
     <p class="meta">Sinais: recebidos (Todos e Sem disparo) ou que viraram ordem (Demo e Real, com recusas). Executadas: resolvidas pelo preço (teórico) ou com posição aberta no MT5. Demo e Real estão na moeda da conta e nunca se misturam; Todos não depende da seleção de execução.</p>
@@ -2507,7 +2507,7 @@ function vistaComparar() {
     </div>
     <section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Placar por mercado <span class="count">últimos 30 dias</span></h2>
-      <div class="rolagem"><table class="tabela placar">
+      <div class="rolagem"><table class="tabela placar vira-lista">
         <thead><tr><th scope="col" class="esq">Mercado e fonte</th><th scope="col">Abertos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th></tr></thead>
         ${linhas.join("")}</table></div>
       <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. Promover algo de um mercado ao outro é decisão sua (N1) e exige backtest no mercado de destino.</p>
@@ -2555,7 +2555,7 @@ function vistaAnalise(f, id, modo = "todos") {
   const max = Math.max(1, ...unidades.map((a) => Math.abs(a.metricas.lucro_usd)));
   const comparacao = `<section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span></h2>
-      <div class="rolagem"><table class="tabela comparacao">
+      <div class="rolagem"><table class="tabela comparacao vira-lista">
         <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : rotuloSaldo}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
         <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
           <td><a href="${hrefAnalise(f, a.id)}">${esc(a.id)}</a></td>
@@ -2593,6 +2593,17 @@ function detalhesComChave(raiz) {
   });
 }
 
+// tabelas que viram lista no celular (auditoria de 17/11/2026): cada célula ganha o título da sua coluna em data-rot,
+// que o CSS mostra antes do valor abaixo de 560 px; a 1.ª célula da linha vira o título do item
+function rotularTabelas(raiz) {
+  raiz.querySelectorAll("table.vira-lista").forEach((t) => {
+    const titulos = [...t.querySelectorAll("thead th")].map((th) => th.textContent.trim());
+    t.querySelectorAll("tbody tr").forEach((tr) => [...tr.children].forEach((c, i) => {
+      if (i > 0 && !c.dataset.rot && titulos[i]) c.dataset.rot = titulos[i];
+    }));
+  });
+}
+
 // "Saldo real" só nas abas Demo e Real (ordens na corretora); em Todos e Sem disparo o saldo é teórico, pelo preço
 let rotuloSaldo = "Saldo teórico";
 // render() troca a página inteira; com o mesmo estado e a mesma rota, só redesenha a cada 60 s (os textos "há X min"
@@ -2624,6 +2635,7 @@ function render(forcar = true) {
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
   const focoMenu = focoNoMenu();
   app.innerHTML = htmlTopo(rota) + corpo;
+  rotularTabelas(app);
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
   document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
