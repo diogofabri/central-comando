@@ -157,6 +157,11 @@ section.painel > h2 .direita { margin-left: auto; display: inline-flex; flex-wra
 /* tabelas longas (Atrasos, Comparação): ~12 linhas visíveis e cabeçalho fixo */
 .rolagem.rolavel-y { max-height: min(520px, 70vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .rolagem.rolavel-y thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: 0 1px 0 var(--line); }
+details.historico { margin-top: 18px; }
+details.historico .rolagem.rolavel-y { max-height: min(440px, 60vh); }
+.historico-ops td, .historico-ops th { white-space: nowrap; }
+.historico-ops .badge { font-size: 11.5px; }
+.historico-ops .desfecho { text-align: left; white-space: normal; min-width: 10ch; max-width: 28ch; }
 @media (max-width: 560px) { .barras.horas.rolavel-movel { max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; } }
 [data-rolavel]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* aviso de "tem mais": degradê na borda de baixo e selo clicável; somem quando a lista chega ao fim */
@@ -659,6 +664,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=86"></script>
+<script src="app.js?v=88"></script>
 </body>
 </html>

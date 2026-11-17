@@ -2114,6 +2114,34 @@ function htmlCiclos(a) {
   </details>`;
 }
 
+function htmlHistorico(a) {
+  const h = a.historico;
+  if (!h) return "";
+  const din = dinheiro(a), todos = a.tipo === "todos";
+  const rs = h.map((x) => x.r).filter((x) => x != null), vs = h.map((x) => x.v).filter((x) => x != null);
+  const fator = (l) => { const g = l.filter((x) => x > 0).reduce((s, x) => s + x, 0), p = -l.filter((x) => x < 0).reduce((s, x) => s + x, 0);
+    return p ? (g / p).toFixed(2).replace(".", ",") : g ? "∞" : "—"; };
+  const ordens = a.historicoTipo === "ordens";
+  const hora = (t) => (t ? new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
+  const celV = (v) => (v == null ? `<span class="meta">—</span>` : `<span class="${v < 0 ? "neg" : v > 0 ? "pos" : ""}">${din(v)}</span>`);
+  const titulo = ordens ? "Histórico de ordens" : "Histórico de operações";
+  const nota = ordens ? "Ordens enviadas à corretora, da mais recente para a mais antiga: preço executado, saída e resultado reais (com custos). Recusadas e canceladas aparecem com o motivo."
+    : "Sinais resolvidos nos últimos 30 dias, do mais recente para o mais antigo, no placar teórico: a saída é o alvo ou o stop tocado; o dinheiro segue a regra da página (lote 0,01 líquido de spread no Forex; 1 minicontrato ou 100 ações na Bovespa).";
+  return `<details class="historico" ${h.length ? "open" : ""}><summary>${ico("chevron")}${titulo} <span class="count">${h.length}</span></summary>
+    <p class="meta">Fator de lucro: <b class="num">${fator(rs)}</b> em R (${r2(rs.reduce((s, x) => s + x, 0))}) · <b class="num">${fator(vs)}</b> em dinheiro (${din(vs.reduce((s, x) => s + x, 0))})</p>
+    ${h.length ? `<div class="rolagem rolavel-y" data-rolavel="historico-${esc(a.id)}"><table class="tabela vira-lista historico-ops">
+      <thead><tr><th scope="col">Abertura</th><th scope="col">Fechamento</th>${todos ? `<th scope="col">Origem</th>` : ""}
+        <th scope="col">Ativo</th><th scope="col">Lado</th><th scope="col">Entrada</th><th scope="col">Stop</th><th scope="col">Alvo</th><th scope="col">Saída</th>
+        <th scope="col" class="desfecho">Desfecho</th><th scope="col">R</th><th scope="col">${ordens ? "Resultado" : "Dinheiro"}</th></tr></thead>
+      <tbody>${h.map((x) => `<tr><td class="num">${hora(x.abertura)}</td><td class="num">${hora(x.fechamento)}</td>${todos ? `<td>${esc(x.unidade ?? "—")}</td>` : ""}
+        <td>${esc(x.ativo ?? "—")}</td><td>${x.lado === "compra" ? `<span class="badge compra">COMPRA</span>` : x.lado === "venda" ? `<span class="badge venda">VENDA</span>` : "—"}</td>
+        <td class="num">${precoCurto(x.entrada)}</td><td class="num">${precoCurto(x.stop)}</td><td class="num">${precoCurto(x.alvo)}</td><td class="num">${precoCurto(x.saida)}</td>
+        <td class="desfecho">${esc(x.desfecho)}</td><td class="num">${x.r == null ? `<span class="meta">—</span>` : `<span class="${x.r < 0 ? "neg" : x.r > 0 ? "pos" : ""}">${r2(x.r)}</span>`}</td>
+        <td class="num">${celV(x.v)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="vazio">Nenhuma operação ainda.</p>`}
+    <p class="meta nota">${nota}</p>
+  </details>`;
+}
+
 function htmlAgente(a) {
   const m = a.metricas, din = dinheiro(a);
   const cel = (rot, valor, sub = "") => `<div><span class="rotulo">${rot}</span><span class="valor">${valor}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
@@ -2131,6 +2159,7 @@ function htmlAgente(a) {
       <div><h3>Evolução do saldo</h3>${svgSaldo(a)}</div>
       ${htmlLeitura(a)}
     </div>
+    ${htmlHistorico(a)}
     <h3>Onde atua</h3>
     ${htmlAtuacao(a)}
     ${htmlRecortes(a)}
@@ -2302,10 +2331,32 @@ const opsDeResultados = (linhas) => linhas.filter((r) => STATUS_COM_R.has(r.stat
   .map((r) => ({ r: rDoResultado(r), v: dinheiroDoResultado(r), momento: r.resolvido_em, aberto_em: r.desde ?? r.resolvido_em, ativo: r.instrumento, lado: r.direcao, status: r.status }));
 const extraDoCtx = () => (ctxLente === "bovespa" ? { moeda: "BRL", legenda: "saldo acumulado (1 minicontrato de WIN/WDO ou 100 ações, em R$, sem custos)" } : {});
 
+// Histórico de operações (17/11/2026, pedido do Diogo): uma linha por operação da unidade, com horários, preços, desfecho,
+// R e dinheiro. Nas abas Todos os sinais e Sem disparo vem do placar (saída = alvo ou stop tocado; teórico); em Demo e Real,
+// das ordens da corretora (preço executado, saída e resultado reais, com custos).
+const DESFECHO_SINAL = { alvo: "alvo", stop: "stop", expirado: "expirado", nao_acionada: "não acionada", invalida: "inválida", atrasado: "atrasado" };
+function linhaDeResultado(r) {
+  const ent = numerosDe(r.entrada), alvo = numerosDe(r.alvos)[0], st = Number(r.stop);
+  const saida = r.status === "alvo" ? alvo : r.status === "stop" ? st : null;
+  return { abertura: r.desde ?? null, fechamento: r.resolvido_em ?? null, ativo: r.instrumento, lado: r.direcao,
+    entrada: ent.length > 1 ? `${ent[0]}–${ent[1]}` : ent[0] ?? null, stop: Number.isFinite(st) ? st : null, alvo: alvo ?? null,
+    saida: saida ?? null, desfecho: DESFECHO_SINAL[r.status] ?? r.status ?? "—", r: STATUS_COM_R.has(r.status) ? rDoResultado(r) : null,
+    v: STATUS_COM_R.has(r.status) ? dinheiroDoResultado(r) : null, unidade: nomeDaUnidade(r.fonte, r.origem) };
+}
+function linhaDeOrdem(o) {
+  const fechada = o.status === "fechada";
+  return { abertura: o.aberto_em ?? o.criado_em ?? o.sinal_desde ?? null, fechamento: o.fechado_em ?? null, ativo: o.instrumento, lado: o.direcao,
+    entrada: o.preco_execucao ?? o.preco_pedido ?? null, stop: o.stop ?? null, alvo: o.alvo ?? null, saida: fechada ? o.preco_saida : null,
+    desfecho: fechada ? (DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "fechada") : o.status === "aberta" ? "aberta" : o.status === "pendente" ? "pendente" : `${o.status}${o.motivo ? `: ${o.motivo}` : ""}`,
+    r: fechada ? rDaOrdem(o) : null, v: fechada && o.resultado != null ? Number(o.resultado) : null, moeda: o.moeda, unidade: o.unidade };
+}
+const ordenarHistorico = (l) => l.sort((a, b) => new Date(b.fechamento ?? b.abertura ?? 0) - new Date(a.fechamento ?? a.abertura ?? 0));
+
 function unidadeDeResultados(f, nome, linhas, abertos, prefixo = "") {
   const ops = opsDeResultados(linhas);
   const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${COMO_SITES.has(f) || f === "tradingview" || f === "agentes" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : f === "telegram" ? "Sinais publicados no canal do Telegram" : f === "tradingview" ? "Sinais deste layout do TradingView" : f === "agentes" ? "Sinais deste agente" : `Sinal do canal no ${FONTES[f]}`;
-  return unidadeDeOps(f, nome, ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx() });
+  return Object.assign(unidadeDeOps(f, nome, ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx() }),
+    { historico: ordenarHistorico(linhas.map(linhaDeResultado)), historicoTipo: "placar" });
 }
 
 const abertosDaFonte = (f, e) => (e.monitorSinais ?? []).filter((s) => pertenceAFonte(f, s.fonte, s.origem) && (!s.ate || new Date(s.ate) > Date.now()));
@@ -2319,7 +2370,8 @@ function painelConsolidado(e, modo = "todos") {
     return { f, linhas: resultadosDaFonte(f, e).filter(semConsenso), abertos: abertosDaFonte(f, e).filter(semConsenso) };
   }).filter((x) => x.linhas.length || x.abertos.length);
   const unidade = (nome, linhas, abertos, base, f) => Object.assign(
-    unidadeDeOps(CONSOLIDADO, nome, opsDeResultados(linhas), abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx() }), { fonte: f });
+    unidadeDeOps(CONSOLIDADO, nome, opsDeResultados(linhas), abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx() }),
+    { fonte: f, historico: ordenarHistorico(linhas.map(linhaDeResultado)), historicoTipo: "placar" });
   const agentes = porFonte.map((x) => unidade(FONTES[x.f], x.linhas, x.abertos, `Todos os sinais do ${FONTES[x.f]} (sem consenso)`, x.f))
     .sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
   if (agentes.length) agentes.unshift(unidade(TODOS, porFonte.flatMap((x) => x.linhas), porFonte.flatMap((x) => x.abertos), `Soma de todas as fontes do ${CONTEXTOS[ctxLente].nome}`));
@@ -2439,8 +2491,9 @@ function painelDeOrdens(f, e, modo) {
       .map((o) => ({ instrumento: o.instrumento, direcao: o.direcao, entrada: o.preco_execucao ?? o.preco_pedido, stop: o.stop, alvos: o.alvo }));
     const base = nome === TODOS ? `Soma das ordens ${conta} de todos os ${SUBSTANTIVO[f][1]}` : `Ordens ${conta} da ${corretoraExec()}`;
     const recusas = lista.filter((o) => o.status === "recusada" || o.status === "erro").length;
-    return unidadeDeOps(f, nome, ops, abertos, base + (recusas ? ` · ${recusas} recusadas` : ""),
-      { sinais: lista.length, executadas: lista.filter((o) => o.preco_execucao != null).length, moeda, legenda: `resultado real das ordens ${conta} (com swap e comissão, em ${moeda})` });
+    return Object.assign(unidadeDeOps(f, nome, ops, abertos, base + (recusas ? ` · ${recusas} recusadas` : ""),
+      { sinais: lista.length, executadas: lista.filter((o) => o.preco_execucao != null).length, moeda, legenda: `resultado real das ordens ${conta} (com swap e comissão, em ${moeda})` }),
+      { historico: ordenarHistorico(lista.map(linhaDeOrdem)), historicoTipo: "ordens" });
   };
   const nomes = [...new Set(ordens.map(chave))];
   const agentes = nomes.map((n) => Object.assign(unidade(n, ordens.filter((o) => chave(o) === n)), consol ? { fonte: fontes.find((x) => FONTES[x] === n) } : {})).sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
@@ -2451,7 +2504,16 @@ function painelDeOrdens(f, e, modo) {
 function painelDaModalidade(f, e, modo) {
   if (modo === "demo" || modo === "real") return painelDeOrdens(f, e, modo);
   if (f === CONSOLIDADO) return painelConsolidado(e, modo);
-  return f === "agentes" && modo === "todos" && ctxLente === "forex" ? e.agentesPainel : painelDeResultados(f, e, modo);
+  if (f === "agentes" && modo === "todos" && ctxLente === "forex") return comHistoricoDosAgentes(e.agentesPainel, e);
+  return painelDeResultados(f, e, modo);
+}
+
+// o painel dos agentes do Forex vem pronto do executor (sem as operações): o histórico sai do placar, por nome do agente
+function comHistoricoDosAgentes(painel, e) {
+  if (!painel?.agentes) return painel;
+  const linhas = resultadosDaFonte("agentes", e).map(linhaDeResultado);
+  return { ...painel, agentes: painel.agentes.map((a) => ({ ...a, historicoTipo: "placar",
+    historico: ordenarHistorico(a.tipo === "todos" || a.id === TODOS ? [...linhas] : linhas.filter((x) => x.unidade === a.id)) })) };
 }
 
 function htmlEstadoExecucao(modo) {
