@@ -2142,11 +2142,26 @@ function htmlHistorico(a) {
   </details>`;
 }
 
+// link da live/canal/site de uma unidade da página de análise (17/11/2026, pedido do Diogo): procura o item do monitor
+// pelo nome (YouTube por UC…, link ou @handle; TikTok pelo handle; Telegram pelo canal) e cai no nome quando não acha
+const normNome = (x) => String(x ?? "").replace(/^[\s@▶️]+/u, "").trim().toLowerCase();
+function urlDaUnidade(a) {
+  const f = a.tipo;
+  if (!f || f === "todos" || a.id === "Consenso" || !["tiktok", "youtube", "sites", "telegram"].includes(f)) return null;
+  const n = normNome(a.id);
+  const item = (estado.monitorItens ?? []).find((i) => i.fonte === f && (normNome(i.nome) === n || normNome(i.item) === n));
+  if (item) return urlCanal(f, item.item);
+  if (f === "sites") return SITES_URL[n] ?? null;
+  return /^[\w.-]+$/.test(n) ? urlCanal(f, n) : null;  // nome com espaço (título do canal) não vira URL adivinhada
+}
+const linkDaUnidade = (a) => { const u = urlDaUnidade(a); const o = a.tipo === "sites" ? "o site" : a.tipo === "telegram" ? "o canal" : "a live";
+  return u ? `<a class="abrir-live" href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Abrir ${o} de ${esc(normNome(a.id))} em outra aba">${ico("external")}abrir ${o.split(" ")[1]}</a>` : ""; };
+
 function htmlAgente(a) {
   const m = a.metricas, din = dinheiro(a);
   const cel = (rot, valor, sub = "") => `<div><span class="rotulo">${rot}</span><span class="valor">${valor}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
   return `<section class="painel agente" aria-labelledby="h-ag-${esc(a.id)}">
-    <h2 id="h-ag-${esc(a.id)}">${ico("radio")} ${esc(a.id)} <span class="selos">${a.selos ?? seloModo(a)}</span></h2>
+    <h2 id="h-ag-${esc(a.id)}">${ico("radio")} ${esc(a.id)} ${linkDaUnidade(a)}<span class="selos">${a.selos ?? seloModo(a)}</span></h2>
     <div class="meta"><span>${esc(a.metodo)}</span><span>${a.ativos.map(esc).join(", ")}</span>${a.timeframes.length ? `<span>${a.timeframes.join(" · ")}</span>` : ""}
       ${a.ultima_execucao ? `<span>última rodada ${quando(a.ultima_execucao)}</span>` : ""}${a.proxima_execucao && a.ligado ? `<span>próxima em <b class="num" data-ate="${esc(a.proxima_execucao)}">${textoContador(a.proxima_execucao)}</b></span>` : ""}</div>
     <div class="faixa faixa-agente">

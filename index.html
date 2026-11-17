@@ -157,6 +157,9 @@ section.painel > h2 .direita { margin-left: auto; display: inline-flex; flex-wra
 /* tabelas longas (Atrasos, Comparação): ~12 linhas visíveis e cabeçalho fixo */
 .rolagem.rolavel-y { max-height: min(520px, 70vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .rolagem.rolavel-y thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: 0 1px 0 var(--line); }
+.abrir-live { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; font-size: 13.5px; font-weight: 500; color: var(--accent); text-decoration: none; padding: 4px 8px; border-radius: 999px; }
+.abrir-live:hover { background: var(--accent-soft); }
+.abrir-live .ico { width: 14px; height: 14px; }
 details.historico { margin-top: 18px; }
 details.historico .rolagem.rolavel-y { max-height: min(440px, 60vh); }
 .historico-ops td, .historico-ops th { white-space: nowrap; }
@@ -664,6 +667,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=88"></script>
+<script src="app.js?v=89"></script>
 </body>
 </html>
