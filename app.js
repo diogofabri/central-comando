@@ -2449,6 +2449,9 @@ function htmlEstadoExecucao(modo) {
   if (s.day_trade) partes.push(`<span>${esc((s.day_trade.ativos ?? []).join("/"))} day trade: sem entrada após ${esc(s.day_trade.ultima_entrada)}, zera às ${esc(s.day_trade.zerar_as)}</span>`);
   if (s.parado) partes.push(`<span class="badge warning">${ico("pause")}parada: ${esc(s.parado)}</span>`);
   if (s.aviso) partes.push(`<span class="badge warning">${ico("alert")}${esc(s.aviso)}</span>`);
+  // posição na corretora ≠ soma das operações do monitor: posição órfã (sem stop, sem alvo, sem zeragem) ou mexida à mão
+  for (const [simb, d] of Object.entries(s.divergencias ?? {}))
+    partes.push(`<span class="badge critical" title="Posição na corretora diferente das operações do monitor: sem stop, alvo nem zeragem pela ponte. Conferir no terminal.">${ico("alert")}${esc(simb)}: corretora ${esc(String(d.corretora))} × monitor ${esc(String(d.operacoes))}</span>`);
   partes.push(`<span>atualizado ${quando(s.atualizado_em)}</span>`);
   return `<div class="meta exec-estado">${partes.join("")}</div>`;
 }
