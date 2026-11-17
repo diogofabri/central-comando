@@ -2119,6 +2119,8 @@ function htmlHistorico(a) {
   if (!h) return "";
   const din = dinheiro(a), todos = a.tipo === "todos";
   const rs = h.map((x) => x.r).filter((x) => x != null), vs = h.map((x) => x.v).filter((x) => x != null);
+  const exe = h.filter((x) => x.execucao === "executada");
+  const rsE = exe.map((x) => x.r).filter((x) => x != null), vsE = exe.map((x) => x.v).filter((x) => x != null);
   const fator = (l) => { const g = l.filter((x) => x > 0).reduce((s, x) => s + x, 0), p = -l.filter((x) => x < 0).reduce((s, x) => s + x, 0);
     return p ? (g / p).toFixed(2).replace(".", ",") : g ? "∞" : "—"; };
   const ordens = a.historicoTipo === "ordens";
@@ -2126,14 +2128,15 @@ function htmlHistorico(a) {
   const celV = (v) => (v == null ? `<span class="meta">—</span>` : `<span class="${v < 0 ? "neg" : v > 0 ? "pos" : ""}">${din(v)}</span>`);
   const titulo = ordens ? "Histórico de ordens" : "Histórico de operações";
   const nota = ordens ? "Ordens enviadas à corretora, da mais recente para a mais antiga: preço executado, saída e resultado reais (com custos). Recusadas e canceladas aparecem com o motivo."
-    : "Sinais resolvidos nos últimos 30 dias, do mais recente para o mais antigo, no placar teórico: a saída é o alvo ou o stop tocado; o dinheiro segue a regra da página (lote 0,01 líquido de spread no Forex; 1 minicontrato ou 100 ações na Bovespa).";
+    : "Sinais resolvidos nos últimos 30 dias, do mais recente para o mais antigo. Executada = preço, saída e resultado reais da ordem na corretora. Não executado (em cinza) = o motivo (sinal em atraso, cancelada, sem ordem) e o resultado teórico do placar: a saída é o alvo ou o stop tocado, e o dinheiro segue a regra da página (lote 0,01 líquido de spread no Forex; 1 minicontrato ou 100 ações na Bovespa).";
   return `<details class="historico" ${h.length ? "open" : ""}><summary>${ico("chevron")}${titulo} <span class="count">${h.length}</span></summary>
-    <p class="meta">Fator de lucro: <b class="num">${fator(rs)}</b> em R (${r2(rs.reduce((s, x) => s + x, 0))}) · <b class="num">${fator(vs)}</b> em dinheiro (${din(vs.reduce((s, x) => s + x, 0))})</p>
+    ${!ordens ? `<p class="meta">Executadas na corretora (${exe.length}): fator de lucro <b class="num">${fator(rsE)}</b> em R (${r2(rsE.reduce((s, x) => s + x, 0))}) · <b class="num">${fator(vsE)}</b> em dinheiro (${din(vsE.reduce((s, x) => s + x, 0))})</p>` : ""}
+    <p class="meta">${ordens ? "" : "Teórico de todos os sinais: "}Fator de lucro: <b class="num">${fator(rs)}</b> em R (${r2(rs.reduce((s, x) => s + x, 0))}) · <b class="num">${fator(vs)}</b> em dinheiro (${din(vs.reduce((s, x) => s + x, 0))})</p>
     ${h.length ? `<div class="rolagem rolavel-y" data-rolavel="historico-${esc(a.id)}"><table class="tabela vira-lista historico-ops">
       <thead><tr><th scope="col">Abertura</th><th scope="col">Fechamento</th>${todos ? `<th scope="col">Origem</th>` : ""}
         <th scope="col">Ativo</th><th scope="col">Lado</th><th scope="col">Entrada</th><th scope="col">Stop</th><th scope="col">Alvo</th><th scope="col">Saída</th>
         <th scope="col" class="desfecho">Desfecho</th><th scope="col">R</th><th scope="col">${ordens ? "Resultado" : "Dinheiro"}</th></tr></thead>
-      <tbody>${h.map((x) => `<tr><td class="num">${hora(x.abertura)}</td><td class="num">${hora(x.fechamento)}</td>${todos ? `<td>${esc(x.unidade ?? "—")}</td>` : ""}
+      <tbody>${h.map((x) => `<tr${x.execucao === "teorico" ? ` class="teorico" title="Não executado: R e dinheiro só teóricos"` : ""}><td class="num">${hora(x.abertura)}</td><td class="num">${hora(x.fechamento)}</td>${todos ? `<td>${esc(x.unidade ?? "—")}</td>` : ""}
         <td>${esc(x.ativo ?? "—")}</td><td>${x.lado === "compra" ? `<span class="badge compra">COMPRA</span>` : x.lado === "venda" ? `<span class="badge venda">VENDA</span>` : "—"}</td>
         <td class="num">${precoCurto(x.entrada)}</td><td class="num">${precoCurto(x.stop)}</td><td class="num">${precoCurto(x.alvo)}</td><td class="num">${precoCurto(x.saida)}</td>
         <td class="desfecho">${esc(x.desfecho)}</td><td class="num">${x.r == null ? `<span class="meta">—</span>` : `<span class="${x.r < 0 ? "neg" : x.r > 0 ? "pos" : ""}">${r2(x.r)}</span>`}</td>
@@ -2351,13 +2354,40 @@ const extraDoCtx = () => (ctxLente === "bovespa" ? { moeda: "BRL", legenda: "sal
 // R e dinheiro. Nas abas Todos os sinais e Sem disparo vem do placar (saída = alvo ou stop tocado; teórico); em Demo e Real,
 // das ordens da corretora (preço executado, saída e resultado reais, com custos).
 const DESFECHO_SINAL = { alvo: "alvo", stop: "stop", expirado: "expirado", nao_acionada: "não acionada", invalida: "inválida", atrasado: "atrasado" };
+// Execução de cada sinal do placar (18/11/2026, pedido do Diogo: a aba Todos os sinais misturava stops executados na
+// corretora com sinais que nunca viraram ordem, como os atrasados). A ordem do sinal (mesma fonte e sinal_id; real antes
+// de demo) dá o resultado REAL; sem ordem, a linha diz "não executado" e o motivo, e o R/dinheiro ficam como teóricos.
+const ORDEM_FECHADA = new Set(["fechada"]);
+function ordemDoSinal(r) {
+  const os = (estado?.monitorOrdens ?? []).filter((o) => o.fonte === r.fonte && Number(o.sinal_id) === Number(r.sinal_id)
+    && o.instrumento === r.instrumento && o.direcao === r.direcao);
+  return os.find((o) => o.modo === "real" && ORDEM_FECHADA.has(o.status)) ?? os.find((o) => ORDEM_FECHADA.has(o.status))
+    ?? os.find((o) => o.status === "aberta" || o.status === "pendente") ?? os[0] ?? null;
+}
+function motivoSemExecucao(r, o) {
+  if (o && (o.status === "cancelada" || o.status === "recusada" || o.status === "erro"))
+    return `${o.status === "recusada" ? "recusada" : o.status === "erro" ? "erro" : "cancelada"}${o.motivo ? `: ${o.motivo}` : ""}`;
+  if (r.situacao === "atrasado") return "sinal em atraso";
+  return "sem ordem (execução desligada ou fora do horário)";
+}
 function linhaDeResultado(r) {
   const ent = numerosDe(r.entrada), alvo = numerosDe(r.alvos)[0], st = Number(r.stop);
   const saida = r.status === "alvo" ? alvo : r.status === "stop" ? st : null;
-  return { abertura: r.desde ?? null, fechamento: r.resolvido_em ?? null, ativo: r.instrumento, lado: r.direcao,
+  const base = { abertura: r.desde ?? null, fechamento: r.resolvido_em ?? null, ativo: r.instrumento, lado: r.direcao,
     entrada: ent.length > 1 ? `${ent[0]}–${ent[1]}` : ent[0] ?? null, stop: Number.isFinite(st) ? st : null, alvo: alvo ?? null,
     saida: saida ?? null, desfecho: DESFECHO_SINAL[r.status] ?? r.status ?? "—", r: STATUS_COM_R.has(r.status) ? rDoResultado(r) : null,
     v: STATUS_COM_R.has(r.status) ? dinheiroDoResultado(r) : null, unidade: nomeDaUnidade(r.fonte, r.origem) };
+  const o = ordemDoSinal(r);
+  if (o && ORDEM_FECHADA.has(o.status)) {  // executada: preços e resultado reais da corretora
+    const real = linhaDeOrdem(o);
+    return { ...base, abertura: real.abertura ?? base.abertura, fechamento: real.fechamento ?? base.fechamento, entrada: real.entrada,
+      stop: real.stop ?? base.stop, alvo: real.alvo ?? base.alvo, saida: real.saida, r: real.r, v: real.v ?? base.v,
+      desfecho: `executada (${o.modo}): ${real.desfecho}`, execucao: "executada" };
+  }
+  if (o && (o.status === "aberta" || o.status === "pendente")) return { ...base, desfecho: `${base.desfecho} · ordem ${o.status} (${o.modo})`, execucao: "em_curso" };
+  const decidido = STATUS_COM_R.has(r.status);
+  return { ...base, desfecho: decidido ? `não executado: ${motivoSemExecucao(r, o)} (teórico: ${base.desfecho})` : base.desfecho,
+    execucao: decidido ? "teorico" : "sem_r" };
 }
 function linhaDeOrdem(o) {
   const fechada = o.status === "fechada";
