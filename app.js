@@ -1184,7 +1184,7 @@ function htmlItemMonitor(i) {
 // classe do ativo → ícone do sistema (sem emoji nem bandeiras: um traço e um peso só)
 const MOEDAS = new Set(["EUR", "USD", "GBP", "JPY", "CHF", "AUD", "NZD", "CAD", "CNH", "CNY", "MXN", "ZAR", "SEK", "NOK", "SGD", "HKD", "TRY", "PLN", "BRL"]);
 const METAIS = /^(XAU|XAG|XPT|XPD|COPPER|GOLD|SILVER)/, ENERGIA = /^(USOIL|UKOIL|WTI|BRENT|CRUDEOIL|NGAS|NATGAS)/, CRIPTO = /^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|LTC|DOT|AVAX|LINK|MATIC|TRX|TON)/;
-const INDICES = /^(NAS100|US100|US30|US500|SPX|GER40|DAX|UK100|FTSE|JP225|NIKKEI|FRA40|EU50|HK50|AUS200|IBOV|WIN|WDO|DXY)/;
+const INDICES = /^(NAS100|US100|NQ|US30|US500|SPX|GER40|DAX|UK100|FTSE|JP225|NIKKEI|FRA40|EU50|HK50|AUS200|IBOV|WIN|WDO|DXY)/;
 function classeAtivo(sym) {
   const t = String(sym || "").toUpperCase();
   if (METAIS.test(t)) return "metal";
@@ -2215,6 +2215,7 @@ const numerosDe = (t) => (String(t ?? "").match(/\d+(?:[.,]\d+)?/g) ?? []).map((
 const FX = 1000;
 const CONTRATOS = {
   XAUUSD: { un: 1, spread: 0.50 }, US100: { un: 0.01, spread: 1.8 },
+  NQ: { un: 0.01, spread: 1.8 },  // futuro do Nasdaq com vencimento (NQZ2026 na Capital.com: 1,8 em 17/11/2026, um retrato só)
   EURUSD: { un: FX, spread: 0.00007 }, GBPUSD: { un: FX, spread: 0.00013 }, AUDUSD: { un: FX, spread: 0.00006 }, NZDUSD: { un: FX, spread: 0.00015 },
   USDJPY: { un: FX, spread: 0.012, cota: 1 / 157 }, USDCHF: { un: FX, spread: 0.00014, cota: 1.22 }, USDCAD: { un: FX, spread: 0.0002, cota: 0.72 },
   EURJPY: { un: FX, spread: 0.018, cota: 1 / 157 }, GBPCHF: { un: FX, spread: 0.00024, cota: 1.22 }, GBPAUD: { un: FX, spread: 0.00018, cota: 0.70 },
