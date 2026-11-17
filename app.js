@@ -226,7 +226,7 @@ function fonteSupabase(cfg) {
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
                termometro: ctl["termometro:painel"] ?? null, cotacoes: ctl["cotacoes:sinais"] ?? null,
                audio: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("audio:")).map(([k, v]) => [k.slice(6), v === true])),
-               loginFonte: { youtube: ctl["login:youtube"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
+               loginFonte: { youtube: ctl["login:youtube"] ?? null, tiktok: ctl["login:tiktok"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
                consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl),
                execucaoBovespa: execucaoDoControle(ctl, "@bovespa"),
                // modo de cada máquina (controle.maquina:<nome>, gravado por `maquinas operar|leitura|aplicar`)
@@ -383,6 +383,9 @@ function fonteDemo() {
       estado: { demo: { conectado: true, servidor: "ClearInvestimentos-DEMO", moeda: "BRL", abertas: 0, pendentes: 0, resultado_dia: 0, atualizado_em: new Date(agora - 15e3).toISOString(),
                         corretora: "CLEAR", volumes: { WIN: 1, WDO: 1, acoes: 100 }, flutuante: { 9: { lucro: -12, preco: 130095 } }, day_trade: { ativos: ["WIN", "WDO"], ultima_entrada: "17:45", zerar_as: "18:15" } }, real: null } },
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
+    ...{ loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" },
+                       tiktok: { estado: "sem_login", atualizado_em: new Date(agora - 60e3).toISOString(), canais: ["canal_demo1", "canal_demo2"],
+                                 comando: "nativo parar tiktok; .venv\\Scripts\\python.exe -m monitor_lives.nativo login tiktok; feche a janela; Start-ScheduledTask monitor-tiktok" } } },
     monitorResultados: [
       ...demoResultados(agora),
       { fonte: "youtube@bovespa", sinal_id: 29, origem: "@canal.win", instrumento: "WIN", direcao: "compra", entrada: "129880", status: "alvo", resultado_r: 1.6, desde: new Date(agora - 5 * h).toISOString(), resolvido_em: new Date(agora - 4 * h).toISOString() },
@@ -1539,6 +1542,7 @@ function saudeFonte(f, e) {
   if (status.nivel === "ok") {
     const login = e.loginFonte?.youtube;
     if (f === "youtube" && (e.contexto ?? "forex") === "forex" && (!login || login.estado !== "logado")) motivos.push("sem login");  // o login é do YouTube do Forex
+    if (f === "tiktok" && tiktokSemLogin(e)) motivos.push("sem login");  // sessão da @diogofabri2 vencida (17/11/2026)
     const semDados = (e.monitorItens ?? []).filter((i) => i.fonte === f && (i.estado === "sem_dados" || i.estado === "erro")).length;
     if (semDados) motivos.push(`${semDados} sem dados`);
     if (motivos.length) status.nivel = "atencao";
@@ -1647,7 +1651,7 @@ function htmlMonitor(e) {
       <div class="titulo titulo-fonte"><span class="nome-fonte">${FONTES[f]}</span>${botao}</div>
       <div class="meta estado-fonte">${selo}${motivos.filter((m) => m !== "sem login").map((m) => htmlBadge("warning", m, "alert")).join("")}${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}${htmlMaquinaFonte(f, e)}</div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
-      ${f === "youtube" ? htmlLoginYoutube(e) : ""}
+      ${f === "youtube" ? htmlLoginYoutube(e) : f === "tiktok" ? htmlLoginTiktok(e) : ""}
       ${htmlBotaoAudio(f, e)}
       ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
       ${rodada}
@@ -1665,6 +1669,23 @@ function htmlMonitor(e) {
       <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
+}
+
+// login da @diogofabri2 no TikTok (17/11/2026): o monitor publica controle.login:tiktok = sem_login quando os canais
+// pedem login (sessão vencida no servidor com o cookie ainda no perfil). Valor com mais de 15 min = sem informação.
+function tiktokSemLogin(e) {
+  if ((e.contexto ?? "forex") !== "forex") return false;
+  const l = e.loginFonte?.tiktok;
+  return !!l && l.estado === "sem_login" && (Date.now() - new Date(l.atualizado_em)) / 6e4 <= 15;
+}
+
+function htmlLoginTiktok(e) {
+  if (!tiktokSemLogin(e)) return "";
+  const l = e.loginFonte.tiktok;
+  const canais = (l.canais ?? []).filter((c) => !c.startsWith("(")).map((c) => "@" + c);
+  return `<div class="meta"><span class="badge critical">${ico("alert")}sem login na @diogofabri2</span>
+    <span title="${esc(canais.join(", "))}">${canais.length ? `${canais.length} ${canais.length === 1 ? "canal pediu" : "canais pediram"} login` : "perfil sem sessão"}: lives com restrição de idade não abrem.</span>
+    <span title="${esc("Em 05-monitor-lives: " + (l.comando ?? "nativo login tiktok"))}">Refaça o login no VPS: <code>nativo login tiktok</code> (passos na dica e no Telegram).</span></div>`;
 }
 
 // login da conta Google do monitor (YouTube): o estado vem do contêiner; a senha é digitada só no noVNC, nunca aqui
