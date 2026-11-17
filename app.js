@@ -1442,7 +1442,7 @@ function htmlAtrasos(e) {
     <p class="meta nota">${tot.atr} de ${tot.n} sinais medidos chegaram atrasados (${pctTxt(tot.atr, tot.n)}).
       Os atrasados teriam dado ${dinTot.length ? dinheiroSinal(soma(dinTot), moeda) : "—"} pelo placar
       ${custoTot.length ? `· o atraso piorou a entrada em ${dinheiroSinal(-soma(custoTot), moeda)}` : ""}.</p>
-    <div class="rolagem"><table class="tabela vira-lista atrasos">
+    <div class="rolagem rolavel-y" data-rolavel="atrasos"><table class="tabela vira-lista atrasos">
       <thead><tr><th scope="col">Canal</th><th scope="col">Sinais</th><th scope="col">Atrasados</th><th scope="col">Atraso mediano</th>
         <th scope="col" title="Sinais executáveis lidos com algum atraso, dentro da tolerância de 15 min">Com atraso ≤ 15 min</th>
         <th scope="col" title="Atrasados resolvidos: alvo · stop (e ainda abertos)">Atrasados: win · loss</th>
@@ -2076,7 +2076,7 @@ function htmlRecortes(a) {
   const linha = (rot, m) => `<li><span class="rot">${rot}</span>${barraZero(m.lucro_usd, max, dinheiro(a)(m.lucro_usd))}<span class="meta">${m.ops} op. · ${pct(m.acerto_pct)}</span></li>`;
   const des = a.desfechos, total = Object.values(des).reduce((s, m) => s + m.ops, 0);
   return `<div class="recortes">
-    <div class="recorte-horas"><h3>Por hora de abertura (UTC)</h3>${horas.length ? `<ul class="barras horas">${horas.map(([h, m]) => linha(`${String(h).padStart(2, "0")}h`, m)).join("")}</ul>` : `<p class="vazio">Sem operações resolvidas.</p>`}</div>
+    <div class="recorte-horas"><h3>Por hora de abertura (UTC)</h3>${horas.length ? `<ul class="barras horas rolavel-movel" data-rolavel="horas">${horas.map(([h, m]) => linha(`${String(h).padStart(2, "0")}h`, m)).join("")}</ul>` : `<p class="vazio">Sem operações resolvidas.</p>`}</div>
     <div><h3>Por lado</h3>${lados.length ? `<ul class="barras">${lados.map(([l, m]) => linha(l === "compra" ? "compra" : "venda", m)).join("")}</ul>` : `<p class="vazio">Sem operações resolvidas.</p>`}
       <h3>Como as operações terminam</h3>${total ? `<div class="desfechos" role="img" aria-label="${esc(Object.entries(des).map(([k, m]) => `${NOME_DESFECHO[k] ?? k}: ${m.ops}`).join(", "))}">
         ${Object.entries(des).map(([k, m]) => `<span class="d-${k}" style="flex:${m.ops}">${NOME_DESFECHO[k] ?? k} ${m.ops}</span>`).join("")}</div>` : `<p class="vazio">—</p>`}</div>
@@ -2555,7 +2555,7 @@ function vistaAnalise(f, id, modo = "todos") {
   const max = Math.max(1, ...unidades.map((a) => Math.abs(a.metricas.lucro_usd)));
   const comparacao = `<section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span></h2>
-      <div class="rolagem"><table class="tabela comparacao vira-lista">
+      <div class="rolagem rolavel-y" data-rolavel="comparacao-${f}"><table class="tabela comparacao vira-lista">
         <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : rotuloSaldo}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
         <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
           <td><a href="${hrefAnalise(f, a.id)}">${esc(a.id)}</a></td>
@@ -2595,6 +2595,39 @@ function detalhesComChave(raiz) {
 
 // tabelas que viram lista no celular (auditoria de 17/11/2026): cada célula ganha o título da sua coluna em data-rot,
 // que o CSS mostra antes do valor abaixo de 560 px; a 1.ª célula da linha vira o título do item
+// listas com rolagem própria (17/11/2026, pedido do Diogo): a barra de rolagem some no Windows e no celular, então cada
+// lista ganha um aviso de que há mais itens: degradê na borda de baixo e um selo "+N abaixo" clicável, que somem no fim
+function prepararRolagens(raiz) {
+  raiz.querySelectorAll("[data-rolavel]").forEach((el) => {
+    if (!el.parentElement.classList.contains("rola-caixa")) {
+      const caixa = document.createElement("div");
+      caixa.className = "rola-caixa";
+      el.replaceWith(caixa);
+      caixa.append(el);
+      const selo = document.createElement("button");
+      selo.type = "button";
+      selo.className = "rola-mais";
+      selo.addEventListener("click", () => el.scrollBy({ top: el.clientHeight * 0.8, behavior: reduzMovimento() ? "auto" : "smooth" }));
+      caixa.append(selo);
+      el.addEventListener("scroll", () => marcarRolagem(el), { passive: true });
+    }
+    if (!el.hasAttribute("tabindex")) el.tabIndex = 0;  // rolável pelo teclado
+    marcarRolagem(el);
+  });
+}
+// recolhível aberto ou janela redimensionada: a lista muda de altura e o aviso é refeito
+document.addEventListener("toggle", (ev) => ev.target.querySelectorAll?.("[data-rolavel]").forEach(marcarRolagem), true);
+window.addEventListener("resize", () => document.querySelectorAll("[data-rolavel]").forEach(marcarRolagem));
+function marcarRolagem(el) {
+  const caixa = el.parentElement, selo = caixa.querySelector(".rola-mais");
+  const fim = el.getBoundingClientRect().bottom;
+  const itens = el.matches("ul") ? [...el.children] : [...el.querySelectorAll("tbody tr")];
+  const restantes = el.scrollHeight - el.scrollTop - el.clientHeight > 4 ? itens.filter((i) => i.getBoundingClientRect().top >= fim - 4).length : 0;
+  caixa.classList.toggle("tem-mais", restantes > 0);
+  caixa.classList.toggle("rolou", el.scrollTop > 4);
+  if (selo) { selo.textContent = restantes ? `+${restantes} abaixo ↓` : ""; selo.setAttribute("aria-label", `Rolar para ver mais ${restantes} itens`); selo.hidden = !restantes; }
+}
+
 function rotularTabelas(raiz) {
   raiz.querySelectorAll("table.vira-lista").forEach((t) => {
     const titulos = [...t.querySelectorAll("thead th")].map((th) => th.textContent.trim());
@@ -2639,6 +2672,7 @@ function render(forcar = true) {
   app.innerHTML = htmlTopo(rota) + corpo;
   rolagens.size && app.querySelectorAll("[data-rolavel]").forEach((el) => { const y = rolagens.get(el.dataset.rolavel); if (y) el.scrollTop = y; });
   rotularTabelas(app);
+  prepararRolagens(app);
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
   document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";

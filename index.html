@@ -154,7 +154,22 @@ section.painel > h2 .direita { margin-left: auto; display: inline-flex; flex-wra
 .vazio { color: var(--ink-3); font-size: 14px; text-wrap: pretty; }
 /* listas que crescem sem limite (Sinais ativos, Ao vivo agora): rolagem própria, 17/11/2026 */
 .lista.rolavel { max-height: min(560px, 70vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
-.lista.rolavel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* tabelas longas (Atrasos, Comparação): ~12 linhas visíveis e cabeçalho fixo */
+.rolagem.rolavel-y { max-height: min(520px, 70vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.rolagem.rolavel-y thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: 0 1px 0 var(--line); }
+@media (max-width: 560px) { .barras.horas.rolavel-movel { max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; } }
+[data-rolavel]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* aviso de "tem mais": degradê na borda de baixo e selo clicável; somem quando a lista chega ao fim */
+.rola-caixa { position: relative; }
+.rola-caixa::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 48px; pointer-events: none;
+  background: linear-gradient(transparent, var(--surface)); opacity: 0; transition: opacity var(--t-rapido); }
+.rola-caixa.tem-mais::after { opacity: 1; }
+.rola-mais { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--ink-2); font: inherit; font-size: 12.5px; font-weight: 600; padding: 3px 12px; min-height: 26px;
+  border-radius: 999px; box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 12%, transparent); cursor: pointer; white-space: nowrap; }
+.rola-mais:hover { color: var(--ink); border-color: var(--ink-3); }
+.rola-mais[hidden] { display: none; }
+@media (pointer: coarse) { .rola-mais { min-height: 36px; } }
 .aviso { background: var(--warning-soft); color: var(--ink); border-radius: var(--raio-s); padding: 10px 12px; font-size: 13.5px; display: flex; gap: 8px; align-items: flex-start; }
 .aviso .ico { color: var(--warning); margin-top: 3px; }
 .aviso.erro { background: var(--critical-soft); } .aviso.erro .ico { color: var(--critical); }
@@ -640,6 +655,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=83"></script>
+<script src="app.js?v=84"></script>
 </body>
 </html>
