@@ -226,7 +226,8 @@ function fonteSupabase(cfg) {
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
                termometro: ctl["termometro:painel"] ?? null, cotacoes: ctl["cotacoes:sinais"] ?? null,
                audio: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("audio:")).map(([k, v]) => [k.slice(6), v === true])),
-               loginFonte: { youtube: ctl["login:youtube"] ?? null, tiktok: ctl["login:tiktok"] ?? null }, loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
+               loginFonte: { youtube: ctl["login:youtube"] ?? null, tiktok: ctl["login:tiktok"] ?? null },
+               categorias: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("categorias:")).map(([k, v]) => [k.slice(11), v?.nomes ?? {}])), loginPedido: { youtube: ctl["login:youtube:pedido"] === true },
                consensoLigado: ctl["consenso:modo"] === true, monitorOrdens, monitorMaquinas, execucao: execucaoDoControle(ctl),
                execucaoBovespa: execucaoDoControle(ctl, "@bovespa"),
                // modo de cada máquina (controle.maquina:<nome>, gravado por `maquinas operar|leitura|aplicar`)
@@ -383,6 +384,7 @@ function fonteDemo() {
       estado: { demo: { conectado: true, servidor: "ClearInvestimentos-DEMO", moeda: "BRL", abertas: 0, pendentes: 0, resultado_dia: 0, atualizado_em: new Date(agora - 15e3).toISOString(),
                         corretora: "CLEAR", volumes: { WIN: 1, WDO: 1, acoes: 100 }, flutuante: { 9: { lucro: -12, preco: 130095 } }, day_trade: { ativos: ["WIN", "WDO"], ultima_entrada: "17:45", zerar_as: "18:15" } }, real: null } },
     loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" } }, loginPedido: { youtube: false },
+    categorias: { youtube: { "forex & crypto live": "robo", forexlia: "robo", "trader demo": "trader" } },
     ...{ loginFonte: { youtube: { estado: "sem_login", atualizado_em: new Date(agora - 2 * 6e4).toISOString(), novnc: "http://127.0.0.1:6081/vnc.html?path=websockify%3Ftoken%3Dlogin" },
                        tiktok: { estado: "sem_login", atualizado_em: new Date(agora - 60e3).toISOString(), canais: ["canal_demo1", "canal_demo2"],
                                  comando: "nativo parar tiktok; .venv\\Scripts\\python.exe -m monitor_lives.nativo login tiktok; feche a janela; Start-ScheduledTask monitor-tiktok" } } },
@@ -471,7 +473,7 @@ function demoResultados(agora) {
   const universo = [
     ["tiktok", "Sinal do canal @canal.fx", ["XAUUSD", "US30"], 0.18], ["tiktok", "Sinal do canal @mogotrading_off", ["XAUUSD"], -0.08],
     ["tiktok", "Sinal do canal @rayyy.fx", ["XAUUSD", "NAS100"], 0.05], ["youtube", "Sinal do canal ▶️ forex & crypto live", ["XAUUSD", "EURUSD"], 0.1],
-    ["youtube", "Sinal do canal ▶️ forexlia", ["XAUUSD", "GBPUSD"], -0.15], ["tiktok", "Consenso de 3 canais", ["XAUUSD"], 0.2],
+    ["youtube", "Sinal do canal ▶️ forexlia", ["XAUUSD", "GBPUSD"], -0.15], ["youtube", "Sinal do canal ▶️ trader demo", ["XAUUSD"], 0.12], ["tiktok", "Consenso de 3 canais", ["XAUUSD"], 0.2],
     ["sites", "Foresignal", ["EURUSD", "GBPUSD", "USDJPY"], 0.12], ["sites", "CryptET", ["ETHUSDT", "ADAUSDT"], -0.05], ["sites", "SureShotFX", ["XAUUSD", "GBPJPY"], 0], ["telegram", "SureShotFX", ["XAUUSD", "GBPJPY"], 0.05],
   ];
   const linhas = [];
@@ -2274,6 +2276,14 @@ function foiDisparado(f, r, ordens) {
     || (o.unidade === u && o.instrumento === r.instrumento && o.direcao === r.direcao && Math.abs(new Date(o.sinal_desde).getTime() - t) < 6e5));
 }
 
+// categoria do canal do YouTube (robo | trader | outro), publicada pelo monitor em controle.categorias:<fonte>
+const ROTULO_CATEGORIA = { robo: "Robô", trader: "Live trader", outro: "Outro" };
+function categoriaDoCanal(f, e, nome) {
+  const mapa = (e.categorias ?? {})[f + (ctxLente === "bovespa" ? "@bovespa" : "")] ?? {};
+  const n = String(nome ?? "").replace(/^[@▶️\s]+/u, "").trim().toLowerCase();
+  return mapa[n] ?? null;
+}
+
 function painelDeResultados(f, e, modo = "todos") {
   let linhas = resultadosDaFonte(f, e);
   let abertos = abertosDaFonte(f, e);
@@ -2288,7 +2298,20 @@ function painelDeResultados(f, e, modo = "todos") {
     .sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
   // aba "Todos": soma dos canais ou sites; o consenso fica fora porque repete os sinais dos canais
   const semConsenso = (x) => nomeDaUnidade(f, x.origem) !== "Consenso";
-  if (agentes.some((a) => a.id !== "Consenso")) agentes.unshift(unidadeDeResultados(f, TODOS, linhas.filter(semConsenso), abertos.filter(semConsenso), prefixo));
+  // YouTube (17/11/2026, pedido do Diogo): uma aba por categoria do canal (robôs, live traders, outros), logo depois de Todos
+  const cats = [];
+  if (f === "youtube") {
+    for (const a of agentes) { const c = categoriaDoCanal(f, e, a.id); if (c) a.metodo = `${ROTULO_CATEGORIA[c]} · ${a.metodo}`; }
+    for (const c of Object.keys(ROTULO_CATEGORIA)) {
+      const daCat = (x) => categoriaDoCanal(f, e, nomeDaUnidade(f, x.origem)) === c;
+      const l = linhas.filter(daCat), ab = abertos.filter(daCat);
+      // tipo "todos": é um agregado (fora da tabela por canal e sem botões de execução)
+      if (!l.length && !ab.length) continue;
+      const u = unidadeDeResultados(f, ROTULO_CATEGORIA[c] + "s", l, ab, prefixo);
+      cats.push({ ...u, tipo: "todos", metodo: `${prefixo}Soma dos canais marcados como "${ROTULO_CATEGORIA[c].toLowerCase()}" na lista do YouTube` });
+    }
+  }
+  if (agentes.some((a) => a.id !== "Consenso")) agentes.unshift(unidadeDeResultados(f, TODOS, linhas.filter(semConsenso), abertos.filter(semConsenso), prefixo), ...cats);
   return { unidade: "usd", agentes, ...(ctxLente === "bovespa" ? { moeda: "BRL" } : {}) };
 }
 
