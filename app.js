@@ -2076,12 +2076,12 @@ function htmlLeitura(a) {
 function htmlAtuacao(a) {
   const max = Math.max(1, ...a.por_ativo.map((x) => Math.abs(x.metricas.lucro_usd)), ...a.por_ativo.map((x) => Math.abs(x.backtest?.lucro_usd ?? 0)));
   return `<div class="rolagem"><table class="tabela atuacao vira-lista">
-    <thead><tr><th scope="col">Ativo</th><th scope="col">Agora</th><th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${rotuloSaldo}</th>${a.self_learning ? `<th scope="col">Versão</th><th scope="col" class="col-zero">Backtest fora da amostra</th>` : ""}</tr></thead>
+    <thead><tr><th scope="col">Ativo</th><th scope="col">Agora</th><th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${a.rotulo_saldo ?? rotuloSaldo}</th>${a.self_learning ? `<th scope="col">Versão</th><th scope="col" class="col-zero">Backtest fora da amostra</th>` : ""}</tr></thead>
     <tbody>${a.por_ativo.map((x) => `<tr>
       <td><span class="ativo-nome">${iconeAtivo(x.ativo)}${esc(x.ativo)}</span></td>
       <td class="agora" data-rot="Agora">${x.status ? `<span class="badge ${STATUS_AGORA[x.status] ?? "muted"}">${esc(x.status.toLowerCase())}</span>` : `<span class="vazio">—</span>`}${x.texto ? `<span class="detalhe" title="${esc(x.texto)}">${esc(x.texto.replace(/^[A-ZÁÉÍÓÚÃÕÇ ]+ · /, ""))}</span>` : ""}</td>
       <td class="num" data-rot="Operações">${x.metricas.ops}</td><td class="num" data-rot="Acerto">${pct(x.metricas.acerto_pct)}</td>
-      <td class="col-zero" data-rot="${rotuloSaldo}">${x.metricas.ops ? barraZero(x.metricas.lucro_usd, max, dinheiro(a)(x.metricas.lucro_usd)) : `<span class="vazio">sem operações</span>`}</td>
+      <td class="col-zero" data-rot="${a.rotulo_saldo ?? rotuloSaldo}">${x.metricas.ops ? barraZero(x.metricas.lucro_usd, max, dinheiro(a)(x.metricas.lucro_usd)) : `<span class="vazio">sem operações</span>`}</td>
       ${a.self_learning ? `<td data-rot="Versão">${x.auto ? `<span class="badge ${ESTADO_AUTO[x.auto.estado] ?? "muted"}">v${x.auto.versao} · ${esc(x.auto.estado)}</span>` : "—"}</td>
       <td class="col-zero" data-rot="Backtest fora da amostra">${x.backtest ? barraZero(x.backtest.lucro_usd, max, `${usd2(x.backtest.lucro_usd)} · ${x.backtest.ops} op.`) : `<span class="vazio">sem ciclo</span>`}</td>` : ""}
     </tr>`).join("")}</tbody></table></div>`;
@@ -2168,7 +2168,8 @@ function htmlAgente(a) {
     <div class="meta"><span>${esc(a.metodo)}</span><span>${a.ativos.map(esc).join(", ")}</span>${a.timeframes.length ? `<span>${a.timeframes.join(" · ")}</span>` : ""}
       ${a.ultima_execucao ? `<span>última rodada ${quando(a.ultima_execucao)}</span>` : ""}${a.proxima_execucao && a.ligado ? `<span>próxima em <b class="num" data-ate="${esc(a.proxima_execucao)}">${textoContador(a.proxima_execucao)}</b></span>` : ""}</div>
     <div class="faixa faixa-agente">
-      ${cel(rotuloSaldo, `<span class="${m.lucro_usd < 0 ? "neg" : m.lucro_usd > 0 ? "pos" : ""}">${din(m.lucro_usd)}</span>`, `${m.ops} operações resolvidas`)}
+      ${cel(a.rotulo_saldo ?? rotuloSaldo, `<span class="${m.lucro_usd < 0 ? "neg" : m.lucro_usd > 0 ? "pos" : ""}">${din(m.lucro_usd)}</span>`,
+        a.nota_saldo ? `${m.ops} operações · ${esc(a.nota_saldo.replace(/ \(\d+\)$/, ""))}` : `${m.ops} operações resolvidas`)}
       ${cel("Acerto", pct(m.acerto_pct), m.ops < 10 ? "amostra pequena" : "")}
       ${cel("Fator de lucro", m.fator_lucro == null ? "—" : String(m.fator_lucro).replace(".", ","), "ganhos ÷ perdas")}
       ${cel("Queda máxima", din(-m.drawdown_usd), a.unidade === "r" ? "do pico ao fundo" : `R total ${String(m.r_total).replace(".", ",")}`)}
@@ -2194,7 +2195,7 @@ function htmlAgente(a) {
 // Todos com o mercado inteiro (Forex em US$ no lote 0,01, Bovespa em R$ por 1 minicontrato ou 100 ações; Demo e Real com as ordens).
 const CONSOLIDADO = "consolidado";
 const SUBSTANTIVO = { consolidado: ["fonte", "fontes"], agentes: ["agente", "agentes"], tiktok: ["canal", "canais"], youtube: ["canal", "canais"], sites: ["site", "sites"], tradingview: ["layout", "layouts"], telegram: ["canal", "canais"] };
-const RESUMO_B3 = "Cada canal com o seu saldo teórico em R$ por 1 minicontrato (WIN R$ 0,20 e WDO R$ 10 por ponto [NV]) ou 100 ações, sem corretagem nem emolumentos. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. O resultado real das ordens da CLEAR está nas abas Demo e Real. Uso pessoal: não é recomendação.";
+const RESUMO_B3 = "Cada canal com o seu saldo em R$ só das operações executadas na CLEAR (resultado real das ordens, nos últimos 30 dias); os sinais não executados ficam no histórico, marcados com o motivo, e o teórico deles está na aba Sem disparo. Sem nenhuma ordem executada, o saldo é o teórico por 1 minicontrato (WIN R$ 0,20 e WDO R$ 10 por ponto [NV]) ou 100 ações. O consenso fica à parte. Uso pessoal: não é recomendação.";
 const RESUMO_ANALISE = {
   agentes: "Cada agente com o seu saldo teórico em US$ no lote 0,01, líquido de spread, pelos sinais resolvidos nos últimos 30 dias. Uso pessoal: não é recomendação.",
   tiktok: "Cada canal do TikTok com o seu saldo em US$ no lote mínimo de 0,01 (ouro: 1 oz por operação), líquido de spread. O stop vale −1 R e o alvo vale a distância até ele ÷ o risco. Soma os sinais já resolvidos nos últimos 30 dias; o consenso fica à parte. Uso pessoal: não é recomendação.",
@@ -2205,7 +2206,7 @@ const RESUMO_ANALISE = {
 };
 const RESUMO_CONSOLIDADO = {
   forex: "O Forex inteiro e cada fonte (TikTok, YouTube, Sites, Telegram, Agentes, TradingView) com o saldo teórico em US$ no lote 0,01, líquido do spread real da Capital.com. Soma os sinais resolvidos nos últimos 30 dias, sem os consensos (repetem os sinais dos canais). Os Agentes aqui saem do placar, não do painel do executor. Uso pessoal: não é recomendação.",
-  bovespa: "A Bovespa inteira e cada fonte com o saldo teórico em R$ por 1 minicontrato (WIN R$ 0,20 e WDO R$ 10 por ponto [NV]) ou 100 ações, sem corretagem nem emolumentos. Soma os sinais resolvidos nos últimos 30 dias, sem os consensos. O resultado real das ordens da CLEAR está nas abas Demo e Real. Uso pessoal: não é recomendação.",
+  bovespa: "A Bovespa inteira e cada fonte com o saldo em R$ só das operações executadas na CLEAR (resultado real das ordens, nos últimos 30 dias, sem os consensos). Os sinais não executados ficam no histórico com o motivo; o teórico deles está na aba Sem disparo. Uso pessoal: não é recomendação.",
 };
 const TODOS = "Todos";
 const STATUS_COM_R = new Set(["alvo", "stop", "expirado"]);
@@ -2340,7 +2341,8 @@ function unidadeDeOps(f, nome, ops, abertos, base, extra = {}) {
     metricas: metricasUsd(ops), curva: ops.map((o) => [o.momento, Math.round((saldo += o.v) * 100) / 100]), por_ativo,
     por_hora: recorteUsd(ops, (o) => new Date(o.aberto_em).getUTCHours()), por_lado: recorteUsd(ops, (o) => o.lado), desfechos: recorteUsd(ops, (o) => o.status),
     vetos: null, ciclos: [], trocas: [], sinais: extra.sinais ?? ops.length + abertos.length, executadas: extra.executadas ?? ops.length,
-    ganhos: ops.filter((o) => o.v > 0).length, perdas: ops.filter((o) => o.v < 0).length };
+    ganhos: ops.filter((o) => o.v > 0).length, perdas: ops.filter((o) => o.v < 0).length,
+    nota_saldo: extra.nota_saldo ?? null, rotulo_saldo: extra.rotulo_saldo ?? null };
   [a.pontos_fracos, a.pontos_fortes] = leituraUsd(a, SUBSTANTIVO[f]);
   return a;
 }
@@ -2382,7 +2384,7 @@ function linhaDeResultado(r) {
     const real = linhaDeOrdem(o);
     return { ...base, abertura: real.abertura ?? base.abertura, fechamento: real.fechamento ?? base.fechamento, entrada: real.entrada,
       stop: real.stop ?? base.stop, alvo: real.alvo ?? base.alvo, saida: real.saida, r: real.r, v: real.v ?? base.v,
-      desfecho: `executada (${o.modo}): ${real.desfecho}`, execucao: "executada" };
+      desfecho: `executada (${o.modo}): ${real.desfecho}`, execucao: "executada", statusExec: DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "outro", ordemId: o.id };
   }
   if (o && (o.status === "aberta" || o.status === "pendente")) return { ...base, desfecho: `${base.desfecho} · ordem ${o.status} (${o.modo})`, execucao: "em_curso" };
   const decidido = STATUS_COM_R.has(r.status);
@@ -2398,11 +2400,37 @@ function linhaDeOrdem(o) {
 }
 const ordenarHistorico = (l) => l.sort((a, b) => new Date(b.fechamento ?? b.abertura ?? 0) - new Date(a.fechamento ?? a.abertura ?? 0));
 
-function unidadeDeResultados(f, nome, linhas, abertos, prefixo = "") {
-  const ops = opsDeResultados(linhas);
-  const base = nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${COMO_SITES.has(f) || f === "tradingview" || f === "agentes" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : f === "telegram" ? "Sinais publicados no canal do Telegram" : f === "tradingview" ? "Sinais deste layout do TradingView" : f === "agentes" ? "Sinais deste agente" : `Sinal do canal no ${FONTES[f]}`;
-  return Object.assign(unidadeDeOps(f, nome, ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx() }),
-    { historico: ordenarHistorico(linhas.map(linhaDeResultado)), historicoTipo: "placar" });
+// Saldo só do que foi executado (18/11/2026, pedido do Diogo): na aba Todos os sinais e no Consolidado, com execução na
+// corretora no contexto, saldo, acerto, fator de lucro, queda, curva e pontos fortes/fracos saem só das operações
+// executadas (resultado real da ordem). Sem execução no contexto (Forex hoje), segue o placar teórico. "Sem disparo"
+// continua teórico de propósito.
+const temExecucaoNoCtx = () => (estado?.monitorOrdens ?? []).some((o) => o.status === "fechada");
+const opsExecutadas = (hist) => hist.filter((x) => x.execucao === "executada" && x.v != null)
+  .map((x) => ({ r: x.r, v: x.v, momento: x.fechamento ?? x.abertura, aberto_em: x.abertura, ativo: x.ativo, lado: x.lado, status: x.statusExec }));
+// ordem fechada sem linha no placar (ex.: zerada no fim do pregão com o sinal ainda aberto no placar): entra no saldo
+// executado e no histórico da unidade a que pertence (filtro: página e nome da unidade)
+function comOrdensOrfas(hist, pertence) {
+  const usadas = new Set(hist.map((x) => x.ordemId).filter((x) => x != null));
+  const orfas = (estado?.monitorOrdens ?? []).filter((o) => o.status === "fechada" && o.resultado != null && !usadas.has(o.id) && pertence(o))
+    .map((o) => { const l = linhaDeOrdem(o); return { ...l, desfecho: `executada (${o.modo}): ${l.desfecho}`, execucao: "executada",
+      statusExec: DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "outro", ordemId: o.id }; });
+  return orfas.length ? ordenarHistorico([...hist, ...orfas]) : hist;
+}
+function metricasDoSaldo(linhas, hist, prefixo) {
+  if (prefixo || !temExecucaoNoCtx()) return { ops: opsDeResultados(linhas), extra: prefixo ? {} : { nota_saldo: "teórico: nenhuma ordem executada neste mercado" } };
+  const ops = opsExecutadas(hist);
+  return { ops, extra: { nota_saldo: `só operações executadas na ${corretoraExec()} (${ops.length})`, rotulo_saldo: "Saldo executado",
+    legenda: `saldo acumulado só das ordens executadas na ${corretoraExec()} (resultado real)` } };
+}
+
+function unidadeDeResultados(f, nome, linhas, abertos, prefixo = "", categoria = false) {
+  let hist = ordenarHistorico(linhas.map(linhaDeResultado));
+  if (!prefixo && !categoria && nome !== "Consenso") hist = comOrdensOrfas(hist, (o) => o.pagina === f && (nome === TODOS || o.unidade === nome));
+  const m = metricasDoSaldo(linhas, hist, prefixo);
+  const ops = m.ops;
+  const base =nome === TODOS ? `Soma de todos os ${SUBSTANTIVO[f][1]} do ${FONTES[f]}${COMO_SITES.has(f) || f === "tradingview" || f === "agentes" ? "" : " (sem o consenso, que repete os mesmos sinais)"}` : nome === "Consenso" ? "Sinais de consenso entre canais" : f === "sites" ? "Sinais publicados pelo site" : f === "telegram" ? "Sinais publicados no canal do Telegram" : f === "tradingview" ? "Sinais deste layout do TradingView" : f === "agentes" ? "Sinais deste agente" : `Sinal do canal no ${FONTES[f]}`;
+  return Object.assign(unidadeDeOps(f, nome, ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx(), ...m.extra }),
+    { historico: hist, historicoTipo: "placar" });
 }
 
 const abertosDaFonte = (f, e) => (e.monitorSinais ?? []).filter((s) => pertenceAFonte(f, s.fonte, s.origem) && (!s.ate || new Date(s.ate) > Date.now()));
@@ -2415,9 +2443,14 @@ function painelConsolidado(e, modo = "todos") {
     const semConsenso = (x) => nomeDaUnidade(f, x.origem) !== "Consenso" && !(ordens && foiDisparado(f, x, ordens));
     return { f, linhas: resultadosDaFonte(f, e).filter(semConsenso), abertos: abertosDaFonte(f, e).filter(semConsenso) };
   }).filter((x) => x.linhas.length || x.abertos.length);
-  const unidade = (nome, linhas, abertos, base, f) => Object.assign(
-    unidadeDeOps(CONSOLIDADO, nome, opsDeResultados(linhas), abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx() }),
-    { fonte: f, historico: ordenarHistorico(linhas.map(linhaDeResultado)), historicoTipo: "placar" });
+  const fontesCtx = fontesDoCtx();
+  const unidade = (nome, linhas, abertos, base, f) => {
+    let hist = ordenarHistorico(linhas.map(linhaDeResultado));
+    if (!prefixo) hist = comOrdensOrfas(hist, (o) => (f ? o.pagina === f : fontesCtx.includes(o.pagina)));
+    const m = metricasDoSaldo(linhas, hist, prefixo);
+    return Object.assign(unidadeDeOps(CONSOLIDADO, nome, m.ops, abertos, prefixo + base, { sinais: linhas.length + abertos.length, ...extraDoCtx(), ...m.extra }),
+      { fonte: f, historico: hist, historicoTipo: "placar" });
+  };
   const agentes = porFonte.map((x) => unidade(FONTES[x.f], x.linhas, x.abertos, `Todos os sinais do ${FONTES[x.f]} (sem consenso)`, x.f))
     .sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
   if (agentes.length) agentes.unshift(unidade(TODOS, porFonte.flatMap((x) => x.linhas), porFonte.flatMap((x) => x.abertos), `Soma de todas as fontes do ${CONTEXTOS[ctxLente].nome}`));
@@ -2465,7 +2498,7 @@ function painelDeResultados(f, e, modo = "todos") {
       const l = linhas.filter(daCat), ab = abertos.filter(daCat);
       // tipo "todos": é um agregado (fora da tabela por canal e sem botões de execução)
       if (!l.length && !ab.length) continue;
-      const u = unidadeDeResultados(f, ROTULO_CATEGORIA[c] + "s", l, ab, prefixo);
+      const u = unidadeDeResultados(f, ROTULO_CATEGORIA[c] + "s", l, ab, prefixo, true);
       cats.push({ ...u, tipo: "todos", metodo: `${prefixo}Soma dos canais marcados como "${ROTULO_CATEGORIA[c].toLowerCase()}" na lista do YouTube` });
     }
   }
@@ -2682,15 +2715,16 @@ function vistaAnalise(f, id, modo = "todos") {
   const atual = p.agentes.find((a) => a.id === id) ?? p.agentes[0];
   const unidades = p.agentes.filter((a) => a.tipo !== "todos");
   const max = Math.max(1, ...unidades.map((a) => Math.abs(a.metricas.lucro_usd)));
-  const comparacao = `<section class="painel" aria-labelledby="h-comp">
+  const rotSaldoTab = p.agentes.find((a) => a.rotulo_saldo)?.rotulo_saldo ?? rotuloSaldo;
+  const comparacao =`<section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span></h2>
       <div class="rolagem rolavel-y" data-rolavel="comparacao-${f}"><table class="tabela comparacao vira-lista">
-        <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : rotuloSaldo}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
+        <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : rotSaldoTab}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
         <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
           <td><a href="${hrefAnalise(f, a.id)}">${esc(a.id)}</a></td>
           ${ehAgentes ? `<td>${a.tipo === "todos" ? "" : a.self_learning ? seloAuto("self-learning") : `<span class="badge muted">fixo</span>`}</td>` : ""}
           <td class="num" data-rot="Operações">${a.metricas.ops}</td><td class="num" data-rot="Acerto">${pct(a.metricas.acerto_pct)}</td>
-          <td class="col-zero" data-rot="${comOrdens ? "Resultado" : rotuloSaldo}">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
+          <td class="col-zero" data-rot="${comOrdens ? "Resultado" : rotSaldoTab}">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
           <td class="num" data-rot="Fator de lucro">${a.metricas.fator_lucro == null ? "—" : String(a.metricas.fator_lucro).replace(".", ",")}</td>
           <td class="num" data-rot="Queda máxima">${din(-a.metricas.drawdown_usd)}</td>
           <td class="exec-cel">${a.tipo === "todos" ? "" : consol ? (a.fonte ? `<div class="exec-botoes">${botaoExecucao("demo", a.fonte)}${botaoExecucao("real", a.fonte)}</div>` : "") : `<div class="exec-botoes">${botaoExecucao("demo", f, a.id)}${botaoExecucao("real", f, a.id)}</div>`}</td></tr>`).join("")}</tbody></table></div>
