@@ -323,7 +323,7 @@ function fonteDemo() {
           kpis: [{ id: "pedidos_semana", nome: "Pedidos na semana (ML + TikTok)", tipo: "acumulado", metas: metas(0, 5, 40, 100) }], criterios_parada: [] },
         tortas: { trilho: "produto físico (comida)", status: "preparação", pasta: "06-tortas-porto", projecao_usd_semana: { pessimista: metas(0, 7, 63, 155), realista: metas(0, 63, 229, 562), otimista: metas(0, 155, 525, 1265) },
           kpis: [{ id: "pedidos_semana", nome: "Pedidos na semana (Uber Eats + Glovo)", tipo: "semanal", metas: metas(0, 25, 70, 160) }], criterios_parada: [] },
-        monitor: { trilho: "uso pessoal (fora dos trilhos de renda)", status: "em teste no Mac; produção no VPS", pasta: "05-monitor-lives", projecao_usd_semana: null, kpis: [], criterios_parada: [] },
+        monitor: { trilho: "uso pessoal (fora dos trilhos de renda)", status: "em operação no VPS; Mac em leitura", pasta: "05-monitor-lives", projecao_usd_semana: null, kpis: [], criterios_parada: [] },
       },
       pendencias: [
         { projeto: "servicos", secao: "Semana 1: setup", texto: "Diogo: colar o perfil do Upwork, foto, verificação de identidade e método de saque; criar o Project Catalog \"MCP Server Sprint\".", feito: false, responsavel: "Diogo", data: null },
@@ -891,9 +891,9 @@ function htmlTopo(rota) {
     .concat(htmlGrupoMonitor(rota, e));
   return `<header class="topo">
     <div class="topo-linha">
-      <div class="marca"><span class="logo">${ico("zap")}</span><div><h1>Central de comando</h1><small>${semana ? `Semana ${semana} do roteiro · ` : ""}${fonte.demo ? "modo demonstração" : "banco único"}</small></div></div>
-      <span class="estado-agentes"><i class="ponto ${e.pausado ? "parado" : "vivo"}"></i>${e.pausado ? "Agentes pausados" : "Agentes ativos"}</span>
-      <button class="btn ${e.pausado ? "primario" : ""}" data-acao="pausa">${ico(e.pausado ? "play" : "pause")} ${e.pausado ? "Retomar agentes" : "Pausar todos"}</button>
+      <div class="marca"><span class="logo">${ico("zap")}</span><div><p class="marca-nome">Central de comando</p><small>${semana ? `Semana ${semana} do roteiro · ` : ""}${fonte.demo ? "modo demonstração" : "banco único"}</small></div></div>
+      <span class="estado-agentes" title="${e.pausado ? "Agentes pausados" : "Agentes ativos"}"><i class="ponto ${e.pausado ? "parado" : "vivo"}"></i><span class="rotulo-topo">${e.pausado ? "Agentes pausados" : "Agentes ativos"}</span></span>
+      <button class="btn ${e.pausado ? "primario" : ""}" data-acao="pausa">${ico(e.pausado ? "play" : "pause")} <span class="rotulo-topo">${e.pausado ? "Retomar agentes" : "Pausar todos"}</span><span class="oculto">${e.pausado ? "" : " os agentes"}</span></button>
       <span class="sync" id="sync"><i class="ponto"></i>atualizado ${new Date().toLocaleTimeString("pt-PT", { timeStyle: "short" })}</span>
     </div>
     <nav class="nav" aria-label="Projetos">${abas.join("")}</nav>
@@ -953,6 +953,7 @@ function vistaGeral() {
   const e = estado;
   const renda = RENDA.map((id) => e.projetos.find((p) => p.id === id)).filter(Boolean);
   return `<main>
+    <h1 class="oculto">Visão geral</h1>
     <div class="col">
       ${fonte.demo ? `<div class="aviso neutro">${ico("alert")}<span>Modo demonstração: dados de exemplo. Crie <code>config.js</code> para ligar ao banco.</span></div>` : ""}
       ${erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : ""}
@@ -1284,7 +1285,7 @@ function htmlBotaoAudio(f, e) {
   const titulo = ligado ? `Parar de escutar o áudio das lives do ${FONTES[f]} (as leituras seguem só com os prints)`
     : `Escutar o áudio das lives do ${FONTES[f]}: a fala do apresentador é transcrita (Groq, grátis com limite diário) e ajuda a ler entrada, stop e alvo`;
   return `<div class="meta"><button class="btn pequeno exec ${ligado ? "ligado" : ""}" data-acao="audio" data-chave="${esc(chave)}" data-ligar="${!ligado}"
-    aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico("radio")}Escutar live<span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button></div>`;
+    aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico("radio")}<span class="sem-quebra">Escutar live</span><span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button></div>`;
 }
 
 // Atraso da leitura (16/11/2026, migração 0016): "atrasado" = o canal já tinha executado a posição na live há mais que a
@@ -1376,7 +1377,7 @@ function htmlPlacar(e) {
     <div class="rolagem"><table class="tabela placar">
       <thead><tr><th scope="col">Fonte</th><th scope="col" class="col-zero">Win · loss · outros</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R médio</th><th scope="col" class="col-expirados">Expirados</th></tr></thead>
       <tbody>${linhas.join("")}</tbody></table></div>
-    <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Clique na fonte para ver cada canal, site, layout ou agente.</p>
+    <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop (mesma vela conta como loss). Clique na fonte para ver cada canal, site, layout ou agente. Lá o acerto é em dinheiro, líquido de spread e sem os sinais repetidos do consenso, então pode diferir deste: um alvo curto que não paga o spread conta como perda.</p>
   </section>`;
 }
 
@@ -1459,6 +1460,7 @@ function htmlAtrasos(e) {
 function htmlTermometroCompacto(e) {
   const t = e.termometro;
   const titulo = (extra = "") => `<h2 id="h-termo">${ico("activity")} Termômetro ${extra}<a class="direita meta" href="#/termometro">termômetro completo</a></h2>`;
+  if (!CONTEXTOS[ctxLente]?.termometro) return "";  // o termômetro ainda não existe para a B3 (auditoria de 17/11/2026)
   if (!t?.ativos?.length) return `<section class="painel" aria-labelledby="h-termo">${titulo()}<p class="vazio">Ainda sem leitura: o executor publica a cada ~15 min.</p></section>`;
   const fechado = t.mercado === "fechado";
   const linha = (a) => {
@@ -1493,6 +1495,44 @@ function foraDaExecucao(s) {
   const ordens = (estado.monitorOrdens ?? []).filter((o) => o.fonte === s.fonte && String(o.sinal_id) === String(s.sinal_id));
   if (ordens.some((o) => ORDEM_VIVA.has(o.status) || o.status === "fechada")) return false;
   return ordens.length > 0 || s.situacao === "atrasado";
+}
+
+// Ao vivo agora (17/11/2026, pedido do Diogo): o que o DETECTOR achou no ar, separado do que a análise já leu e dos
+// sinais. Vem de monitor_itens (um item por canal, estado da última checagem). TikTok e YouTube; os outros não têm live.
+const NO_AR = new Set(["ao_vivo", "gravando", "analisando", "fila", "lido"]);
+const SITUACAO_ANALISE = { gravando: "lendo agora", analisando: "IA analisando", fila: "aguardando a vez", lido: "já lido nesta rodada", ao_vivo: "detectado" };
+function categoriaDoItem(f, e, i) {
+  const nomeCanal = String(i.detalhe ?? "").split(/[;·]/)[0];  // YouTube: "Nome do canal; N espectadores"
+  return categoriaDoCanal(f, e, i.item) ?? categoriaDoCanal(f, e, nomeCanal);
+}
+function htmlAoVivo(e) {
+  const fontes = fontesDoCtx().filter((f) => f === "tiktok" || f === "youtube");
+  if (!fontes.length) return "";
+  const blocos = fontes.map((f) => {
+    const itens = (e.monitorItens ?? []).filter((i) => i.fonte === f);
+    if (!itens.length) return "";
+    const vivos = itens.filter((i) => NO_AR.has(i.estado) || i.analisando)
+      .sort((a, b) => (b.espectadores ?? -1) - (a.espectadores ?? -1));
+    const login = itens.filter((i) => i.estado === "login_necessario").length;
+    const desc = itens.filter((i) => i.estado === "desconhecido").length;
+    const linhas = vivos.map((i) => {
+      const cat = f === "youtube" ? categoriaDoItem(f, e, i) : null;
+      const sit = SITUACAO_ANALISE[i.analisando && i.estado !== "gravando" ? "analisando" : i.estado] ?? i.estado;
+      return `<li>${i.estado === "gravando" || i.analisando ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${linkCanal(i.fonte, i.item, i.nome)}
+        <div class="meta">${i.espectadores != null ? `<span><b class="num">${inteiro(i.espectadores)}</b> espectadores</span>` : ""}${cat ? `<span class="badge muted">${esc(ROTULO_CATEGORIA[cat])}</span>` : ""}<span>${esc(sit)}</span>${i.ultima_analise ? `<span>última leitura <b class="num" data-desde="${esc(i.ultima_analise)}">${textoDesde(i.ultima_analise)}</b></span>` : ""}</div></li>`;
+    }).join("");
+    const avisos = [login ? htmlBadge("critical", `${login} pede${login > 1 ? "m" : ""} login`, "alert") : "",
+                    desc ? `<span title="o detector não conseguiu dizer se está no ar">${desc} sem resposta</span>` : ""].join("");
+    return `<div class="cartao"><div class="titulo"><span class="nome-fonte">${FONTES[f]}</span> <span class="count">${vivos.length}</span></div>
+      <div class="meta"><span>${vivos.length ? `${vivos.length} de ${itens.length} canais no ar` : `nenhum dos ${itens.length} canais no ar`}</span>${avisos}</div>
+      ${vivos.length ? `<ul class="lista">${linhas}</ul>` : ""}</div>`;
+  }).filter(Boolean);
+  if (!blocos.length) return "";
+  return `<section class="painel" aria-labelledby="h-aovivo">
+    <h2 id="h-aovivo">${ico("radio")} Ao vivo agora</h2>
+    <p class="nota">O que o detector achou no ar na última checagem de cada canal, separado da análise: estar aqui não quer dizer que já houve leitura nem sinal.</p>
+    <div class="grade-cartoes">${blocos.join("")}</div>
+  </section>`;
 }
 
 function htmlSinaisAtivos(e) {
@@ -1883,6 +1923,7 @@ function vistaMonitor() {
       </div>
     </div>
     ${htmlSinaisAtivos(e)}
+    ${htmlAoVivo(e)}
     ${htmlMonitor(e)}
     ${htmlTermometroCompacto(e)}
     ${htmlPlacar(e)}
@@ -2016,7 +2057,7 @@ function htmlLeitura(a) {
 function htmlAtuacao(a) {
   const max = Math.max(1, ...a.por_ativo.map((x) => Math.abs(x.metricas.lucro_usd)), ...a.por_ativo.map((x) => Math.abs(x.backtest?.lucro_usd ?? 0)));
   return `<div class="rolagem"><table class="tabela atuacao">
-    <thead><tr><th scope="col">Ativo</th><th scope="col">Agora</th><th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">Saldo real</th>${a.self_learning ? `<th scope="col">Versão</th><th scope="col" class="col-zero">Backtest fora da amostra</th>` : ""}</tr></thead>
+    <thead><tr><th scope="col">Ativo</th><th scope="col">Agora</th><th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${rotuloSaldo}</th>${a.self_learning ? `<th scope="col">Versão</th><th scope="col" class="col-zero">Backtest fora da amostra</th>` : ""}</tr></thead>
     <tbody>${a.por_ativo.map((x) => `<tr>
       <td><span class="ativo-nome">${iconeAtivo(x.ativo)}${esc(x.ativo)}</span></td>
       <td class="agora">${x.status ? `<span class="badge ${STATUS_AGORA[x.status] ?? "muted"}">${esc(x.status.toLowerCase())}</span>` : `<span class="vazio">—</span>`}${x.texto ? `<span class="detalhe" title="${esc(x.texto)}">${esc(x.texto.replace(/^[A-ZÁÉÍÓÚÃÕÇ ]+ · /, ""))}</span>` : ""}</td>
@@ -2062,7 +2103,7 @@ function htmlAgente(a) {
     <div class="meta"><span>${esc(a.metodo)}</span><span>${a.ativos.map(esc).join(", ")}</span>${a.timeframes.length ? `<span>${a.timeframes.join(" · ")}</span>` : ""}
       ${a.ultima_execucao ? `<span>última rodada ${quando(a.ultima_execucao)}</span>` : ""}${a.proxima_execucao && a.ligado ? `<span>próxima em <b class="num" data-ate="${esc(a.proxima_execucao)}">${textoContador(a.proxima_execucao)}</b></span>` : ""}</div>
     <div class="faixa faixa-agente">
-      ${cel("Saldo real", `<span class="${m.lucro_usd < 0 ? "neg" : m.lucro_usd > 0 ? "pos" : ""}">${din(m.lucro_usd)}</span>`, `${m.ops} operações resolvidas`)}
+      ${cel(rotuloSaldo, `<span class="${m.lucro_usd < 0 ? "neg" : m.lucro_usd > 0 ? "pos" : ""}">${din(m.lucro_usd)}</span>`, `${m.ops} operações resolvidas`)}
       ${cel("Acerto", pct(m.acerto_pct), m.ops < 10 ? "amostra pequena" : "")}
       ${cel("Fator de lucro", m.fator_lucro == null ? "—" : String(m.fator_lucro).replace(".", ","), "ganhos ÷ perdas")}
       ${cel("Queda máxima", din(-m.drawdown_usd), a.unidade === "r" ? "do pico ao fundo" : `R total ${String(m.r_total).replace(".", ",")}`)}
@@ -2502,7 +2543,7 @@ function vistaAnalise(f, id, modo = "todos") {
   const comparacao = `<section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span></h2>
       <div class="rolagem"><table class="tabela comparacao">
-        <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : "Saldo real"}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
+        <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : rotuloSaldo}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
         <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
           <td><a href="${hrefAnalise(f, a.id)}">${esc(a.id)}</a></td>
           ${ehAgentes ? `<td>${a.tipo === "todos" ? "" : a.self_learning ? seloAuto("self-learning") : `<span class="badge muted">fixo</span>`}</td>` : ""}
@@ -2539,8 +2580,24 @@ function detalhesComChave(raiz) {
   });
 }
 
-function render() {
+// "Saldo real" só nas abas Demo e Real (ordens na corretora); em Todos e Sem disparo o saldo é teórico, pelo preço
+let rotuloSaldo = "Saldo teórico";
+// render() troca a página inteira; com o mesmo estado e a mesma rota, só redesenha a cada 60 s (os textos "há X min"
+// que não têm contador próprio). Auditoria de 17/11/2026: cada redesenho custava 25–51 ms e perdia a rolagem das tabelas.
+let ultimoRender = { chave: "", hash: "", em: 0 };
+function hashEstado(o) {
+  let h = 0;
+  const t = JSON.stringify(o);
+  for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0;
+  return `${t.length}:${h}`;
+}
+
+function render(forcar = true) {
   const rota = rotaAtual();
+  rotuloSaldo = rota.tipo === "analise" && (rota.modo === "demo" || rota.modo === "real") ? "Saldo real" : "Saldo teórico";
+  const chave = chaveRota(rota) + "|" + matchMedia("(max-width: 560px)").matches, hash = hashEstado([estadoBruto, erro]);
+  if (!forcar && chave === ultimoRender.chave && hash === ultimoRender.hash && Date.now() - ultimoRender.em < 60e3) return;
+  ultimoRender = { chave, hash, em: Date.now() };
   const nova = chaveRota(rota) !== rotaRenderizada;
   rotaRenderizada = chaveRota(rota);
   // contexto da tela (lente) e do menu: nas telas do monitor os dois coincidem; nas outras o menu segue o último contexto escolhido
@@ -2588,10 +2645,10 @@ function navegar() {
   else render();
 }
 
-async function recarregar() {
+async function recarregar(forcar = false) {  // só a atualização periódica pode pular o redesenho
   try { estadoBruto = await fonte.carregar(); erro = ""; } catch (e) { erro = `Falha ao carregar: ${e.message}`; }
   if (!estadoBruto) return;
-  render();
+  render(forcar === true);
   const sync = document.getElementById("sync");
   if (sync) { sync.classList.add("piscou"); setTimeout(() => sync.classList.remove("piscou"), 600); }
 }
@@ -2599,7 +2656,7 @@ async function recarregar() {
 async function agir(fn) {
   try { await fn(); erro = ""; } catch (e) { erro = e.message.includes("já foi resolvida") ? "Essa decisão já tinha sido resolvida por outro canal (Telegram)." : e.message; }
   ajustando = null;
-  await recarregar();
+  await recarregar(true);
 }
 
 // a decisão sai do painel antes de recarregar: a resposta é visível na hora, mesmo com rede lenta

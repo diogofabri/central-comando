@@ -74,6 +74,15 @@ code { font: 12.5px/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: v
 .marca .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--ink); color: var(--bg); display: grid; place-items: center; }
 .marca .logo .ico { width: 16px; height: 16px; }
 .marca small { display: block; font-size: 12px; color: var(--ink-3); font-weight: 400; }
+.marca-nome { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.2; }
+/* celular (auditoria de 17/11/2026: o topo fixo ocupava 217 de 844 px): uma linha só, rótulos viram dica */
+@media (max-width: 560px) {
+  .topo { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--surface); }
+  .topo-linha { flex-wrap: nowrap; padding-top: 8px; }
+  .marca small, .sync, .rotulo-topo { display: none; }
+  .estado-agentes { padding: 6px; }
+  .ctx-faixa { padding: 4px 16px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+}
 .estado-agentes { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
 .ponto { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
 .ponto.vivo { background: var(--good); box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 45%, transparent); animation: pulso 2.2s var(--saida) infinite; }
@@ -142,7 +151,7 @@ section.painel > h2 .direita { margin-left: auto; display: inline-flex; flex-wra
 .meta .ico { color: var(--ink-3); }
 .chip { background: var(--chip); border-radius: 6px; padding: 1px 7px; font-size: 12px; color: var(--ink); display: inline-flex; align-items: center; gap: 5px; }
 .chip .ponto { width: 6px; height: 6px; }
-.vazio { color: var(--ink-3); font-size: 14px; }
+.vazio { color: var(--ink-3); font-size: 14px; text-wrap: pretty; }
 .aviso { background: var(--warning-soft); color: var(--ink); border-radius: var(--raio-s); padding: 10px 12px; font-size: 13.5px; display: flex; gap: 8px; align-items: flex-start; }
 .aviso .ico { color: var(--warning); margin-top: 3px; }
 .aviso.erro { background: var(--critical-soft); } .aviso.erro .ico { color: var(--critical); }
@@ -164,7 +173,14 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .btn.primario { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.primario:hover { filter: brightness(1.08); }
 .btn.perigo:hover { border-color: var(--critical); color: var(--critical); background: var(--critical-soft); }
-.btn.pequeno { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.btn.pequeno { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.sem-quebra { white-space: nowrap; }
+/* 8 e 9: alvos de toque (auditoria de 17/11/2026) */
+@media (pointer: coarse) {
+  .btn.pequeno { min-height: 44px; }
+  a.direita.meta, .modos-agentes > a { display: inline-flex; align-items: center; min-height: 44px; }
+}
+a.direita.meta, .modos-agentes > a { min-height: 24px; display: inline-flex; align-items: center; }
 .btn:disabled { opacity: .5; cursor: default; transform: none; }
 .btn.ocupado .ico, .badge.girando .ico { animation: giro 1s linear infinite; }
 @keyframes giro { to { transform: rotate(360deg); } }
@@ -197,7 +213,7 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 .termo-barra i { display: block; min-width: 3px; }
 .termo-barra .compra { background: var(--good); }
 .termo-barra .venda { background: var(--critical); }
-.termo-sent-nums { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); }
+.termo-sent-nums { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; color: var(--ink); min-width: 0; }
 .termo-sent-nums > span { display: inline-flex; align-items: center; gap: 4px; }
 .termo-sent-nums .ico { width: 15px; height: 15px; }
 .termo-sent-nums .compra .ico { color: var(--good); }
@@ -586,6 +602,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=78"></script>
+<script src="app.js?v=79"></script>
 </body>
 </html>
