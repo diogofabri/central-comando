@@ -386,8 +386,8 @@ label { font-size: 13px; color: var(--ink-2); display: block; margin-bottom: 4px
 .fila .lista li { border-bottom-color: var(--line); }
 details.fila > summary { margin-top: 0; }
 /* semáforo do cartão: fonte em ordem fica calma; atenção e parada ganham fundo e faixa no topo (o selo diz o estado em texto) */
-.grade-cartoes.fontes .cartao[data-saude="atencao"] { background: linear-gradient(var(--warning) 0 3px, color-mix(in srgb, var(--warning-soft) 55%, var(--surface)) 3px); }
-.grade-cartoes.fontes .cartao[data-saude="parada"] { background: linear-gradient(var(--critical) 0 3px, color-mix(in srgb, var(--critical-soft) 70%, var(--surface)) 3px); }
+.grade-cartoes.fontes .cartao[data-saude="atencao"] { background: linear-gradient(var(--warning) 0 3px, color-mix(in srgb, var(--warning-soft) 55%, var(--surface)) 3px, var(--surface) 220px); }
+.grade-cartoes.fontes .cartao[data-saude="parada"] { background: linear-gradient(var(--critical) 0 3px, color-mix(in srgb, var(--critical-soft) 70%, var(--surface)) 3px, var(--surface) 220px); }
 .grade-cartoes.fontes .cartao[data-saude="inativa"] .nome-fonte { color: var(--ink-2); }
 .resumo-saude { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .cabecalho-proj.compacto { padding: 12px 18px; }
@@ -411,7 +411,7 @@ main.uma > p.nota { margin-top: 0; }
 @media (max-width: 560px) { .tabela.placar .col-zero, .tabela.placar .col-expirados { display: none; } }
 /* 5 fontes (TikTok, YouTube, Sites, Agentes, TradingView): 230 px cabem lado a lado a partir de ~1180 px de largura */
 .grade-cartoes.larga { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
-.grade-cartoes.larga.sinais { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }  /* 6 fontes numa linha a partir de ~1.200 px */
+.grade-cartoes.larga.sinais { grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); }  /* 5 fontes numa linha em 1.280 px; auto-fill: uma fonte só não estica pela largura toda (17/11/2026) */
 .fila .meta > b { color: var(--ink-2); }
 .fila .grupo-live { margin-top: 10px; }
 .sinal-topo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
@@ -425,7 +425,7 @@ main.uma > p.nota { margin-top: 0; }
 .sinal-niveis dd { margin: 0; font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* execução do sinal na corretora: estado da ordem (ícone + texto) e lucro até agora (sinal + cor) */
 .exec-sinal { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 12.5px; }
-.exec-ordem { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.exec-ordem { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; color: var(--ink-2); }
 .exec-ordem .ico { width: 15px; height: 15px; flex: none; }
 .exec-ordem.st-pendente .ico { color: var(--warning); }
 .exec-ordem.st-aberta .ico { color: var(--good); }
@@ -438,7 +438,7 @@ main.uma > p.nota { margin-top: 0; }
 .fora-execucao { margin-top: 10px; border-top: 1px solid var(--line-2); padding-top: 8px; }
 .fora-execucao > summary { cursor: pointer; font-size: 13px; color: var(--ink-2); min-height: 32px; display: flex; align-items: center; gap: 6px; }
 .fora-execucao .sinal { opacity: .8; }
-.exec-ordem .meta { font-size: 12px; }
+.exec-ordem .meta { font-size: 12px; flex-basis: 100%; padding-left: 21px; }  /* stop e alvo da ordem numa linha própria (auditoria de 17/11/2026) */
 .lucro-sinal { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .lucro-sinal.ganho { color: var(--good); } .lucro-sinal.perda { color: var(--critical); }
 .sinal-niveis > div:nth-child(odd) dd { white-space: normal; }  /* faixa de entrada quebra depois do traço e vários alvos entre um e outro, nunca no meio do número */
@@ -502,6 +502,17 @@ main.uma > p.nota { margin-top: 0; }
 .abas-agentes a[aria-current] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 /* execução no MT5: modalidades (Todos, Demo, Real, Sem disparo) e botões por canal; o estado vai escrito, não só na cor */
 .modalidades { margin-top: 4px; }
+/* 13 (auditoria de 17/11/2026): modalidade é filtro, não aba; as abas ficam só para fonte e canal */
+.segmentado { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); width: fit-content; max-width: 100%; }
+.segmentado .seg-rot { font-size: 12.5px; color: var(--ink-3); padding: 0 8px 0 10px; }
+.segmentado a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 999px; color: var(--ink-2); text-decoration: none; font-size: 13.5px; }
+.segmentado a:hover { color: var(--ink); background: var(--bg); }
+.segmentado a[aria-current] { background: var(--ink); color: var(--bg); font-weight: 600; }
+@media (pointer: coarse) { .segmentado a { min-height: 44px; } }
+details.como { margin-top: 4px; }
+details.como > summary { font-size: 13px; color: var(--ink-2); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 4px; min-height: 24px; }
+details.como > summary::-webkit-details-marker { display: none; }
+details.como[open] > summary .ico { transform: rotate(90deg); }
 .exec-fonte, .exec-botoes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .exec-fonte { margin-left: auto; }
 .exec-unidade { white-space: nowrap; text-align: right; }
@@ -528,6 +539,9 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 .lista.compacta li .ico { flex: none; margin-top: 3px; }
 .leitura-fraco .ico { color: var(--critical); } .leitura-forte .ico { color: var(--good); }
 .recortes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; }
+.recortes .recorte-horas { grid-column: 1 / -1; }
+.barras.horas { columns: 3 230px; column-gap: 28px; }
+.barras.horas li { break-inside: avoid; }
 .barras { list-style: none; margin: 0; padding: 0; }
 .barras li { display: grid; grid-template-columns: 4.2em auto 1fr; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; }
 .barras .rot { color: var(--ink-2); font-variant-numeric: tabular-nums; }
@@ -602,6 +616,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=79"></script>
+<script src="app.js?v=80"></script>
 </body>
 </html>

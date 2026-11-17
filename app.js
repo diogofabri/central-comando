@@ -1060,6 +1060,7 @@ function textoDecorrido(iso) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 function atualizarContadores() {
+  if (document.hidden) return;  // aba escondida: nada a atualizar (auditoria de 17/11/2026)
   document.querySelectorAll("[data-ate]").forEach((el) => { el.textContent = textoContador(el.dataset.ate); });
   document.querySelectorAll("[data-desde]").forEach((el) => { el.textContent = textoDesde(el.dataset.desde); });
   document.querySelectorAll("[data-decorrido]").forEach((el) => { el.textContent = textoDecorrido(el.dataset.decorrido); });
@@ -1727,7 +1728,7 @@ function htmlLoginTiktok(e) {
   const canais = (l.canais ?? []).filter((c) => !c.startsWith("(")).map((c) => "@" + c);
   return `<div class="meta"><span class="badge critical">${ico("alert")}sem login na @diogofabri2</span>
     <span title="${esc(canais.join(", "))}">${canais.length ? `${canais.length} ${canais.length === 1 ? "canal pediu" : "canais pediram"} login` : "perfil sem sessão"}: lives com restrição de idade não abrem.</span>
-    <span title="${esc("Em 05-monitor-lives: " + (l.comando ?? "nativo login tiktok"))}">Refaça o login no VPS: <code>nativo login tiktok</code> (passos na dica e no Telegram).</span></div>`;
+    <span title="${esc("No VPS, em 05-monitor-lives: " + (l.comando ?? "nativo login tiktok"))}">Refazer o login no VPS (passos no Telegram).</span></div>`;
 }
 
 // login da conta Google do monitor (YouTube): o estado vem do contêiner; a senha é digitada só no noVNC, nunca aqui
@@ -2075,7 +2076,7 @@ function htmlRecortes(a) {
   const linha = (rot, m) => `<li><span class="rot">${rot}</span>${barraZero(m.lucro_usd, max, dinheiro(a)(m.lucro_usd))}<span class="meta">${m.ops} op. · ${pct(m.acerto_pct)}</span></li>`;
   const des = a.desfechos, total = Object.values(des).reduce((s, m) => s + m.ops, 0);
   return `<div class="recortes">
-    <div><h3>Por hora de abertura (UTC)</h3>${horas.length ? `<ul class="barras">${horas.map(([h, m]) => linha(`${String(h).padStart(2, "0")}h`, m)).join("")}</ul>` : `<p class="vazio">Sem operações resolvidas.</p>`}</div>
+    <div class="recorte-horas"><h3>Por hora de abertura (UTC)</h3>${horas.length ? `<ul class="barras horas">${horas.map(([h, m]) => linha(`${String(h).padStart(2, "0")}h`, m)).join("")}</ul>` : `<p class="vazio">Sem operações resolvidas.</p>`}</div>
     <div><h3>Por lado</h3>${lados.length ? `<ul class="barras">${lados.map(([l, m]) => linha(l === "compra" ? "compra" : "venda", m)).join("")}</ul>` : `<p class="vazio">Sem operações resolvidas.</p>`}
       <h3>Como as operações terminam</h3>${total ? `<div class="desfechos" role="img" aria-label="${esc(Object.entries(des).map(([k, m]) => `${NOME_DESFECHO[k] ?? k}: ${m.ops}`).join(", "))}">
         ${Object.entries(des).map(([k, m]) => `<span class="d-${k}" style="flex:${m.ops}">${NOME_DESFECHO[k] ?? k} ${m.ops}</span>`).join("")}</div>` : `<p class="vazio">—</p>`}</div>
@@ -2511,13 +2512,22 @@ function vistaComparar() {
   </main>`;
 }
 
+// cabeçalho das análises (auditoria de 17/11/2026: 5 linhas empurravam os dados): a 1.ª frase fica, o resto recolhe
+function resumoRecolhido(html) {
+  return html.replace(/<p class="resumo">([\s\S]*?)<\/p>/, (todo, texto) => {
+    const m = /^([\s\S]*?[.:])\s+(?=[A-ZÀ-Ú<])([\s\S]+)$/.exec(texto);
+    if (!m || m[2].replace(/<[^>]+>/g, "").length < 40) return todo;
+    return `<p class="resumo">${m[1]}</p><details class="como"><summary>${ico("chevron")}Como é calculado</summary><p class="resumo">${m[2]}</p></details>`;
+  });
+}
+
 function vistaAnalise(f, id, modo = "todos") {
   if (f !== CONSOLIDADO && ctxLente !== "forex" && !(estado.monitorFontes ?? []).some((x) => x.fonte === f) && !(estado.monitorResultados ?? []).some((x) => x.fonte === f)) return vistaContextoVazio(`${FONTES[f]} · ${CONTEXTOS[ctxLente].nome}`);
   // Bovespa (16/11/2026, pedido do Diogo): a mesma página do Forex, com a aba Todos e cada canal em R$ (antes era só R,
   // em vistaAnaliseR). O painel dos agentes do executor só existe no Forex; na Bovespa os agentes saem do placar.
   const ehAgentes = f === "agentes" && modo === "todos" && ctxLente === "forex", p = painelDaModalidade(f, estado, modo), [um, varios] = SUBSTANTIVO[f];
   const din = dinheiro(p ?? {}), comOrdens = modo === "demo" || modo === "real", consol = f === CONSOLIDADO;
-  const cab = `<div class="cabecalho-proj" style="--cor:${cor("monitor")}">
+  const cab = resumoRecolhido(`<div class="cabecalho-proj" style="--cor:${cor("monitor")}">
       <div class="bloco">
         <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>${consol ? `${CONTEXTOS[ctxLente].nome}: resultado consolidado` : f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
@@ -2526,8 +2536,8 @@ function vistaAnalise(f, id, modo = "todos") {
       </div>
       ${!consol && (CONTEXTOS[ctxLente]?.execucao ?? true) ? `<div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>` : ""}
       ${ehAgentes ? controleSelfLearning(p) : ""}
-    </div>`;
-  const modalidades = !(CONTEXTOS[ctxLente]?.execucao ?? true) ? "" : `<nav class="abas-agentes modalidades" aria-label="Modalidade">${[["todos", "Todos os sinais"], ["demo", "Demo"], ["real", "Real"], ["sem", "Sem disparo"]]
+    </div>`);
+  const modalidades = !(CONTEXTOS[ctxLente]?.execucao ?? true) ? "" : `<nav class="segmentado modalidades" aria-label="Modalidade"><span class="seg-rot">Mostrar</span>${[["todos", "Todos os sinais"], ["demo", "Demo"], ["real", "Real"], ["sem", "Sem disparo"]]
     .map(([k, rotulo]) => `<a href="${hrefAnalise(f, id ?? TODOS, k)}" ${k === modo ? 'aria-current="page"' : ""}>${rotulo}</a>`).join("")}</nav>`;
   const estadoConta = comOrdens ? htmlEstadoExecucao(modo) : "";
   const aviso = erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : "";
