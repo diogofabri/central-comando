@@ -233,7 +233,9 @@ function fonteSupabase(cfg) {
                // modo de cada máquina (controle.maquina:<nome>, gravado por `maquinas operar|leitura|aplicar`)
                maquinasModo: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("maquina:")).map(([k, v]) => [k.slice(8), v])),
                // botão de troca (13/11/2026): pedido do dashboard e plano vigente gravado pelo seguidor das máquinas
-               maquinasPedido: ctl["maquinas:pedido"] ?? null, maquinasPlano: ctl["maquinas:plano"] ?? null };
+               maquinasPedido: ctl["maquinas:pedido"] ?? null, maquinasPlano: ctl["maquinas:plano"] ?? null,
+               // switcher de prioridade dos navegadores (17/11/2026): "normal" | "bovespa" | "forex"
+               prioridade: ["bovespa", "forex"].includes(ctl["prioridade:navegadores"]) ? ctl["prioridade:navegadores"] : "normal" };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -253,6 +255,8 @@ function fonteSupabase(cfg) {
     pedirLogin: (f) => sb.from("controle").upsert({ chave: `login:${f}:pedido`, valor: true }).then(ok),
     // troca de máquina: o seguidor de cada máquina (`maquinas seguir`, a cada minuto) lê o pedido e aplica
     pedirTroca: (maquina) => sb.from("controle").upsert({ chave: "maquinas:pedido", valor: { operar: maquina, em: new Date().toISOString() } }).then(ok),
+    // prioridade dos navegadores entre Forex e Bovespa (lida pelas fontes de vídeo a cada ~10 s)
+    comandarPrioridade: (modo) => sb.from("controle").upsert({ chave: "prioridade:navegadores", valor: modo }).then(ok),
     // seleção do que a ponte do MT5 executa (lida a cada ciclo de ~15 s): {fontes: {tiktok: true}, unidades: {tiktok: {"@canal": false}}}
     // suf: "" no Forex, "@bovespa" na Bovespa (os botões de um contexto nunca ligam o outro)
     comandarExecucao: (modo, selecao, suf = "") => sb.from("controle").upsert({ chave: `execucao${suf}:${modo}`, valor: selecao }).then(ok),
@@ -441,6 +445,7 @@ function fonteDemo() {
     async comandarSwing(suf, mapa) { s.execucaoBovespa.swing = mapa; },
     async pedirLogin(f) { s.loginFonte[f] = { ...s.loginFonte[f], estado: "aguardando", atualizado_em: new Date().toISOString() }; },
     async pedirTroca(maquina) { s.maquinasPedido = { operar: maquina, em: new Date().toISOString() }; },
+    async comandarPrioridade(modo) { s.prioridade = modo; },
     aoMudar() {},
   };
 }
@@ -1664,6 +1669,19 @@ function htmlTrocaMaquina(e) {
   return `<button class="btn pequeno" data-acao="trocar-maquina" data-maquina="${outra}" title="As fontes operam hoje no ${NOME_MAQUINA[atual]}. Passa TikTok, YouTube, Sites, Agentes, TradingView e Telegram para o ${NOME_MAQUINA[outra]}; o MT5 e o YouTube da Bovespa ficam no VPS.">${ico("radio")} Operar no ${NOME_MAQUINA[outra]}</button>`;
 }
 
+// Prioridade entre Forex e Bovespa (17/11/2026, pedido do Diogo): a CPU do VPS não dá para todas as lives dos dois
+// mercados. O mercado sem prioridade fica com no máximo 1 live aberta; "Bovespa" vale só no pregão da B3 e, nele, o
+// YouTube do Forex não abre lives de robô.
+const PRIORIDADES = [["bovespa", "Prioridade Bovespa", "No pregão da B3, o TikTok e o YouTube do Forex ficam com no máximo 1 live aberta cada (sem lives de robô no YouTube) e a Bovespa usa o resto da máquina. Fora do pregão, vale o Normal."],
+  ["normal", "Normal", "Sem prioridade: cada fonte abre quantas lives a CPU e a memória da máquina deixarem."],
+  ["forex", "Prioridade Forex", "O YouTube da Bovespa fica com no máximo 1 live aberta; o Forex usa o resto da máquina."]];
+
+function htmlPrioridade(e) {
+  const atual = e.prioridade ?? "normal";
+  return `<span class="segmentado prioridade" role="group" aria-label="Prioridade dos navegadores"><span class="seg-rot">Lives</span>${PRIORIDADES.map(([k, rot, dica]) =>
+    `<button type="button" data-acao="prioridade" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(dica)}">${rot}</button>`).join("")}</span>`;
+}
+
 function htmlResumoSaude(e) {
   const n = { ok: 0, atencao: 0, parada: 0, inativa: 0 };
   fontesDoCtx().forEach((f) => n[saudeFonte(f, e).status.nivel]++);
@@ -1708,7 +1726,7 @@ function htmlMonitor(e) {
   const algum = fontesDoCtx().some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span>
-      <span class="direita">${htmlTrocaMaquina(e)}${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
+      <span class="direita">${htmlPrioridade(e)}${htmlTrocaMaquina(e)}${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
       <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
@@ -2787,6 +2805,12 @@ document.addEventListener("click", (ev) => {
     } else sel.unidades[f] = { ...(sel.unidades[f] ?? {}), [u]: ligar };
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarExecucao(modo, sel, sufixoDe(ctxLente)));
+  }
+  if (acao === "prioridade") {
+    const modo = b.dataset.modo;
+    if (modo === (estado.prioridade ?? "normal")) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarPrioridade(modo));
   }
   if (acao === "trocar-maquina") {
     const alvo = b.dataset.maquina, nome = NOME_MAQUINA[alvo];
