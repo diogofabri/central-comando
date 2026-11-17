@@ -1526,7 +1526,7 @@ function htmlAoVivo(e) {
                     desc ? `<span title="o detector não conseguiu dizer se está no ar">${desc} sem resposta</span>` : ""].join("");
     return `<div class="cartao"><div class="titulo"><span class="nome-fonte">${FONTES[f]}</span> <span class="count">${vivos.length}</span></div>
       <div class="meta"><span>${vivos.length ? `${vivos.length} de ${itens.length} canais no ar` : `nenhum dos ${itens.length} canais no ar`}</span>${avisos}</div>
-      ${vivos.length ? `<ul class="lista">${linhas}</ul>` : ""}</div>`;
+      ${vivos.length ? `<ul class="lista rolavel" data-rolavel="aovivo-${f}">${linhas}</ul>` : ""}</div>`;
   }).filter(Boolean);
   if (!blocos.length) return "";
   return `<section class="painel" aria-labelledby="h-aovivo">
@@ -1546,9 +1546,9 @@ function htmlSinaisAtivos(e) {
     const fora = l.filter(foraDaExecucao), dentro = l.filter((s) => !foraDaExecucao(s));
     return `<div class="cartao">
       <div class="titulo">${FONTES[f]} <span class="count">${dentro.length}</span></div>
-      ${dentro.length ? `<ul class="lista">${dentro.map(htmlSinal).join("")}</ul>` : `<p class="meta">Nenhum sinal em execução ou executável agora.</p>`}
+      ${dentro.length ? `<ul class="lista rolavel" data-rolavel="sinais-${f}">${dentro.map(htmlSinal).join("")}</ul>` : `<p class="meta">Nenhum sinal em execução ou executável agora.</p>`}
       ${fora.length ? `<details class="fora-execucao"><summary>Fora da execução <span class="count">${fora.length}</span></summary>
-        <ul class="lista">${fora.map(htmlSinal).join("")}</ul></details>` : ""}</div>`;
+        <ul class="lista rolavel" data-rolavel="fora-${f}">${fora.map(htmlSinal).join("")}</ul></details>` : ""}</div>`;
   });
   const semSinal = por.filter(([, l]) => !l.length).map(([f]) => FONTES[f]);
   return `<section class="painel" aria-labelledby="h-sinais">
@@ -2634,7 +2634,10 @@ function render(forcar = true) {
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
   const focoMenu = focoNoMenu();
+  // listas com rolagem própria (17/11/2026): a posição sobrevive ao redesenho da página
+  const rolagens = nova ? new Map() : new Map([...app.querySelectorAll("[data-rolavel]")].map((el) => [el.dataset.rolavel, el.scrollTop]));
   app.innerHTML = htmlTopo(rota) + corpo;
+  rolagens.size && app.querySelectorAll("[data-rolavel]").forEach((el) => { const y = rolagens.get(el.dataset.rolavel); if (y) el.scrollTop = y; });
   rotularTabelas(app);
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
