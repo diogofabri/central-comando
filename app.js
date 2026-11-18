@@ -1779,7 +1779,7 @@ function htmlMonitor(e) {
   const algum = fontesDoCtx().some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span>
-      <span class="direita">${htmlPrioridade(e)}${ctxLente === "forex" ? htmlCorretora(e) : ""}${htmlTrocaMaquina(e)}${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
+      <span class="direita">${htmlPrioridade(e)}${ctxLente === "forex" ? htmlSeletorCorretora(e) : ""}${htmlTrocaMaquina(e)}${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
       <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
@@ -2579,7 +2579,9 @@ const CORRETORA_EXEC = { forex: "ActivTrades", bovespa: "CLEAR" };
 const corretoraExec = () => (ctxLente === "forex" && NOME_CORRETORA_FX[estado?.execucao?.corretora]) || CORRETORA_EXEC[ctxLente] || "corretora";
 
 // botão da corretora do Forex (ordens novas); as ordens abertas na outra seguem vigiadas até fechar
-function htmlCorretora(e) {
+// nome próprio: htmlCorretora(a) é o bloco "Na corretora" do termômetro; com o mesmo nome, esta declaração o substituía
+// e cada cartão do termômetro desenhava o botão de execução (18/11/2026)
+function htmlSeletorCorretora(e) {
   const atual = e.execucao?.corretora ?? "capitalcom";
   return `<span class="segmentado corretora" role="group" aria-label="Corretora das ordens novas do Forex"><span class="seg-rot">Execução</span>${CORRETORAS_FX.map(([k, rot, dica]) => {
     const vivo = ["demo", "real"].some((m) => { const s = e.execucao?.porCorretora?.[m]?.[k]; return s?.conectado && Date.now() - new Date(s.atualizado_em).getTime() < 120e3; });
