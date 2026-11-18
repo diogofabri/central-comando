@@ -602,7 +602,8 @@ function rotaAtual() {
   if (mc) { h = "#" + h.slice(mc[0].length); if (mc[1] !== ctxLembrado) lembrarContexto(mc[1]); }
   const ctx = mc ? mc[1] : ctxLembrado;
   const doMonitor = (r) => ({ ...r, ctx: ctx === "todos" ? "forex" : ctx });
-  if (mc?.[1] === "todos" || h.startsWith("#/comparar")) return { tipo: "comparar", ctx: "todos" };
+  if (mc?.[1] === "todos" || h.startsWith("#/comparar"))
+    return { tipo: "comparar", ctx: "todos", visao: new URLSearchParams(h.split("?")[1] ?? "").get("v") === "efetiva" ? "efetiva" : "teorica" };
   if (mc && (h === "#" || h.startsWith("#?"))) return doMonitor({ tipo: "monitor" });
   const m = h.match(/^#\/p\/(\w+)/);
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? doMonitor({ tipo: "monitor" }) : { tipo: "projeto", id: m[1], ctx: "forex" };
@@ -616,7 +617,7 @@ function rotaAtual() {
   }
   return { tipo: "geral", ctx: "forex" };
 }
-const chaveRota = (r) => r.tipo + (r.ctx ?? "") + (r.fonte ?? "") + (r.id ?? "") + (r.modo ?? "") + (r.conta ?? "");
+const chaveRota = (r) => r.tipo + (r.ctx ?? "") + (r.fonte ?? "") + (r.id ?? "") + (r.modo ?? "") + (r.conta ?? "") + (r.visao ?? "");
 
 // ---------- componentes ----------
 
@@ -837,7 +838,7 @@ function htmlSubmenuMonitor(rota, e) {
 // Faixa do contexto: diz em qual mercado e corretora a tela está (as telas do Forex e da Bovespa são parecidas)
 function htmlFaixaContexto(rota) {
   if (!["monitor", "analise", "termometro", "comparar"].includes(rota.tipo)) return "";
-  if (rota.tipo === "comparar") return `<p class="ctx-faixa" data-ctx="todos"><b>Todos</b><span>Forex × Bovespa lado a lado · resultado em R (euros na etapa seguinte)</span></p>`;
+  if (rota.tipo === "comparar") return `<p class="ctx-faixa" data-ctx="todos"><b>Todos</b><span>Forex × Bovespa lado a lado · ${rota.visao === "efetiva" ? "ordens executadas" : "placar teórico"} · resultado em R</span></p>`;
   const c = CONTEXTOS[ctxLente];
   const texto = ctxLente === "forex" ? `dados Capital.com · execução ${corretoraExec()}` : c.corretora;
   return `<p class="ctx-faixa" data-ctx="${ctxLente}"><b>${c.nome}</b><span>${esc(texto)}</span></p>`;
@@ -2781,8 +2782,12 @@ function htmlFaixaTotais(f, id, modo, conta) {
 
 // Comparar (contexto Todos): cada fonte de cada contexto, lado a lado, em R (independe de moeda e de lote). O resultado em euros
 // vem na etapa seguinte, com o câmbio do BCE do dia.
-function vistaComparar() {
-  const ctxs = ["forex", "bovespa"];
+// Visão (18/11/2026, pedido do Diogo): Teórica = placar de todos os sinais pelo preço; Efetiva = ordens executadas nas
+// corretoras (Forex: Capital.com + ActivTrades; Bovespa: CLEAR), conta demo e real, em R. R não depende de moeda, então
+// a soma de Capital.com (€) e ActivTrades (US$) é válida; dinheiro não se soma entre as duas sem câmbio.
+const CORRETORAS_EFETIVA = { forex: ["Capital.com", "ActivTrades"], bovespa: ["CLEAR"] };
+function vistaComparar(visao = "teorica") {
+  const ctxs = ["forex", "bovespa"], efetiva = visao === "efetiva";
   const pct = (w, l) => (w + l ? `${Math.round((100 * w) / (w + l))}%` : "—");
   // agrupado por mercado, com uma linha de subtotal (auditoria de 17/11/2026: o mercado se repetia em toda linha)
   const celulas = (abertos, w, perd, rs) => `<td class="num">${abertos}</td><td class="num">${w}</td><td class="num">${perd}</td>
@@ -2791,15 +2796,27 @@ function vistaComparar() {
   const linhas = ctxs.map((ctx) => {
     const l = lente(estadoBruto, ctx);
     const tot = { abertos: 0, w: 0, perd: 0, rs: [] };
+    const corretoras = CORRETORAS_EFETIVA[ctx];
+    const ordensCtx = (l.monitorOrdens ?? []).filter((o) => corretoras.includes(o.corretora));
     const fontes = CONTEXTOS[ctx].fontes.map((f) => {
-      const lista = (l.monitorResultados ?? []).filter((r) => r.fonte === f);
-      const w = lista.filter((r) => r.status === "alvo").length, perd = lista.filter((r) => r.status === "stop").length;
-      const rs = lista.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number);
-      const abertos = sinaisAbertosDe(l, f);
+      let w, perd, rs, abertos;
+      if (efetiva) {
+        const ordens = ordensCtx.filter((o) => o.pagina === f);
+        const fechadas = ordens.filter((o) => o.status === "fechada" && o.resultado != null);
+        w = fechadas.filter((o) => Number(o.resultado) > 0).length;
+        perd = fechadas.filter((o) => Number(o.resultado) < 0).length;
+        rs = fechadas.map(rDaOrdem).filter((x) => x !== null && x !== undefined && Number.isFinite(Number(x))).map(Number);
+        abertos = ordens.filter((o) => o.status === "aberta" || o.status === "pendente").length;
+      } else {
+        const lista = (l.monitorResultados ?? []).filter((r) => r.fonte === f);
+        w = lista.filter((r) => r.status === "alvo").length; perd = lista.filter((r) => r.status === "stop").length;
+        rs = lista.map((r) => r.resultado_r).filter((x) => x !== null && x !== undefined).map(Number);
+        abertos = sinaisAbertosDe(l, f);
+      }
       tot.abertos += abertos; tot.w += w; tot.perd += perd; tot.rs.push(...rs);
       return `<tr><th scope="row" class="esq recuo"><a href="${hrefCtx(ctx, f)}">${esc(FONTES[f])}</a></th>${celulas(abertos, w, perd, rs)}</tr>`;
     });
-    return `<tbody><tr class="subtotal"><th scope="row" class="esq">${esc(NOME_CTX[ctx])}</th>${celulas(tot.abertos, tot.w, tot.perd, tot.rs)}</tr>${fontes.join("")}</tbody>`;
+    return `<tbody><tr class="subtotal"><th scope="row" class="esq">${esc(NOME_CTX[ctx])}${efetiva ? ` <small class="meta">${esc(corretoras.join(" + "))}</small>` : ""}</th>${celulas(tot.abertos, tot.w, tot.perd, tot.rs)}</tr>${fontes.join("")}</tbody>`;
   });
   return `<main class="uma">
     ${avisoErro()}
@@ -2810,12 +2827,16 @@ function vistaComparar() {
         <p class="resumo">As mesmas fontes nos dois mercados, em múltiplos do risco (R), que não dependem de moeda nem de tamanho de lote. Só vale concluir com amostra grande e lucro nos dois trechos (treino e validação).</p>
       </div>
     </div>
+    <nav class="segmentado modalidades" aria-label="Visão"><span class="seg-rot">Visão</span>${[["teorica", "Teórica"], ["efetiva", "Efetiva"]]
+      .map(([k, rot]) => `<a href="#/todos/comparar${k === "efetiva" ? "?v=efetiva" : ""}" ${k === visao ? 'aria-current="page"' : ""}>${rot}</a>`).join("")}</nav>
     <section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Placar por mercado <span class="count">últimos 30 dias</span></h2>
       <div class="rolagem"><table class="tabela placar vira-lista">
-        <thead><tr><th scope="col" class="esq">Mercado e fonte</th><th scope="col">Abertos</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th></tr></thead>
+        <thead><tr><th scope="col" class="esq">Mercado e fonte</th><th scope="col">${efetiva ? "Ordens vivas" : "Abertos"}</th><th scope="col">Win</th><th scope="col">Loss</th><th scope="col">Acerto</th><th scope="col">R total</th><th scope="col">R médio</th></tr></thead>
         ${linhas.join("")}</table></div>
-      <p class="meta nota">Win = bateu o alvo antes do stop; loss = bateu o stop. Promover algo de um mercado ao outro é decisão sua (N1) e exige backtest no mercado de destino.</p>
+      <p class="meta nota">${efetiva
+        ? "Efetiva: ordens executadas na corretora (Forex: Capital.com + ActivTrades; Bovespa: CLEAR; demo e real), cada parcial conta como uma ordem. Win = fechou com lucro e loss = fechou com prejuízo (resultado da corretora, já com custos); R = (saída − entrada) ÷ (entrada − stop) da própria ordem, pelo preço."
+        : "Teórica: todos os sinais pelo preço. Win = bateu o alvo antes do stop; loss = bateu o stop."} Promover algo de um mercado ao outro é decisão sua (N1) e exige backtest no mercado de destino.</p>
     </section>
   </main>`;
 }
@@ -2972,7 +2993,7 @@ function render(forcar = true) {
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
   ctxAtual = doMonitor ? (rota.tipo === "comparar" ? "todos" : rota.ctx) : ctxLembrado;
   estado = ctxLente === "todos" ? estadoBruto : lente(estadoBruto, ctxLente);
-  const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar()
+  const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar(rota.visao)
     : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
