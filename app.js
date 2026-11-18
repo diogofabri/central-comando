@@ -2396,11 +2396,17 @@ function linhaDeResultado(r) {
   return { ...base, desfecho: decidido ? `não executado: ${motivoSemExecucao(r, o)} (teórico: ${base.desfecho})` : base.desfecho,
     execucao: decidido ? "teorico" : "sem_r" };
 }
+// saídas parciais (18/11/2026): um sinal com vários alvos vira uma ordem por alvo (coluna `parcial`, migração 0017)
+function rotuloParcial(o) {
+  if (o.parcial == null) return "";
+  const n = (estado?.monitorOrdens ?? []).filter((x) => x.fonte === o.fonte && String(x.sinal_id) === String(o.sinal_id) && x.modo === o.modo).length;
+  return n > 1 ? ` · parcial ${o.parcial} de ${n}` : "";
+}
 function linhaDeOrdem(o) {
   const fechada = o.status === "fechada";
   return { abertura: o.aberto_em ?? o.criado_em ?? o.sinal_desde ?? null, fechamento: o.fechado_em ?? null, ativo: o.instrumento, lado: o.direcao,
     entrada: o.preco_execucao ?? o.preco_pedido ?? null, stop: o.stop ?? null, alvo: o.alvo ?? null, saida: fechada ? o.preco_saida : null,
-    desfecho: fechada ? (DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "fechada") : o.status === "aberta" ? "aberta" : o.status === "pendente" ? "pendente" : `${o.status}${o.motivo ? `: ${o.motivo}` : ""}`,
+    desfecho: (fechada ? (DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "fechada") : o.status === "aberta" ? "aberta" : o.status === "pendente" ? "pendente" : `${o.status}${o.motivo ? `: ${o.motivo}` : ""}`) + rotuloParcial(o),
     r: fechada ? rDaOrdem(o) : null, v: fechada && o.resultado != null ? Number(o.resultado) : null, moeda: o.moeda, unidade: o.unidade };
 }
 const ordenarHistorico = (l) => l.sort((a, b) => new Date(b.fechamento ?? b.abertura ?? 0) - new Date(a.fechamento ?? a.abertura ?? 0));
