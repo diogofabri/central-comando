@@ -826,7 +826,10 @@ function htmlSubmenuMonitor(rota, e) {
     `<a href="${hrefCtx(c)}" data-ctx="${c}" ${c === ctxM ? 'aria-current="true"' : ""}>${NOME_CTX[c]}</a>`).join("")}</li>`;
   const itens = ctxM === "todos"
     ? `<li><a href="#/todos/comparar" ${rota.tipo === "comparar" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Comparar</a></li>`
-    : `<li><a href="${hrefCtx(ctxM, CONSOLIDADO)}" ${rota.tipo === "analise" && rota.fonte === CONSOLIDADO && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Consolidado</a></li>`
+    // Painel do mercado (18/11/2026): com Forex/Bovespa só selecionando o mercado, a página principal (sinais ativos, saúde
+    // das fontes, ao vivo, placar) ganhou um item próprio
+    : `<li><a href="${hrefCtx(ctxM)}" ${rota.tipo === "monitor" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Painel</a></li>`
+    + `<li><a href="${hrefCtx(ctxM, CONSOLIDADO)}" ${rota.tipo === "analise" && rota.fonte === CONSOLIDADO && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Consolidado</a></li>`
     + CONTEXTOS[ctxM].fontes.map((f) => {
       const n = sinaisAbertosDe(el, f);
       const s = saudeFonte(f, el).status;
