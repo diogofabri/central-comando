@@ -800,6 +800,9 @@ function htmlIndicadores(c, p) {
 // automático da página (a cada atualização o render troca o HTML inteiro). A lista do submenu fica FORA do .nav: o .nav rola
 // na horizontal e, em tela estreita, tem uma máscara de degradê que apagaria o submenu.
 let menuMonitorAberto = false, atrasoFecharMenu = null;
+// mercado do submenu (18/11/2026, pedido do Diogo): hover, clique, toque ou Enter em Forex, Bovespa ou Todos só seleciona o
+// mercado da lista, sem trocar de rota; ao fechar o menu volta ao mercado da tela
+let ctxMenuPrevia = null;
 const sinaisAbertosDe = (e, f) => (e.monitorSinais ?? []).filter((s) => s.fonte === f && (!s.ate || new Date(s.ate) > Date.now())).length;
 const sinalAberto = (s) => !s.ate || new Date(s.ate) > Date.now();
 const NOME_CTX = { forex: "Forex", bovespa: "Bovespa", todos: "Todos" };
@@ -816,17 +819,18 @@ function htmlGrupoMonitor(rota, e) {
 
 function htmlSubmenuMonitor(rota, e) {
   // o contexto do menu pode ser outro que o da tela (na Visão geral, p.ex.): a saúde e as contagens saem da lente do contexto do menu
-  const el = ctxAtual === "todos" ? null : lente(estadoBruto, ctxAtual);
+  const ctxM = ctxMenuPrevia ?? ctxAtual;
+  const el = ctxM === "todos" ? null : lente(estadoBruto, ctxM);
   const seletor = `<li class="ctx-seletor" role="group" aria-label="Contexto de mercado">${["forex", "bovespa", "todos"].map((c) =>
-    `<a href="${hrefCtx(c)}" ${c === ctxAtual ? 'aria-current="true"' : ""}>${NOME_CTX[c]}</a>`).join("")}</li>`;
-  const itens = ctxAtual === "todos"
+    `<a href="${hrefCtx(c)}" data-ctx="${c}" ${c === ctxM ? 'aria-current="true"' : ""}>${NOME_CTX[c]}</a>`).join("")}</li>`;
+  const itens = ctxM === "todos"
     ? `<li><a href="#/todos/comparar" ${rota.tipo === "comparar" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Comparar</a></li>`
-    : `<li><a href="${hrefCtx(ctxAtual, CONSOLIDADO)}" ${rota.tipo === "analise" && rota.fonte === CONSOLIDADO && rota.ctx === ctxAtual ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Consolidado</a></li>`
-    + CONTEXTOS[ctxAtual].fontes.map((f) => {
+    : `<li><a href="${hrefCtx(ctxM, CONSOLIDADO)}" ${rota.tipo === "analise" && rota.fonte === CONSOLIDADO && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Consolidado</a></li>`
+    + CONTEXTOS[ctxM].fontes.map((f) => {
       const n = sinaisAbertosDe(el, f);
       const s = saudeFonte(f, el).status;
-      return `<li><a href="${hrefCtx(ctxAtual, f)}" ${rota.tipo === "analise" && rota.fonte === f && rota.ctx === ctxAtual ? 'aria-current="page"' : ""}><i class="ponto saude-${s.nivel}" title="${esc(s.t)}" aria-hidden="true"></i>${FONTES[f]}${s.nivel === "ok" ? "" : `<span class="so-leitor"> (${esc(s.t)})</span>`}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
-    }).join("") + (CONTEXTOS[ctxAtual].termometro ? `<li><a href="${hrefCtx(ctxAtual, "termometro")}" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>` : "");
+      return `<li><a href="${hrefCtx(ctxM, f)}" ${rota.tipo === "analise" && rota.fonte === f && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto saude-${s.nivel}" title="${esc(s.t)}" aria-hidden="true"></i>${FONTES[f]}${s.nivel === "ok" ? "" : `<span class="so-leitor"> (${esc(s.t)})</span>`}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
+    }).join("") + (CONTEXTOS[ctxM].termometro ? `<li><a href="${hrefCtx(ctxM, "termometro")}" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>` : "");
   return `<ul class="submenu" id="menu-monitor" aria-label="Contexto e fontes do monitor"${menuMonitorAberto ? " data-aberto" : ""}>${seletor}${itens}</ul>`;
 }
 
@@ -844,8 +848,23 @@ const subEl = () => document.getElementById("menu-monitor");
 const noMenu = (n) => !!n && (menuEl()?.contains(n) || subEl()?.contains(n));
 const itensMenu = () => [...(menuEl()?.querySelectorAll("a, button") ?? []), ...(subEl()?.querySelectorAll("a") ?? [])];
 
+function previaCtxMenu(c) {
+  const alvo = c === ctxAtual ? null : c;
+  if (alvo === ctxMenuPrevia) return;
+  ctxMenuPrevia = alvo;
+  const sub = subEl();
+  if (!sub) return;
+  sub.outerHTML = htmlSubmenuMonitor(rotaAtual(), estado);
+  definirMenu(true);
+}
+
 function definirMenu(aberto) {
   clearTimeout(atrasoFecharMenu);
+  if (!aberto && ctxMenuPrevia !== null) {  // fechou: o submenu volta ao mercado da tela
+    ctxMenuPrevia = null;
+    const sub = subEl();
+    if (sub) sub.outerHTML = htmlSubmenuMonitor(rotaAtual(), estado);
+  }
   menuMonitorAberto = aberto;
   const g = menuEl(), sub = subEl();
   if (!g || !sub) return;
@@ -868,10 +887,21 @@ function restaurarMenu(foco) {
 const comHover = matchMedia("(hover: hover)");
 document.addEventListener("mouseover", (ev) => {
   if (!comHover.matches) return;
+  const ctxLink = ev.target.closest?.(".ctx-seletor a[data-ctx]");
+  if (ctxLink) previaCtxMenu(ctxLink.dataset.ctx);
   if (ev.target.closest?.('[data-menu="monitor"], .submenu')) definirMenu(true);
   else if (menuMonitorAberto && !noMenu(document.activeElement)) { clearTimeout(atrasoFecharMenu); atrasoFecharMenu = setTimeout(() => definirMenu(false), 160); }
 });
 document.addEventListener("click", (ev) => {
+  // Forex, Bovespa e Todos só selecionam o mercado do submenu, sem trocar de rota (pedido do Diogo, 18/11/2026);
+  // a página muda quando se escolhe uma fonte da lista
+  const ctxLink = ev.target.closest?.(".ctx-seletor a[data-ctx]");
+  if (ctxLink) {
+    ev.preventDefault();
+    previaCtxMenu(ctxLink.dataset.ctx);
+    subEl()?.querySelector(`.ctx-seletor a[data-ctx="${ctxLink.dataset.ctx}"]`)?.focus();
+    return definirMenu(true);
+  }
   // com mouse o hover já abriu: o clique na seta mantém aberto; toque (sem hover) e teclado (detail 0) alternam
   if (ev.target.closest?.("[data-menu-seta]")) return definirMenu(comHover.matches && ev.detail > 0 ? true : !menuMonitorAberto);
   if (!ev.target.closest?.('[data-menu="monitor"], .submenu') || ev.target.closest?.(".submenu a, .aba-grupo > .aba")) definirMenu(false);
