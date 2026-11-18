@@ -559,6 +559,22 @@ main.uma > p.nota { margin-top: 0; }
 .segmentado button[aria-pressed="true"] { background: var(--ink); color: var(--bg); font-weight: 600; }
 .segmentado button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (pointer: coarse) { .segmentado a, .segmentado button { min-height: 44px; } }
+/* Resultado por corretora (18/11/2026): Mostrar + Conta numa linha e os totais lado a lado, na mesma faixa (sem cartão em cartão) */
+.linha-modalidades { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 4px; }
+.linha-modalidades .modalidades { margin-top: 0; }
+.faixa-totais { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--raio); overflow: hidden; box-shadow: var(--sombra); }
+.total-corretora { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; color: var(--ink); text-decoration: none; border-right: 1px solid var(--line); min-width: 0; transition: background var(--t-rapido); }
+.total-corretora:last-child { border-right: 0; }
+.total-corretora:hover { background: var(--bg); }
+.total-corretora:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.total-corretora.atual { background: var(--bg); box-shadow: inset 0 -3px 0 var(--ink); }
+.total-corretora .total-rot { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.total-corretora b { font-size: 19px; font-variant-numeric: tabular-nums; }
+.total-corretora b.pos { color: var(--good); } .total-corretora b.neg { color: var(--critical); }
+.total-corretora span { font-size: 13px; color: var(--ink-2); overflow-wrap: break-word; }
+.total-corretora .meta { font-size: 12px; color: var(--ink-3); }
+.total-corretora.vazio b { color: var(--ink-3); }
+@media (max-width: 560px) { .total-corretora { border-right: 0; border-bottom: 1px solid var(--line); } .total-corretora:last-child { border-bottom: 0; } }
 details.como { margin-top: 4px; }
 details.como > summary { font-size: 13px; color: var(--ink-2); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 4px; min-height: 24px; }
 details.como > summary::-webkit-details-marker { display: none; }
@@ -668,6 +684,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=94"></script>
+<script src="app.js?v=95"></script>
 </body>
 </html>
