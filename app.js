@@ -257,6 +257,8 @@ function fonteSupabase(cfg) {
     pedirTroca: (maquina) => sb.from("controle").upsert({ chave: "maquinas:pedido", valor: { operar: maquina, em: new Date().toISOString() } }).then(ok),
     // prioridade dos navegadores entre Forex e Bovespa (lida pelas fontes de vídeo a cada ~10 s)
     comandarPrioridade: (modo) => sb.from("controle").upsert({ chave: "prioridade:navegadores", valor: modo }).then(ok),
+    // corretora das ordens novas do Forex (18/11/2026): lida pelas pontes a cada ciclo (~15 s)
+    comandarCorretora: (id) => sb.from("controle").upsert({ chave: "execucao:corretora", valor: id }).then(ok),
     // seleção do que a ponte do MT5 executa (lida a cada ciclo de ~15 s): {fontes: {tiktok: true}, unidades: {tiktok: {"@canal": false}}}
     // suf: "" no Forex, "@bovespa" na Bovespa (os botões de um contexto nunca ligam o outro)
     comandarExecucao: (modo, selecao, suf = "") => sb.from("controle").upsert({ chave: `execucao${suf}:${modo}`, valor: selecao }).then(ok),
@@ -381,7 +383,8 @@ function fonteDemo() {
       EURUSD: { preco: 1.1158, fonte: "capitalcom", em: new Date(agora - 90e3).toISOString() },
       WIN: { preco: 130095, fonte: "mt5-clear", em: new Date(agora - 60e3).toISOString() } } },
     execucao: { selecao: { demo: { fontes: { tiktok: true }, unidades: { tiktok: { "@mogotrading_off": false } } }, real: { fontes: {}, unidades: {} } },
-      estado: { demo: { conectado: true, servidor: "ActivTrades-Demo", moeda: "USD", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), lote: 0.01,
+      corretora: "capitalcom",
+      estado: { demo: { conectado: true, servidor: "Capital.com-Demo", moeda: "EUR", corretora: "Capital.com", abertas: 1, pendentes: 0, resultado_dia: 4.2, atualizado_em: new Date(agora - 20e3).toISOString(), lote: 0.01,
                       flutuante: { 5: { lucro: -1.8, preco: 4009.2 }, 7: { lucro: 3.4, preco: 4014.6 } } },
         real: { conectado: false, aviso: "faltam MT5_REAL_LOGIN, MT5_REAL_PASSWORD e MT5_REAL_SERVER no .env do monitor", atualizado_em: new Date(agora - 30e3).toISOString() } } },
     execucaoBovespa: { selecao: { demo: { fontes: { agentes: true } }, real: {} }, swing: {},
@@ -446,6 +449,7 @@ function fonteDemo() {
     async pedirLogin(f) { s.loginFonte[f] = { ...s.loginFonte[f], estado: "aguardando", atualizado_em: new Date().toISOString() }; },
     async pedirTroca(maquina) { s.maquinasPedido = { operar: maquina, em: new Date().toISOString() }; },
     async comandarPrioridade(modo) { s.prioridade = modo; },
+    async comandarCorretora(id) { s.execucao.corretora = id; },
     aoMudar() {},
   };
 }
@@ -814,7 +818,8 @@ function htmlFaixaContexto(rota) {
   if (!["monitor", "analise", "termometro", "comparar"].includes(rota.tipo)) return "";
   if (rota.tipo === "comparar") return `<p class="ctx-faixa" data-ctx="todos"><b>Todos</b><span>Forex × Bovespa lado a lado · resultado em R (euros na etapa seguinte)</span></p>`;
   const c = CONTEXTOS[ctxLente];
-  return `<p class="ctx-faixa" data-ctx="${ctxLente}"><b>${c.nome}</b><span>${esc(c.corretora)}</span></p>`;
+  const texto = ctxLente === "forex" ? `dados Capital.com · execução ${corretoraExec()}` : c.corretora;
+  return `<p class="ctx-faixa" data-ctx="${ctxLente}"><b>${c.nome}</b><span>${esc(texto)}</span></p>`;
 }
 
 const menuEl = () => document.querySelector('[data-menu="monitor"]');
@@ -1726,7 +1731,7 @@ function htmlMonitor(e) {
   const algum = fontesDoCtx().some((f) => e.monitorComando?.[f] !== false);
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span>
-      <span class="direita">${htmlPrioridade(e)}${htmlTrocaMaquina(e)}${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
+      <span class="direita">${htmlPrioridade(e)}${ctxLente === "forex" ? htmlCorretora(e) : ""}${htmlTrocaMaquina(e)}${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
       <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
@@ -2516,13 +2521,41 @@ const DESCRICAO_MODALIDADE = {
 };
 const DESFECHO_ORDEM = { tp: "alvo", sl: "stop", vencimento: "expirado", zerado: "zerado no fim do pregão" };
 const CORRETORA_EXEC = { forex: "ActivTrades", bovespa: "CLEAR" };
-const corretoraExec = () => CORRETORA_EXEC[ctxLente] ?? "corretora";
+const corretoraExec = () => (ctxLente === "forex" && NOME_CORRETORA_FX[estado?.execucao?.corretora]) || CORRETORA_EXEC[ctxLente] || "corretora";
 
+// botão da corretora do Forex (ordens novas); as ordens abertas na outra seguem vigiadas até fechar
+function htmlCorretora(e) {
+  const atual = e.execucao?.corretora ?? "capitalcom";
+  return `<span class="segmentado corretora" role="group" aria-label="Corretora das ordens novas do Forex"><span class="seg-rot">Execução</span>${CORRETORAS_FX.map(([k, rot, dica]) => {
+    const vivo = ["demo", "real"].some((m) => { const s = e.execucao?.porCorretora?.[m]?.[k]; return s?.conectado && Date.now() - new Date(s.atualizado_em).getTime() < 120e3; });
+    return `<button type="button" data-acao="corretora" data-corretora="${k}" aria-pressed="${k === atual}" title="${esc(`${dica}. ${vivo ? "Ponte conectada." : "Ponte sem conexão agora."} As ordens novas vão para a corretora marcada; as já abertas na outra continuam até o stop ou o alvo.`)}">${rot}</button>`;
+  }).join("")}</span>`;
+}
+
+// Forex com duas corretoras (18/11/2026, pedido do Diogo): uma ponte por corretora, cada uma publica
+// execucao:estado:<modo>:<id>. O botão grava execucao:corretora: só a ativa abre ordens novas; a outra segue vigiando as
+// ordens que já abriu até o stop ou o alvo.
+const CORRETORAS_FX = [["capitalcom", "Capital.com", "MT4 da Capital.com (conta demo no VPS), pelo EA MonitorPonte"],
+  ["activtrades", "ActivTrades", "MT5 da ActivTrades: a conta ainda não está configurada no VPS (as ordens novas esperam a ponte dela rodar)"]];
+const NOME_CORRETORA_FX = Object.fromEntries(CORRETORAS_FX.map(([k, n]) => [k, n]));
 // suf: "" (Forex: execucao:demo…) ou "@bovespa" (execucao@bovespa:demo…, com as operações marcadas como swing)
 function execucaoDoControle(ctl, suf = "") {
-  return { selecao: { demo: ctl[`execucao${suf}:demo`] ?? {}, real: ctl[`execucao${suf}:real`] ?? {} },
+  const base = { selecao: { demo: ctl[`execucao${suf}:demo`] ?? {}, real: ctl[`execucao${suf}:real`] ?? {} },
            estado: { demo: ctl[`execucao${suf}:estado:demo`] ?? null, real: ctl[`execucao${suf}:estado:real`] ?? null },
            swing: ctl[`execucao${suf}:swing`] ?? {} };
+  if (suf) return base;
+  const corretora = NOME_CORRETORA_FX[ctl["execucao:corretora"]] ? ctl["execucao:corretora"] : "capitalcom";
+  const porCorretora = { demo: {}, real: {} };
+  for (const modo of ["demo", "real"]) {
+    for (const [id] of CORRETORAS_FX) if (ctl[`execucao:estado:${modo}:${id}`]) porCorretora[modo][id] = ctl[`execucao:estado:${modo}:${id}`];
+    // o lucro até agora vem de todas as pontes: a ordem aberta na corretora antiga continua no cartão do sinal
+    const flutuante = Object.assign({}, ...Object.values(porCorretora[modo]).map((s) => s.flutuante ?? {}));
+    const ativa = porCorretora[modo][corretora] ?? (Object.keys(porCorretora[modo]).length
+      ? { conectado: false, aviso: `a ponte da ${NOME_CORRETORA_FX[corretora]} não está rodando: as ordens novas esperam por ela`, atualizado_em: new Date().toISOString() }
+      : base.estado[modo]);
+    base.estado[modo] = ativa ? { ...ativa, corretora: NOME_CORRETORA_FX[corretora], flutuante: { ...flutuante, ...(ativa.flutuante ?? {}) } } : null;
+  }
+  return { ...base, corretora, porCorretora };
 }
 
 // Bovespa (16/11/2026): WIN/WDO são day trade por padrão (a ponte zera no fim do pregão); cada operação pode virar swing.
@@ -2601,7 +2634,7 @@ function htmlEstadoExecucao(modo) {
   const parada = Date.now() - new Date(s.atualizado_em).getTime() > 120e3;
   if (!s.conectado || parada) return `<div class="aviso erro">${ico("alert")}<span>${conta}: ${!s.conectado ? `desconectada (${esc(s.aviso ?? "sem motivo")})` : "sem notícia da ponte"} · atualizado ${quando(s.atualizado_em)}</span></div>`;
   const din = dinheiro({ moeda: s.moeda });
-  const partes = [`<span class="badge good"><i class="ponto vivo" aria-hidden="true"></i>${conta} conectada</span>`, `<span>${esc(s.servidor ?? "")}</span>`,
+  const partes = [`<span class="badge good"><i class="ponto vivo" aria-hidden="true"></i>${conta} conectada${s.corretora ? ` · ${esc(s.corretora)}` : ""}</span>`, `<span>${esc(s.servidor ?? "")}</span>`,
     `<span>${s.abertas} abertas · ${s.pendentes} pendentes</span>`, `<span>resultado do dia <b class="num">${din(s.resultado_dia)}</b></span>`];
   if (s.lote != null) partes.push(`<span>lote ${String(s.lote).replace(".", ",")}</span>`);
   if (s.volumes) partes.push(`<span>${Object.entries(s.volumes).map(([k, v]) => `${k === "acoes" ? "ações" : k} ${v}`).join(" · ")}</span>`);
@@ -2612,7 +2645,19 @@ function htmlEstadoExecucao(modo) {
   for (const [simb, d] of Object.entries(s.divergencias ?? {}))
     partes.push(`<span class="badge critical" title="Posição na corretora diferente das operações do monitor: sem stop, alvo nem zeragem pela ponte. Conferir no terminal.">${ico("alert")}${esc(simb)}: corretora ${esc(String(d.corretora))} × monitor ${esc(String(d.operacoes))}</span>`);
   partes.push(`<span>atualizado ${quando(s.atualizado_em)}</span>`);
-  return `<div class="meta exec-estado">${partes.join("")}</div>`;
+  return `<div class="meta exec-estado">${partes.join("")}</div>${htmlOutrasCorretoras(modo)}`;
+}
+
+// Forex: a corretora que deixou de receber ordens novas continua vigiando as que abriu (18/11/2026)
+function htmlOutrasCorretoras(modo) {
+  if (ctxLente !== "forex") return "";
+  const ativa = estado.execucao?.corretora ?? "capitalcom";
+  return Object.entries(estado.execucao?.porCorretora?.[modo] ?? {}).filter(([k]) => k !== ativa).map(([k, s]) => {
+    const vivas = (estado.monitorOrdens ?? []).filter((o) => o.modo === modo && o.corretora === NOME_CORRETORA_FX[k] && (o.status === "aberta" || o.status === "pendente")).length;
+    if (!vivas) return "";
+    const ok = s.conectado && Date.now() - new Date(s.atualizado_em).getTime() < 120e3;
+    return `<div class="meta exec-estado"><span class="badge ${ok ? "" : "warning"}">${ico(ok ? "clock" : "alert")}${esc(NOME_CORRETORA_FX[k])}: ${vivas} ${vivas === 1 ? "ordem viva" : "ordens vivas"}, sem ordens novas</span><span>${ok ? "vigiadas até o stop ou o alvo" : `ponte sem conexão (${esc(s.aviso ?? "sem notícia")}): stop e alvo seguem na corretora`}</span></div>`;
+  }).join("");
 }
 
 // comparativo da unidade aberta nas quatro modalidades (Todos e Sem disparo no placar teórico; Demo e Real com o resultado real)
@@ -2947,6 +2992,14 @@ document.addEventListener("click", (ev) => {
     } else sel.unidades[f] = { ...(sel.unidades[f] ?? {}), [u]: ligar };
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarExecucao(modo, sel, sufixoDe(ctxLente)));
+  }
+  if (acao === "corretora") {
+    const nova = b.dataset.corretora, atual = estado.execucao?.corretora ?? "capitalcom";
+    if (ctxLente !== "forex" || nova === atual) return;
+    const vivas = (estado.monitorOrdens ?? []).filter((o) => o.corretora === NOME_CORRETORA_FX[atual] && (o.status === "aberta" || o.status === "pendente")).length;
+    if (!confirm(`Mandar as ordens novas do Forex para a ${NOME_CORRETORA_FX[nova]}?${vivas ? ` As ${vivas} ordens vivas na ${NOME_CORRETORA_FX[atual]} continuam lá, vigiadas até o stop ou o alvo.` : ""}${nova === "activtrades" ? " A ActivTrades ainda não está configurada no VPS: até a ponte dela rodar, nenhum sinal novo vira ordem." : ""}`)) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarCorretora(nova));
   }
   if (acao === "prioridade") {
     const modo = b.dataset.modo;
