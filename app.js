@@ -2577,7 +2577,9 @@ const DESCRICAO_MODALIDADE = {
   real: "Ordens executadas na conta REAL da corretora: resultado real, na moeda da conta.",
   sem: "Sinais que não viraram ordem nem no demo nem no real (canal desligado ou ordem recusada), no placar teórico.",
 };
-const DESFECHO_ORDEM = { tp: "alvo", sl: "stop", vencimento: "expirado", zerado: "zerado no fim do pregão" };
+// canal (19/11/2026): o canal fechou à mão na live e a ponte fechou a cópia (processador._avaliar_encerramentos)
+const DESFECHO_ORDEM = { tp: "alvo", sl: "stop", vencimento: "expirado", zerado: "zerado no fim do pregão",
+  canal: "encerrado pelo canal" };
 const CORRETORA_EXEC = { forex: "ActivTrades", bovespa: "CLEAR" };
 const corretoraExec = () => (ctxLente === "forex" && NOME_CORRETORA_FX[estado?.execucao?.corretora]) || CORRETORA_EXEC[ctxLente] || "corretora";
 
