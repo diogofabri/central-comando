@@ -1149,17 +1149,49 @@ function textoPrazoLongo(ate) {
   if (h) return `${h} h ${String(m).padStart(2, "0")} min ${String(seg).padStart(2, "0")} s`;
   return m ? `${m} min ${String(seg).padStart(2, "0")} s` : `${seg} s`;
 }
-function htmlPregaoB3() {
-  const p = pregaoB3();
+// Forex (20/11/2026, pedido do Diogo): a mesma regra de fim de semana do monitor (config.yaml `mercado`, mercado.py):
+// fecha sexta 17:00 e reabre domingo 18:00 em Nova York (CFDs de ouro, prata, índices e petróleo). Nova York tem horário
+// de verão: o fuso de cada data vem do Intl. Feriados (Natal, Ano-Novo) não entram, como no mercado.py.
+const FX_FUSO = "America/New_York", FX_FECHA = [5, 17, 0], FX_ABRE = [0, 18, 0];
+function partesNoFuso(data, tz) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric",
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(data).map((x) => [x.type, x.value]));
+  return { a: +p.year, m: +p.month, d: +p.day, h: +p.hour % 24, mi: +p.minute, s: +p.second };
+}
+function horaNoFuso(a, m, d, h, mi, tz) {  // "a/m/d h:mi em tz" → Date (UTC), acertando o horário de verão
+  let t = Date.UTC(a, m - 1, d, h, mi);
+  for (let i = 0; i < 2; i++) {
+    const p = partesNoFuso(new Date(t), tz);
+    t -= Date.UTC(p.a, p.m - 1, p.d, p.h, p.mi, p.s) - Date.UTC(a, m - 1, d, h, mi);
+  }
+  return new Date(t);
+}
+function pregaoForex(agora = new Date()) {
+  const p = partesNoFuso(agora, FX_FUSO), semana = new Date(Date.UTC(p.a, p.m - 1, p.d)).getUTCDay();
+  const minuto = semana * 1440 + p.h * 60 + p.mi, fecha = FX_FECHA[0] * 1440 + FX_FECHA[1] * 60 + FX_FECHA[2];
+  const abre = FX_ABRE[0] * 1440 + FX_ABRE[1] * 60 + FX_ABRE[2];
+  const aberto = minuto >= abre && minuto < fecha;
+  const [diaAlvo, h, mi] = aberto ? FX_FECHA : FX_ABRE;
+  const dias = (diaAlvo - semana + 7) % 7;
+  const base = new Date(Date.UTC(p.a, p.m - 1, p.d + dias));
+  return { aberto, ate: horaNoFuso(base.getUTCFullYear(), base.getUTCMonth() + 1, base.getUTCDate(), h, mi, FX_FUSO) };
+}
+
+const PREGOES = {
+  bovespa: { calc: pregaoB3, tz: "America/Sao_Paulo", onde: "de Brasília", nome: "Pregão da B3" },
+  forex: { calc: pregaoForex, tz: "Europe/Lisbon", onde: "de Lisboa", nome: "Mercado do Forex (CFDs)" },
+};
+function htmlPregao(ctx) {
+  const cfg = PREGOES[ctx], p = cfg?.calc();
   if (!p) return "";
-  const hora = p.ate.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const hora = p.ate.toLocaleString("pt-BR", { timeZone: cfg.tz, weekday: "short", hour: "2-digit", minute: "2-digit" });
   return `${p.aberto ? htmlBadge("good", "OPENED", "check") : htmlBadge("critical", "CLOSED", "x")}
-    <span class="meta">${p.aberto ? "fecha em" : "abre em"} <b class="num">${textoPrazoLongo(p.ate)}</b> (${esc(hora)} de Brasília)</span>`;
+    <span class="meta">${p.aberto ? "fecha em" : "abre em"} <b class="num">${textoPrazoLongo(p.ate)}</b> (${esc(hora)} ${cfg.onde})</span>`;
 }
 
 function atualizarContadores() {
   if (document.hidden) return;  // aba escondida: nada a atualizar (auditoria de 17/11/2026)
-  document.querySelectorAll("[data-pregao-b3]").forEach((el) => { el.innerHTML = htmlPregaoB3(); });
+  document.querySelectorAll("[data-pregao]").forEach((el) => { el.innerHTML = htmlPregao(el.dataset.pregao); });
   document.querySelectorAll("[data-ate]").forEach((el) => { el.textContent = textoContador(el.dataset.ate); });
   document.querySelectorAll("[data-desde]").forEach((el) => { el.textContent = textoDesde(el.dataset.desde); });
   document.querySelectorAll("[data-decorrido]").forEach((el) => { el.textContent = textoDecorrido(el.dataset.decorrido); });
@@ -2910,7 +2942,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
       <div class="bloco">
         <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>${consol ? `${CONTEXTOS[ctxLente].nome}: resultado consolidado` : f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
-        ${consol && ctxLente === "bovespa" ? `<div class="pregao-b3" data-pregao-b3 aria-label="Pregão da B3">${htmlPregaoB3()}</div>` : ""}
+        ${consol && PREGOES[ctxLente] ? `<div class="pregao-b3" data-pregao="${ctxLente}" aria-label="${PREGOES[ctxLente].nome}">${htmlPregao(ctxLente)}</div>` : ""}
         <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : comOrdens ? descricao : modo === "sem" ? DESCRICAO_MODALIDADE[modo] : consol ? RESUMO_CONSOLIDADO[ctxLente] : ctxLente !== "forex" ? RESUMO_B3 : RESUMO_ANALISE[f]}</p>
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
