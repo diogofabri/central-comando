@@ -1120,8 +1120,46 @@ function textoDecorrido(iso) {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
+// Pregão da B3 (20/11/2026, pedido do Diogo): timer no topo do Consolidado da Bovespa. Mesmos horários e feriados de
+// 07-monitor-bovespa/monitor_bovespa/pregao.py (minicontratos 09:00–18:30 de Brasília; o WDO fecha às 18:30) e da troca
+// automática da prioridade das lives. Brasília é UTC−3 fixo (sem horário de verão desde 2019). 2027: a B3 ainda não
+// publicou os feriados, então só fim de semana conta como fechado até a lista ser acrescentada aqui e no pregao.py.
+const B3_FERIADOS = new Set(["2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-04-21", "2026-05-01",
+  "2026-06-04", "2026-09-07", "2026-10-12", "2026-11-02", "2026-11-20", "2026-12-24", "2026-12-25", "2026-12-31"]);
+const B3_ABERTURA_TARDIA = { "2026-02-18": [13, 0] };
+const B3_ABRE = [9, 0], B3_FECHA = [18, 30], B3_UTC = -3;
+
+function pregaoB3(agora = new Date()) {
+  const noDia = (dia, [h, m]) => new Date(Date.UTC(dia.getUTCFullYear(), dia.getUTCMonth(), dia.getUTCDate(), h - B3_UTC, m));
+  const local = new Date(agora.getTime() + B3_UTC * 3600e3);  // "relógio de Brasília" lido pelos getters UTC
+  for (let d = 0; d < 15; d++) {
+    const dia = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + d));
+    const chave = dia.toISOString().slice(0, 10), semana = dia.getUTCDay();
+    if (semana === 0 || semana === 6 || B3_FERIADOS.has(chave)) continue;
+    const abre = noDia(dia, B3_ABERTURA_TARDIA[chave] ?? B3_ABRE), fecha = noDia(dia, B3_FECHA);
+    if (agora < abre) return { aberto: false, ate: abre };
+    if (agora < fecha) return { aberto: true, ate: fecha };
+  }
+  return null;
+}
+function textoPrazoLongo(ate) {
+  const s = Math.max(0, Math.round((ate - Date.now()) / 1000));
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), seg = s % 60;
+  if (d) return `${d} d ${h} h ${String(m).padStart(2, "0")} min`;
+  if (h) return `${h} h ${String(m).padStart(2, "0")} min ${String(seg).padStart(2, "0")} s`;
+  return m ? `${m} min ${String(seg).padStart(2, "0")} s` : `${seg} s`;
+}
+function htmlPregaoB3() {
+  const p = pregaoB3();
+  if (!p) return "";
+  const hora = p.ate.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", hour: "2-digit", minute: "2-digit" });
+  return `${p.aberto ? htmlBadge("good", "OPENED", "check") : htmlBadge("critical", "CLOSED", "x")}
+    <span class="meta">${p.aberto ? "fecha em" : "abre em"} <b class="num">${textoPrazoLongo(p.ate)}</b> (${esc(hora)} de Brasília)</span>`;
+}
+
 function atualizarContadores() {
   if (document.hidden) return;  // aba escondida: nada a atualizar (auditoria de 17/11/2026)
+  document.querySelectorAll("[data-pregao-b3]").forEach((el) => { el.innerHTML = htmlPregaoB3(); });
   document.querySelectorAll("[data-ate]").forEach((el) => { el.textContent = textoContador(el.dataset.ate); });
   document.querySelectorAll("[data-desde]").forEach((el) => { el.textContent = textoDesde(el.dataset.desde); });
   document.querySelectorAll("[data-decorrido]").forEach((el) => { el.textContent = textoDecorrido(el.dataset.decorrido); });
@@ -2872,6 +2910,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
       <div class="bloco">
         <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Monitor</a>
         <h1><i class="ponto" aria-hidden="true"></i>${consol ? `${CONTEXTOS[ctxLente].nome}: resultado consolidado` : f === "agentes" ? "Agentes de sinais" : `${FONTES[f]}: desempenho por ${um}`}</h1>
+        ${consol && ctxLente === "bovespa" ? `<div class="pregao-b3" data-pregao-b3 aria-label="Pregão da B3">${htmlPregaoB3()}</div>` : ""}
         <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : comOrdens ? descricao : modo === "sem" ? DESCRICAO_MODALIDADE[modo] : consol ? RESUMO_CONSOLIDADO[ctxLente] : ctxLente !== "forex" ? RESUMO_B3 : RESUMO_ANALISE[f]}</p>
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>

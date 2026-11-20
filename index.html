@@ -581,6 +581,9 @@ details.como > summary::-webkit-details-marker { display: none; }
 details.como[open] > summary .ico { transform: rotate(90deg); }
 .exec-fonte, .exec-botoes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .exec-fonte { margin-left: auto; }
+/* pregão da B3 no Consolidado da Bovespa (20/11/2026): OPENED/CLOSED + quanto falta para fechar/abrir */
+.pregao-b3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 2px 0 10px; }
+.pregao-b3 .badge { font-weight: 700; letter-spacing: .04em; }
 .exec-unidade { white-space: nowrap; text-align: right; }
 .exec-unidade .btn + .btn { margin-left: 6px; }
 .btn.exec .estado-exec { font-weight: 400; color: var(--ink-2); }
@@ -684,6 +687,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=102"></script>
+<script src="app.js?v=103"></script>
 </body>
 </html>
