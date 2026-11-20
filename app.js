@@ -1732,10 +1732,13 @@ const PRIORIDADES = [["bovespa", "Prioridade Bovespa", "No pregão da B3, o TikT
   ["normal", "Normal", "Sem prioridade: cada fonte abre quantas lives a CPU e a memória da máquina deixarem."],
   ["forex", "Prioridade Forex", "O YouTube da Bovespa fica com no máximo 1 live aberta; o Forex usa o resto da máquina."]];
 
+// troca automática (20/11/2026, pedido do Diogo; monitor_lives/prioridade_auto.py, pelo seguidor do VPS)
+const PRIORIDADE_AUTO = "Troca sozinho nos dias de pregão da B3: Prioridade Bovespa às 08:45 de Brasília (15 min antes da abertura) e Prioridade Forex às 18:30 (fecho). Uma troca feita aqui vale até o próximo horário.";
+
 function htmlPrioridade(e) {
   const atual = e.prioridade ?? "normal";
-  return `<span class="segmentado prioridade" role="group" aria-label="Prioridade dos navegadores"><span class="seg-rot">Lives</span>${PRIORIDADES.map(([k, rot, dica]) =>
-    `<button type="button" data-acao="prioridade" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(dica)}">${rot}</button>`).join("")}</span>`;
+  return `<span class="segmentado prioridade" role="group" aria-label="Prioridade dos navegadores" title="${esc(PRIORIDADE_AUTO)}"><span class="seg-rot">Lives</span>${PRIORIDADES.map(([k, rot, dica]) =>
+    `<button type="button" data-acao="prioridade" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(`${dica} ${PRIORIDADE_AUTO}`)}">${rot}</button>`).join("")}</span>`;
 }
 
 function htmlResumoSaude(e) {
