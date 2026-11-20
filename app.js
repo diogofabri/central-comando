@@ -2876,6 +2876,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
       ${!consol && (CONTEXTOS[ctxLente]?.execucao ?? true) ? `<div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>` : ""}
+      ${consol ? `<div class="exec-fonte">${htmlPrioridade(estado)}</div>` : ""}
       ${ehAgentes ? controleSelfLearning(p) : ""}
     </div>`);
   const modalidades = !(CONTEXTOS[ctxLente]?.execucao ?? true) ? "" : `<div class="linha-modalidades"><nav class="segmentado modalidades" aria-label="Resultado"><span class="seg-rot">Mostrar</span>${modalidadesDoCtx()
