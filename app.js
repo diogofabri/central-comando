@@ -209,6 +209,19 @@ function fonteSupabase(cfg) {
     auth: { flowType: "implicit", detectSessionInUrl: true, persistSession: true },
   });
   const ok = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
+  // O Supabase devolve no máximo 1.000 linhas por consulta, sem avisar (21/11/2026): o dashboard via só as 1.000 ordens
+  // mais ANTIGAS (544 fechadas e todas as vivas de fora) e só os 1.000 resultados mais novos (~3 dias em vez de 30).
+  // `todas` busca em páginas até o fim; a consulta precisa de uma ordem estável (desempate por chave).
+  const todas = async (consulta, teto = 30000) => {
+    const linhas = [];
+    for (let de = 0; de < teto; de += 1000) {
+      const pagina = ok(await consulta().range(de, de + 999));
+      linhas.push(...pagina);
+      if (pagina.length < 1000) break;
+    }
+    return linhas;
+  };
+  const ha30d = () => new Date(Date.now() - 31 * 864e5).toISOString();
   return {
     demo: false,
     sb,
@@ -224,11 +237,12 @@ function fonteSupabase(cfg) {
         sb.from("monitor_fontes").select("*").then(ok),
         sb.from("monitor_itens").select("*").order("nome").then(ok),
         sb.from("monitor_sinais").select("*").order("desde", { ascending: false }).then(ok),
-        sb.from("monitor_resultados").select("*").order("resolvido_em", { ascending: false }).then(ok),
+        todas(() => sb.from("monitor_resultados").select("*").gte("resolvido_em", ha30d())
+          .order("resolvido_em", { ascending: false }).order("fonte").order("sinal_id")),
         sb.from("kpis").select("data,projeto_id,kpi,valor").order("data", { ascending: false }).limit(600).then(ok),
         sb.from("v_lancamentos_usd").select("data,projeto_id,tipo,valor,moeda,valor_usd,descricao").order("data", { ascending: false }).limit(600).then(ok),
         // ordens da ponte do MT5 (migração 0011); sem a tabela ainda, a página segue só com o placar teórico
-        sb.from("monitor_ordens").select("*").gte("criado_em", new Date(Date.now() - 31 * 864e5).toISOString()).order("id").limit(3000).then(ok).catch(() => []),
+        todas(() => sb.from("monitor_ordens").select("*").gte("criado_em", ha30d()).order("id")).catch(() => []),
         // máquina dona de cada fonte (Mac × VPS, migração 0006): renovada a cada passagem do monitor
         sb.from("monitor_maquinas").select("fonte,maquina,visto_em").then(ok).catch(() => []),
       ]);
