@@ -598,6 +598,29 @@ details.como[open] > summary .ico { transform: rotate(90deg); }
 .btn.exec[data-modo="real"].ligado { background: var(--critical); border-color: var(--critical); color: var(--estado-ink); }
 .btn.exec[disabled] { opacity: 1; color: var(--ink-2); border-style: dashed; cursor: not-allowed; }
 .tabela.comparacao td .exec-botoes { flex-wrap: nowrap; }
+/* leitura × escrita (21/11/2026): a Comparação só mostra quem executa (selo); os botões ficam no painel Execução
+   automática, com a conta real separada da demo; os comandos raros do monitor ficam recolhidos */
+.exec-selo { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.exec-selo.desligada { color: var(--ink-2); font-size: 13px; }
+.exec-fonte .badge { min-height: 26px; }
+#painel-exec { scroll-margin-top: 150px; }
+.exec-editar > summary, .exec-um-a-um > summary, .mais-comandos > summary { min-height: 32px; }
+:is(.exec-editar, .exec-um-a-um, .mais-comandos)[open] > summary .ico { transform: rotate(90deg); }
+.exec-grupo { display: grid; gap: 8px; border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+.exec-tit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: -0.01em; }
+.exec-toda { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.exec-um-a-um > summary { margin-top: 0; }
+.exec-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 0 28px; }
+.exec-lista li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.exec-nome { min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; }
+.exec-lista .btn { flex: none; }
+.comandos-monitor { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; margin-bottom: 12px; }
+.mais-comandos > summary { margin-top: 0; min-height: 40px; color: var(--ink); flex-wrap: wrap; row-gap: 0; }
+.mais-comandos .rot-cmd { white-space: nowrap; }
+.mais-comandos[open] { flex: 1 1 100%; }
+.estado-cmd { color: var(--ink-2); font-size: 12.5px; margin-left: 4px; }
+.comandos-lista { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 6px; }
+@media (pointer: coarse) { .exec-editar > summary, .exec-um-a-um > summary, .mais-comandos > summary { min-height: 44px; } }
 .exec-estado { padding: 10px 2px 0; }
 section.agente > h2 .selos { display: inline-flex; gap: 6px; flex-wrap: wrap; font-size: 12px; font-weight: 500; }
 section.agente h3 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; color: var(--ink); text-transform: none; letter-spacing: -0.01em; }
@@ -687,6 +710,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=105"></script>
+<script src="app.js?v=106"></script>
 </body>
 </html>

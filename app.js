@@ -1867,10 +1867,19 @@ function htmlMonitor(e) {
     </div>`;
   });
   const algum = fontesDoCtx().some((f) => e.monitorComando?.[f] !== false);
+  // leitura × escrita (21/11/2026): o título só diz o estado; os comandos raros (corretora, máquina, consenso, desligar
+  // todos) ficam recolhidos em "Comandos do monitor", com o estado atual escrito ao lado. O seletor das lives continua
+  // à vista (pedido do Diogo) e a troca de máquina em andamento também, porque é estado, não comando.
+  const troca = htmlTrocaMaquina(e), trocando = troca.startsWith("<span");
+  const fx = ctxLente === "forex";
+  const estadoCmd = fx ? `${NOME_CORRETORA_FX[e.execucao?.corretora ?? "capitalcom"]} · consenso ${e.consensoLigado ? "ligado" : "desligado"}` : "";
   return `<section class="painel" aria-labelledby="h-monitor">
-    <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span>
-      <span class="direita">${htmlPrioridade(e)}${ctxLente === "forex" ? htmlSeletorCorretora(e) : ""}${htmlTrocaMaquina(e)}${ctxLente === "forex" ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
-      <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></span></h2>
+    <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span></h2>
+    <div class="comandos-monitor">${htmlPrioridade(e)}${trocando ? troca : ""}
+      <details class="mais-comandos"><summary>${ico("chevron")}<span class="rot-cmd">Comandos do monitor</span>${estadoCmd ? ` <span class="estado-cmd">${estadoCmd}</span>` : ""}</summary>
+        <div class="comandos-lista">${fx ? htmlSeletorCorretora(e) : ""}${trocando ? "" : troca}${fx ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
+        <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></div>
+      </details></div>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
 }
@@ -2724,13 +2733,69 @@ function execucaoLigada(modo, f, id) {
   const sel = estado.execucao?.selecao?.[modo] ?? {}, canal = sel.unidades?.[f]?.[id];
   return typeof canal === "boolean" ? canal : sel.fontes?.[f] === true;
 }
-function botaoExecucao(modo, f, id) {  // id ausente = a fonte inteira
+function botaoExecucao(modo, f, id, curto = false) {  // id ausente = a fonte inteira; curto = o nome da fonte já está ao lado
   const fonteToda = id == null, nome = modo === "demo" ? "Demo" : "Real";
   const ligado = fonteToda ? estado.execucao?.selecao?.[modo]?.fontes?.[f] === true : execucaoLigada(modo, f, id);
   const alvo = fonteToda ? `todo o ${FONTES[f]}` : id;
   const titulo = `${ligado ? "Desligar" : "Ligar"} a execução na conta ${nome.toLowerCase()} para ${alvo}`;
   return `<button class="btn pequeno exec ${ligado ? "ligado" : ""}" data-acao="execucao" data-modo="${modo}" data-fonte="${f}" ${fonteToda ? "" : `data-unidade="${esc(id)}"`}
-    data-ligar="${!ligado}" aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico("power")}${fonteToda ? `${nome}: ${FONTES[f]}` : nome}<span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button>`;
+    data-ligar="${!ligado}" aria-pressed="${ligado}" title="${esc(titulo)}" aria-label="${esc(titulo)}">${ico("power")}${fonteToda && !curto ? `${nome}: ${FONTES[f]}` : nome}<span class="estado-exec">${ligado ? "ligado" : "desligado"}</span></button>`;
+}
+
+// Leitura × escrita (21/11/2026, crítica Impeccable, escolha do Diogo): as tabelas de resultado só MOSTRAM quem executa
+// (selo); os botões que gravam no banco ficam no painel "Execução automática", no fim da página, com a conta real
+// separada da demo. Antes, a Comparação tinha de 51 a 79 interruptores Demo/Real ao lado dos números.
+const fonteExecutando = (modo, f) => estado.execucao?.selecao?.[modo]?.fontes?.[f] === true
+  || Object.values(estado.execucao?.selecao?.[modo]?.unidades?.[f] ?? {}).some((v) => v === true);
+function seloExecucao(f, id) {  // id ausente = a fonte (linha do Consolidado)
+  const ligada = (modo) => (id == null ? fonteExecutando(modo, f) : execucaoLigada(modo, f, id));
+  const demo = ligada("demo"), real = ligada("real");
+  if (!demo && !real) return `<span class="exec-selo desligada">desligada</span>`;
+  return `<span class="exec-selo">${demo ? `<span class="badge good" title="Sinais novos abrem ordem na conta demo">${ico("check")}Demo</span>` : ""}${real
+    ? `<span class="badge venda" title="Sinais novos abrem ordem na conta real">${ico("alert")}Real</span>` : ""}</span>`;
+}
+// canais (ou agentes, sites, layouts) que podem ser ligados: os que têm resultado em 30 dias e os já marcados à mão
+function unidadesDeExecucao(f, painelTeorico) {
+  const ids = new Set((painelTeorico?.agentes ?? []).filter((a) => a.tipo !== "todos" && a.id !== TODOS).map((a) => a.id));
+  for (const modo of ["demo", "real"]) Object.keys(estado.execucao?.selecao?.[modo]?.unidades?.[f] ?? {}).forEach((u) => ids.add(u));
+  return [...ids].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+function resumoExecucao(modo, f, ids) {
+  const nome = modo === "demo" ? "Demo" : "Real", [um, varios] = SUBSTANTIVO[f];
+  let texto, ligado;
+  if (f === CONSOLIDADO) {
+    const fontes = fontesDoCtx(), n = fontes.filter((x) => fonteExecutando(modo, x)).length;
+    ligado = n > 0; texto = n ? `${n} de ${fontes.length} fontes` : "desligada";
+  } else {
+    const toda = estado.execucao?.selecao?.[modo]?.fontes?.[f] === true, n = ids.filter((u) => execucaoLigada(modo, f, u)).length;
+    ligado = toda || n > 0;
+    texto = toda ? (n < ids.length ? `toda a fonte, menos ${ids.length - n}` : "toda a fonte") : n ? `${n} ${n === 1 ? um : varios}` : "desligada";
+  }
+  return ligado ? `<span class="badge ${modo === "real" ? "venda" : "good"}">${ico(modo === "real" ? "alert" : "check")}${nome}: ${texto}</span>`
+                : `<span class="badge muted">${nome}: ${texto}</span>`;
+}
+function htmlPainelExecucao(f, ids) {
+  if (!(CONTEXTOS[ctxLente]?.execucao ?? true)) return "";
+  const consol = f === CONSOLIDADO, [um, varios] = SUBSTANTIVO[f];
+  const linhas = (modo) => (consol
+    ? fontesDoCtx().map((x) => `<li><span class="exec-nome">${FONTES[x]}</span>${botaoExecucao(modo, x, null, true)}</li>`)
+    : ids.map((u) => `<li><span class="exec-nome">${esc(u)}</span>${botaoExecucao(modo, f, u)}</li>`)).join("");
+  const grupo = (modo) => {
+    const real = modo === "real", lista = `<ul class="exec-lista">${linhas(modo)}</ul>`;
+    return `<div class="exec-grupo ${modo}" role="group" aria-label="Execução na conta ${real ? "real" : "demo"}">
+      <h3 class="exec-tit">${real ? `Conta real <span class="badge venda">${ico("alert")}dinheiro de verdade</span>` : "Conta demo"}</h3>
+      <p class="meta">${real ? `Quem estiver ligado aqui abre ordens com dinheiro real na ${esc(corretoraExec())}. Cada ligação pede confirmação.`
+        : `Quem estiver ligado aqui abre ordens na conta demo da ${esc(corretoraExec())} a cada sinal novo.`} As ordens já abertas não mudam: seguem até o stop ou o alvo.</p>
+      ${consol ? "" : `<div class="exec-toda">${botaoExecucao(modo, f)}<span class="meta">Liga todos os ${varios} de uma vez; quem foi desligado um a um continua desligado.</span></div>`}
+      ${consol ? lista : !ids.length ? `<p class="meta">Cada ${um} aparece aqui depois do primeiro sinal resolvido.</p>`
+        : real ? `<details class="exec-um-a-um"><summary>${ico("chevron")}Escolher ${varios} da conta real um a um</summary>${lista}</details>` : lista}
+    </div>`;
+  };
+  return `<section class="painel exec-painel" id="painel-exec" aria-labelledby="h-exec">
+      <h2 id="h-exec">${ico("power")} Execução automática <span class="resumo-saude">${resumoExecucao("demo", f, ids)}${resumoExecucao("real", f, ids)}</span></h2>
+      <p class="meta">Quem abre ordem na ${esc(corretoraExec())} quando sai um sinal novo. As tabelas acima só mostram o estado; a mudança é feita aqui.</p>
+      <details class="exec-editar"><summary>${ico("chevron")}Alterar quem executa</summary>${grupo("demo")}${grupo("real")}</details>
+    </section>`;
 }
 
 const rDaOrdem = (o) => {
@@ -2951,6 +3016,9 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
   // em vistaAnaliseR). O painel dos agentes do executor só existe no Forex; na Bovespa os agentes saem do placar.
   const ehAgentes = f === "agentes" && modo === "todos" && ctxLente === "forex", p = painelDaModalidade(f, estado, modo, conta), [um, varios] = SUBSTANTIVO[f];
   const corr = corretoraDoModo(modo), din = dinheiro(p ?? {}), comOrdens = !!corr, consol = f === CONSOLIDADO;
+  const temExec = CONTEXTOS[ctxLente]?.execucao ?? true;
+  const idsExec = !temExec || consol ? [] : unidadesDeExecucao(f, modo === "todos" ? p : painelDaModalidade(f, estado, "todos"));
+  const painelExec = htmlPainelExecucao(f, idsExec);
   const descricao = corr ? `Ordens executadas na ${corr[1]} (conta ${conta}): preço executado, swap e comissão reais, na moeda da conta${p?.moeda ? ` (${p.moeda})` : ""}. Nunca se mistura com outra corretora nem com o teórico.` : null;
   const cab = resumoRecolhido(`<div class="cabecalho-proj" style="--cor:${cor("monitor")}">
       <div class="bloco">
@@ -2960,7 +3028,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
         <p class="resumo">${ehAgentes ? `Saldo de cada agente em dinheiro, com lote ${String(p?.lote ?? 0.01).replace(".", ",")} por operação e já descontado o spread. Tamanho dos contratos pela folha MT5 da Capital.com; spread real medido na API da Capital.com (03/11/2026). Uso pessoal: não é recomendação.` : comOrdens ? descricao : modo === "sem" ? DESCRICAO_MODALIDADE[modo] : consol ? RESUMO_CONSOLIDADO[ctxLente] : ctxLente !== "forex" ? RESUMO_B3 : RESUMO_ANALISE[f]}</p>
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
-      ${!consol && (CONTEXTOS[ctxLente]?.execucao ?? true) ? `<div class="exec-fonte" role="group" aria-label="Execução automática de todo o ${FONTES[f]}">${botaoExecucao("demo", f)}${botaoExecucao("real", f)}</div>` : ""}
+      ${!consol && (CONTEXTOS[ctxLente]?.execucao ?? true) ? `<div class="exec-fonte" aria-label="Execução automática do ${FONTES[f]}">${resumoExecucao("demo", f, idsExec)}${resumoExecucao("real", f, idsExec)}</div>` : ""}
       ${consol ? `<div class="exec-fonte">${htmlPrioridade(estado)}</div>` : ""}
       ${ehAgentes ? controleSelfLearning(p) : ""}
     </div>`);
@@ -2971,16 +3039,17 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
   const aviso = erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : "";
   if (!p?.agentes?.length) {
     const vazio = ehAgentes ? "O resumo dos agentes ainda não chegou. Ele é publicado pelo executor (launchd <code>com.vinculo.agentes</code>) a cada 5 min; confira o log em <code>05-monitor-lives/dados-agentes/logs/</code>."
-      : comOrdens ? `Nenhuma ordem ${conta === "demo" ? "demo" : "real"} ${consol ? `do ${CONTEXTOS[ctxLente].nome}` : `do ${FONTES[f]}`} na ${corr[1]} nos últimos 30 dias. A execução se liga na aba <a href="${hrefAnalise(f, TODOS, "todos")}">Teórico</a>: botão ${conta === "demo" ? "Demo" : "Real"} de cada ${um} ou da fonte inteira.`
+      : comOrdens ? `Nenhuma ordem ${conta === "demo" ? "demo" : "real"} ${consol ? `do ${CONTEXTOS[ctxLente].nome}` : `do ${FONTES[f]}`} na ${corr[1]} nos últimos 30 dias. A execução se liga no painel Execução automática, logo abaixo: ${conta === "demo" ? "conta demo" : "conta real"}, por ${um} ou na fonte inteira.`
       : modo === "sem" ? `Todos os sinais resolvidos do ${FONTES[f]} nos últimos 30 dias viraram ordem.` : `Nenhum sinal do ${FONTES[f]} foi resolvido nos últimos 30 dias. A página se monta sozinha quando o placar resolver o primeiro.`;
-    return `<main class="uma">${aviso}${cab}${modalidades}${htmlFaixaTotais(f, id ?? TODOS, modo, conta)}${estadoConta}<div class="aviso neutro">${ico("radio")}<span>${vazio}</span></div></main>`;
+    return `<main class="uma">${aviso}${cab}${modalidades}${htmlFaixaTotais(f, id ?? TODOS, modo, conta)}${estadoConta}<div class="aviso neutro">${ico("radio")}<span>${vazio}</span></div>${painelExec}</main>`;
   }
   const atual = p.agentes.find((a) => a.id === id) ?? p.agentes[0];
   const unidades = p.agentes.filter((a) => a.tipo !== "todos");
   const max = Math.max(1, ...unidades.map((a) => Math.abs(a.metricas.lucro_usd)));
   const rotSaldoTab = p.agentes.find((a) => a.rotulo_saldo)?.rotulo_saldo ?? rotuloSaldo;
   const comparacao =`<section class="painel" aria-labelledby="h-comp">
-      <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span></h2>
+      <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span>${temExec
+        ? `<span class="direita"><button class="btn pequeno" data-acao="ir-exec" title="Abre o painel Execução automática, no fim da página">${ico("power")} Alterar execução</button></span>` : ""}</h2>
       <div class="rolagem rolavel-y" data-rolavel="comparacao-${f}"><table class="tabela comparacao vira-lista">
         <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : rotSaldoTab}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
         <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
@@ -2990,7 +3059,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
           <td class="col-zero" data-rot="${comOrdens ? "Resultado" : rotSaldoTab}">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
           <td class="num" data-rot="Fator de lucro">${a.metricas.fator_lucro == null ? "—" : String(a.metricas.fator_lucro).replace(".", ",")}</td>
           <td class="num" data-rot="Queda máxima">${din(-a.metricas.drawdown_usd)}</td>
-          <td class="exec-cel">${a.tipo === "todos" ? "" : consol ? (a.fonte ? `<div class="exec-botoes">${botaoExecucao("demo", a.fonte)}${botaoExecucao("real", a.fonte)}</div>` : "") : `<div class="exec-botoes">${botaoExecucao("demo", f, a.id)}${botaoExecucao("real", f, a.id)}</div>`}</td></tr>`).join("")}</tbody></table></div>
+          <td class="exec-cel">${!temExec || a.tipo === "todos" ? "" : consol ? (a.fonte ? seloExecucao(a.fonte) : "") : seloExecucao(f, a.id)}</td></tr>`).join("")}</tbody></table></div>
     </section>`;
   const abas = `<nav class="abas-agentes" aria-label="${varios[0].toUpperCase() + varios.slice(1)}">${p.agentes.map((a) => `<a href="${hrefAnalise(f, a.id)}" ${a.id === atual.id ? 'aria-current="page"' : ""}>${esc(a.id)}${a.self_learning ? ` ${ico("bulb")}` : ""}</a>`).join("")}</nav>`;
   return `<main class="uma">
@@ -3003,6 +3072,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
     ${abas}
     ${htmlAgente(atual)}
     ${htmlPorModalidade(f, atual.id)}
+    ${painelExec}
   </main>`;
 }
 
@@ -3165,6 +3235,13 @@ document.addEventListener("click", (ev) => {
   if (acao === "pausa") { b.disabled = true; return agir(() => fonte.pausar(!estado.pausado)); }
   if (acao === "filtro") return definirFiltro(b.dataset.ativo);
   if (acao === "filtro-eventos") { filtroEventos = b.dataset.projeto; return render(); }
+  if (acao === "ir-exec") {  // só navega: abre o painel de execução e leva o foco até ele
+    const painel = document.getElementById("painel-exec"), det = painel?.querySelector("details.exec-editar");
+    if (!painel) return;
+    if (det) det.open = true;
+    painel.scrollIntoView({ block: "start", behavior: reduzMovimento() ? "auto" : "smooth" });
+    return det?.querySelector("summary")?.focus({ preventScroll: true });
+  }
   // self-learning, consenso e login gravam em chaves globais que hoje são do Forex: fora dele, nada é gravado. A execução
   // tem chaves por contexto (execucao:* no Forex, execucao@bovespa:* na Bovespa) e vale onde o contexto a tiver.
   if ((["self-learning", "consenso", "login"].includes(acao) && ctxLente !== "forex")
