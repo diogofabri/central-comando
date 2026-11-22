@@ -2183,7 +2183,7 @@ function vistaContextoVazio(titulo) {
 function htmlResumoPainel(e) {
   const niveis = fontesDoCtx().map((f) => saudeFonte(f, e).status.nivel);
   const noAr = niveis.filter((n) => n === "ok" || n === "atencao").length, paradas = niveis.filter((n) => n === "parada").length;
-  const atencao = niveis.filter((n) => n === "atencao").length;
+  const atencao = niveis.filter((n) => n === "atencao").length, inativas = niveis.filter((n) => n === "inativa").length;
   const abertos = fontesDoCtx().reduce((n, f) => n + sinaisVigentes(e, f).filter((s) => !foraDaExecucao(s)).length, 0);  // a mesma conta do painel Sinais ativos
   const item = (rot, corpo, cls = "") => `<div class="total-corretora estatico ${cls}"><span class="total-rot">${rot}</span>${corpo}</div>`;
   const contas = ["real", "demo"].map((modo) => {
@@ -2195,12 +2195,15 @@ function htmlResumoPainel(e) {
     if (!vivo) return item(nome, `${htmlBadge("warning", "ponte sem conexão", "alert")}<span class="meta">última notícia ${quando(s.atualizado_em)}</span>`);
     const din = dinheiro({ moeda: s.moeda }), flut = Object.values(s.flutuante ?? {}).reduce((a, x) => a + (Number(x?.lucro) || 0), 0), dia = Number(s.resultado_dia) || 0;
     const cor = (v) => (v < 0 ? "neg" : v > 0 ? "pos" : "");
-    return item(nome, `<b class="num ${cor(flut)}">${din(flut)}</b><span>lucro aberto · ${s.abertas ?? 0} ${s.abertas === 1 ? "aberta" : "abertas"} · ${s.pendentes ?? 0} ${s.pendentes === 1 ? "pendente" : "pendentes"}</span>
+    // posição aberta sem lucro publicado (mercado fechado, sem cotação): nunca mostrar como zero (22/11/2026)
+    const comLucro = Object.keys(s.flutuante ?? {}).length, semCot = Math.max(0, (s.abertas ?? 0) - comLucro);
+    const ultimo = Object.values(s.flutuante ?? {}).some((x) => x?.referencia);
+    return item(nome, `<b class="num ${comLucro ? cor(flut) : ""}">${comLucro || !s.abertas ? din(flut) : "—"}</b><span>lucro aberto${ultimo ? " (pelo último negócio)" : ""}${semCot ? ` · sem cotação para ${semCot === s.abertas ? "a posição aberta agora" : `${semCot} das abertas`}` : ""} · ${s.abertas ?? 0} ${s.abertas === 1 ? "aberta" : "abertas"} · ${s.pendentes ?? 0} ${s.pendentes === 1 ? "pendente" : "pendentes"}</span>
       <span class="meta">resultado do dia <b class="num ${cor(dia)}">${din(dia)}</b></span>`);
   }).join("");
   return `<section class="faixa-totais resumo-painel" aria-label="Resumo do ${esc(CONTEXTOS[ctxLente].nome)} agora">
     ${PREGOES[ctxLente] ? item("Mercado", `<div class="pregao-b3" data-pregao="${ctxLente}">${htmlPregao(ctxLente)}</div>`, "rp-mercado") : ""}
-    ${item("Fontes", `<b class="num">${noAr} de ${niveis.length}</b><span>no ar${paradas ? ` · ${paradas} ${paradas > 1 ? "paradas" : "parada"}` : ""}${atencao ? ` · ${atencao} com atenção` : ""}</span>`, paradas ? "rp-alerta" : "")}
+    ${item("Fontes", `<b class="num">${noAr} de ${niveis.length}</b><span>no ar${paradas ? ` · ${paradas} ${paradas > 1 ? "paradas" : "parada"}` : ""}${atencao ? ` · ${atencao} com atenção` : ""}${inativas ? ` · ${inativas} ${inativas > 1 ? "inativas" : "inativa"} (fim de semana ou desligada)` : ""}</span>`, paradas ? "rp-alerta" : "")}
     ${item("Sinais abertos", `<b class="num">${abertos}</b><span>${abertos === 1 ? "sinal ativo agora" : "sinais ativos agora"}</span>`)}
     ${contas}
   </section>`;
