@@ -283,6 +283,8 @@ function fonteSupabase(cfg) {
         sb.from("monitor_maquinas").select("fonte,maquina,visto_em").then(ok).catch(() => []),
       ]);
       const ctl = Object.fromEntries(controle.map((c) => [c.chave, c.valor]));
+      // mudanças de comando gravadas pelo gatilho do banco (migração 0020); sem a tabela, só as registradas à mão
+      const comandosLog = await sb.from("monitor_comandos").select("*").gte("em", ha30d()).order("em").then(ok).catch(() => []);
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
@@ -304,7 +306,8 @@ function fonteSupabase(cfg) {
                // sala de análise pelo Zoom (22/11/2026): só `true` liga; o monitor publica o que fez por último
                zoomLigado: ctl["zoom:ligado"] === true, zoomEstado: ctl["zoom:estado"] ?? null,
                // histórico de comandos (22/11/2026): cada mudança feita em Comandos, com data e hora, para marcar na curva
-               comandosHistorico: Array.isArray(ctl["comandos:historico"]) ? ctl["comandos:historico"] : [] };
+               comandosHistorico: [...(Array.isArray(ctl["comandos:historico"]) ? ctl["comandos:historico"] : []), ...comandosDoLog(comandosLog)]
+                 .sort((x, y) => new Date(x.em) - new Date(y.em)) };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -329,11 +332,9 @@ function fonteSupabase(cfg) {
     comandarLeituraYoutube: (modo) => sb.from("controle").upsert({ chave: "leitura:youtube", valor: modo }).then(ok),
     comandarZoom: (ligar) => sb.from("controle").upsert({ chave: "zoom:ligado", valor: ligar }).then(ok),
     // lê a lista do banco na hora de acrescentar: outra aba ou o celular pode ter gravado um comando entre as cargas
-    async acrescentarComando(item) {
-      const atual = ok(await sb.from("controle").select("valor").eq("chave", "comandos:historico"))[0]?.valor;
-      const lista = [...(Array.isArray(atual) ? atual : []), item].slice(-400);
-      return sb.from("controle").upsert({ chave: "comandos:historico", valor: lista }).then(ok);
-    },
+    // desde a migração 0020 o gatilho do banco registra toda mudança das chaves de comando: o dashboard não grava mais
+    // (gravaria em dobro). `controle.comandos:historico` fica para o que muda fora do banco (yaml, script, reinício).
+    async acrescentarComando() {},
     // corretora das ordens novas do Forex (18/11/2026): lida pelas pontes a cada ciclo (~15 s)
     comandarCorretora: (id) => sb.from("controle").upsert({ chave: "execucao:corretora", valor: id }).then(ok),
     // seleção do que a ponte do MT5 executa (lida a cada ciclo de ~15 s): {fontes: {tiktok: true}, unidades: {tiktok: {"@canal": false}}}
@@ -1902,8 +1903,16 @@ const PRIORIDADES = [["bovespa", "Prioridade Bovespa", "No pregão da B3, o TikT
 // troca automática (20/11/2026, pedido do Diogo; monitor_lives/prioridade_auto.py, pelo seguidor do VPS)
 const PRIORIDADE_AUTO = "Troca sozinho nos dias de pregão da B3: Prioridade Bovespa às 08:45 de Brasília (15 min antes da abertura) e Prioridade Forex às 18:30 (fecho). Uma troca feita aqui vale até o próximo horário.";
 
+// Desfazer (22/11/2026): a prioridade troca com um clique, sem confirmação; por 8 s fica um "Desfazer" ao lado.
+let desfazerPrioridade = null;
 function htmlPrioridade(e) {
   const atual = e.prioridade ?? "normal";
+  const voltar = desfazerPrioridade && Date.now() < desfazerPrioridade.ate && desfazerPrioridade.anterior !== atual
+    ? `<button type="button" class="btn pequeno" data-acao="prioridade" data-modo="${desfazerPrioridade.anterior}" data-desfazer="1">${ico("back")} Desfazer</button>` : "";
+  if (voltar) return htmlPrioridadeSeletor(atual) + voltar;
+  return htmlPrioridadeSeletor(atual);
+}
+function htmlPrioridadeSeletor(atual) {
   return `<span class="segmentado prioridade" role="group" aria-label="Prioridade dos navegadores" title="${esc(PRIORIDADE_AUTO)}"><span class="seg-rot">Lives</span>${PRIORIDADES.map(([k, rot, dica]) =>
     `<button type="button" data-acao="prioridade" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(`${dica} ${PRIORIDADE_AUTO}`)}">${rot}</button>`).join("")}</span>`;
 }
@@ -2313,6 +2322,10 @@ function controleSelfLearning(p, { compacto = false } = {}) {
 // Curva de saldo legível (22/11/2026, crítica Impeccable): escala com valores redondos, grade por dia, verde acima do
 // zero e vermelho abaixo (antes a linha inteira trocava de cor pelo saldo final) e a marca da queda máxima.
 let idGrafico = 0;
+// curva teórica da mesma unidade, para comparar com a da corretora (22/11/2026). Moedas diferentes nunca se somam: a
+// teórica entra com escala própria, à direita, com o zero alinhado ao da curva principal, e recomeça do zero no início
+// do período mostrado. `vistaAnalise` preenche antes de desenhar a página de corretora e limpa depois.
+let curvaTeoricaDaPagina = null;
 function ticksRedondos(min, max, n = 4) {
   const vao = max - min || 1, pot = 10 ** Math.floor(Math.log10(vao / n));
   const passo = [1, 2, 2.5, 5, 10].map((m) => m * pot).find((p) => vao / p <= n + 1) ?? pot * 10;
@@ -2327,15 +2340,30 @@ function svgSaldo(a) {
   if (pts.length && pts[0][1] !== 0) pts.unshift([pts[0][0] - 60e3, 0]);
   if (pts.length < 2) return `<p class="vazio">A curva aparece a partir de 2 operações resolvidas (${a.metricas.ops} até agora).</p>`;
   const estreito = innerWidth < 560;
-  const W = estreito ? 360 : 640, H = estreito ? 180 : 210, L = 52, R = 12, T = 12, B = 26, w = W - L - R, h = H - T - B;
+  const W = estreito ? 360 : 640, H = estreito ? 180 : 210, L = 52, R = curvaTeoricaDaPagina ? 54 : 12, T = 12, B = 26, w = W - L - R, h = H - T - B;
   // marcos de comando: os deste mercado; numa página de fonte, os gerais e os dela (no Consolidado, todos)
   const fonteDaPagina = rotaAtual().fonte, dataHoraMarco = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
   const comandos = (estadoBruto?.comandosHistorico ?? []).filter((m) => m?.em && m.texto && (!m.ctx || m.ctx === "todos" || m.ctx === ctxLente)
     && (!m.fonte || !fonteDaPagina || fonteDaPagina === CONSOLIDADO || m.fonte === fonteDaPagina))
+    .filter((m) => !m.auto)  // a troca automática da prioridade (2 por dia) fica só no histórico
     .map((m) => [new Date(m.em).getTime(), String(m.texto)]).filter(([tm]) => tm >= pts[0][0]).sort((p, q) => p[0] - q[0]);
   // a curva acaba na última operação resolvida; o eixo vai até o último comando, para ele caber
   const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0] || t0 + 1, ...comandos.map(([tm]) => tm));
   let yMin = Math.min(0, ...pts.map((p) => p[1])), yMax = Math.max(0, ...pts.map((p) => p[1]));
+  // curva teórica (páginas de corretora): outra moeda, então escala própria. O zero das duas fica na mesma altura e a
+  // maior oscilação de cada uma ocupa a mesma altura; a área do gráfico cresce para caber as duas.
+  let serieTeo = null, kTeo = 0;
+  if (curvaTeoricaDaPagina?.curva?.length > 1) {
+    const bruto = curvaTeoricaDaPagina.curva.map(([tp, v]) => [new Date(tp).getTime(), v]);
+    const antesT = bruto.filter(([tp]) => tp < t0), zeroT = antesT.length ? antesT[antesT.length - 1][1] : 0;
+    const serie = [[t0, 0], ...bruto.filter(([tp]) => tp >= t0 && tp <= t1).map(([tp, v]) => [tp, v - zeroT])];
+    const mx = Math.max(0, ...serie.map((q) => q[1])), mn = Math.min(0, ...serie.map((q) => q[1]));
+    const amp = Math.max(mx, -mn), ampPrincipal = Math.max(yMax, -yMin);
+    if (serie.length > 1 && amp > 0 && ampPrincipal > 0) {
+      kTeo = ampPrincipal / amp; serieTeo = serie;
+      yMax = Math.max(yMax, mx * kTeo); yMin = Math.min(yMin, mn * kTeo);
+    }
+  }
   const folga = (yMax - yMin || 1) * 0.12; yMin -= yMin < 0 ? folga : 0; yMax += folga;
   const x = (t) => L + (w * (t - t0)) / Math.max(1, t1 - t0), y = (v) => T + h - (h * (v - yMin)) / (yMax - yMin);
   const d = pts.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
@@ -2363,6 +2391,13 @@ function svgSaldo(a) {
   const ult = pts[pts.length - 1];
   const din = dinheiro(a), curto = a.unidade === "r" ? (t) => String(Math.round(t * 10) / 10).replace(".", ",") : usdCurto;
   const desc = `Saldo acumulado de ${a.id}: ${din(ult[1])} em ${a.metricas.ops} operações, de ${dataCurta(a.curva[0][0])} a ${dataCurta(a.curva[a.curva.length - 1][0])}. Queda máxima ${din(-a.metricas.drawdown_usd)}.`;
+  let teorica = "", legendaTeorica = "";
+  if (serieTeo) {
+    const dinT = curvaTeoricaDaPagina.din;
+    teorica = `<path class="linha-teorica" d="${serieTeo.map(([tp, v], q) => `${q ? "L" : "M"}${x(tp).toFixed(1)},${y(v * kTeo).toFixed(1)}`).join(" ")}"/>
+      ${ticks.filter((tk) => tk !== 0).map((tk) => `<text class="eixo-teorico" x="${W - R + 4}" y="${(y(tk) + 3.5).toFixed(1)}">${esc(Math.abs(tk / kTeo) >= 100 ? dinT(tk / kTeo).replace(/,\d+$/, "") : dinT(tk / kTeo))}</text>`).join("")}`;
+    legendaTeorica = `<span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-teorica"/></svg>teórico dos mesmos sinais no período (escala à direita, ${esc(curvaTeoricaDaPagina.moeda)}): ${esc(dinT(serieTeo[serieTeo.length - 1][1]))}</span>`;
+  }
   const rotFundo = fundo && queda > 0 ? `<circle class="fundo" cx="${x(fundo[0]).toFixed(1)}" cy="${y(fundo[1]).toFixed(1)}" r="3.5"/>
       <text class="fundo-rot" x="${(x(fundo[0]) + (x(fundo[0]) > W - 150 ? -7 : 7)).toFixed(1)}" y="${Math.min(H - B - 4, y(fundo[1]) + 14).toFixed(1)}" text-anchor="${x(fundo[0]) > W - 150 ? "end" : "start"}">queda máx. ${din(-queda)}</text>` : "";
   const listaMarcos = comandos.length ? `<details class="marcos-lista"><summary>${ico("chevron")}Mudanças de comando neste período <span class="count">${comandos.length}</span></summary>
@@ -2401,6 +2436,7 @@ function svgSaldo(a) {
       <defs><clipPath id="cp-pos-${id}"><rect x="${L - 3}" y="${T - 3}" width="${w + 6}" height="${(y0 - T + 3).toFixed(1)}"/></clipPath>
         <clipPath id="cp-neg-${id}"><rect x="${L - 3}" y="${y0.toFixed(1)}" width="${w + 6}" height="${(T + h - y0 + 3).toFixed(1)}"/></clipPath></defs>
       ${dias.map((t) => `<line class="grade dia" x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${T}" y2="${T + h}"/><text x="${x(t).toFixed(1)}" y="${H - 6}" text-anchor="middle">${dataCurta(t)}</text>`).join("")}
+      ${teorica}
       <path class="area pos" clip-path="url(#cp-pos-${id})" d="${area}"/><path class="area neg" clip-path="url(#cp-neg-${id})" d="${area}"/>
       <line class="eixo zero-linha" x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>
       ${trocas.map((m) => `<line class="troca" x1="${x(new Date(m.em).getTime()).toFixed(1)}" x2="${x(new Date(m.em).getTime()).toFixed(1)}" y1="${T}" y2="${T + h}"/><text class="troca-rot" x="${(x(new Date(m.em).getTime()) + 3).toFixed(1)}" y="${T + 9}">v${m.versao}${m.ativo ? ` ${esc(m.ativo)}` : ""}</text>`).join("")}
@@ -2411,7 +2447,7 @@ function svgSaldo(a) {
       <g class="cursor" display="none" aria-hidden="true"><line class="cursor-linha" y1="${T}" y2="${T + h}"/><circle class="cursor-ponto" r="4"/><text class="cursor-rot" y="${T - 2}"/></g>
       ${dias.length >= 2 ? "" : `<text x="${L}" y="${H - 6}">${dataCurta(a.curva[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dataCurta(a.curva[a.curva.length - 1][0])}</text>`}
     </svg>
-    <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}${marcos.length ? `<span><svg viewBox="0 0 22 10"><rect x="7" y="1" width="8" height="8" transform="rotate(45 11 5)" class="amostra-marco"/></svg>mudança de comando (passe o mouse)</span>` : ""}</div>
+    <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}${marcos.length ? `<span><svg viewBox="0 0 22 10"><rect x="7" y="1" width="8" height="8" transform="rotate(45 11 5)" class="amostra-marco"/></svg>mudança de comando (passe o mouse)</span>` : ""}${legendaTeorica}</div>
     ${listaMarcos}${antesDepois}
   </div>`;
 }
@@ -3142,8 +3178,8 @@ function htmlHistoricoComandos() {
     .sort((p, q) => new Date(q.em) - new Date(p.em));
   const quandoFoi = (iso) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   return `<section class="painel" aria-labelledby="h-cmd-hist"><h2 id="h-cmd-hist">${ico("clock")} Histórico de comandos <span class="count">${lista.length}</span></h2>
-    <p class="meta">Cada mudança feita nesta página fica registrada e aparece como um marco na curva de saldo, para comparar o resultado antes e depois. A troca automática da prioridade das lives não entra.</p>
-    ${lista.length ? `<ul class="lista compacta rolavel" data-rolavel="cmd-historico">${lista.slice(0, 80).map((m) => `<li><b class="num">${quandoFoi(m.em)}</b><span>${esc(m.texto)}</span>${m.fonte && FONTES[m.fonte] ? `<span class="badge muted">${FONTES[m.fonte]}</span>` : ""}${m.ctx === "todos" ? `<span class="badge muted">os dois mercados</span>` : ""}</li>`).join("")}</ul>`
+    <p class="meta">Cada mudança feita nesta página fica registrada e aparece como um marco na curva de saldo, para comparar o resultado antes e depois. Vale para qualquer origem: esta página, script ou a troca automática da prioridade (que aparece aqui, mas não vira marco).</p>
+    ${lista.length ? `<ul class="lista compacta rolavel" data-rolavel="cmd-historico">${lista.slice(0, 80).map((m) => `<li><b class="num">${quandoFoi(m.em)}</b><span>${esc(m.texto)}</span>${m.fonte && FONTES[m.fonte] ? `<span class="badge muted">${FONTES[m.fonte]}</span>` : ""}${m.ctx === "todos" ? `<span class="badge muted">os dois mercados</span>` : ""}${m.auto ? `<span class="badge muted">automática</span>` : ""}</li>`).join("")}</ul>`
       : `<p class="vazio">Nenhuma mudança registrada ainda.</p>`}
   </section>`;
 }
@@ -3454,7 +3490,12 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
     ${htmlFaixaTotais(f, atual.id, modo, conta)}
     ${modalidades}
     ${estadoConta}
-    ${htmlAgente(atual)}
+    ${(() => {
+      // página de corretora: a curva teórica da mesma unidade entra por baixo, para ver o que a execução perdeu ou ganhou
+      const teo = comOrdens ? painelDaModalidade(f, estado, "todos")?.agentes?.find((x) => x.id === atual.id) : null;
+      curvaTeoricaDaPagina = teo?.curva?.length > 1 ? { curva: teo.curva, din: dinheiro(teo), moeda: teo.moeda ?? "US$" } : null;
+      try { return htmlAgente(atual); } finally { curvaTeoricaDaPagina = null; }
+    })()}
     ${comparacao}
     ${htmlAgenteDetalhe(atual)}
     ${painelExec}
@@ -3485,7 +3526,7 @@ function prepararRolagens(raiz) {
   raiz.querySelectorAll("[data-rolavel]").forEach((el) => {
     // celular (22/11/2026): sem altura máxima nem rolagem própria; a lista longa mostra os primeiros itens e um botão
     if (estreita) {
-      const itens = el.matches("ul") ? [...el.children] : [...el.querySelectorAll("tbody tr")], limite = el.matches("ul") ? 4 : 6;
+      const itens = el.matches("ul") ? [...el.children] : [...el.querySelectorAll("tbody tr")], limite = el.matches("ul") ? 3 : 5;
       if (itens.length > limite && !listasAbertas.has(el.dataset.rolavel)) {
         itens.slice(limite).forEach((x) => x.classList.add("oculta-movel"));
         const mais = document.createElement("button");
@@ -3620,6 +3661,38 @@ async function recarregar(forcar = false) {  // só a atualização periódica p
 // Histórico de comandos (22/11/2026, pedido do Diogo): toda mudança feita em Comandos fica registrada com data e
 // hora (`controle.comandos:historico`) e vira um marco na curva de saldo, para ver o resultado antes e depois dela.
 // `ctx`: "todos" quando vale para os dois mercados; `fonte`: quando a mudança é só de uma fonte.
+// Linhas de `monitor_comandos` (chave, antes, depois) viradas em frases. A troca de prioridade que acontece junto com
+// a marca `prioridade:auto` (seguidor do VPS) é a automática: entra no histórico, mas não vira marco no gráfico.
+function comandosDoLog(linhas) {
+  const autos = linhas.filter((l) => l.chave === "prioridade:auto").map((l) => new Date(l.em).getTime());
+  const ctxDa = (s) => (String(s).includes("@bovespa") ? "bovespa" : "forex"), fonteDa = (s) => String(s).split("@")[0];
+  const saida = [];
+  for (const l of linhas) {
+    const d = l.depois, resto = l.chave.slice(l.chave.indexOf(":") + 1), tipo = l.chave.split(":")[0];
+    const item = (texto, extra = {}) => saida.push({ em: l.em, texto, ...extra });
+    if (l.chave === "pausa") item(d === true ? "Todos os agentes pausados" : "Agentes retomados", { ctx: "todos" });
+    else if (l.chave === "consenso:modo") item(`Consenso ${d === true ? "ligado" : "desligado"} (TikTok e YouTube)`, { ctx: "forex" });
+    else if (l.chave === "prioridade:navegadores") item(`Lives: ${(PRIORIDADES.find(([k]) => k === d) ?? [0, d])[1]}`,
+      { ctx: "todos", auto: autos.some((x) => Math.abs(x - new Date(l.em).getTime()) < 15e3) });
+    else if (l.chave === "zoom:ligado") item(`Sala do Zoom ${d === true ? "ligada" : "desligada"}`, { ctx: "forex" });
+    else if (l.chave === "execucao:corretora") item(`Ordens novas do Forex na ${NOME_CORRETORA_FX[d] ?? d}`, { ctx: "forex" });
+    else if (l.chave === "agentes:self_learning") item(`Self-learning ${d === false ? "pausado" : "retomado"}`, { ctx: "forex", fonte: "agentes" });
+    else if (l.chave === "maquinas:pedido") { if (d?.alvo) item(`Monitor passa a operar no ${NOME_MAQUINA[d.alvo] ?? d.alvo}`, { ctx: "todos" }); }
+    else if (tipo === "monitor") { if (l.antes != null || d === false) item(`${FONTES[fonteDa(resto)] ?? resto} ${d === false ? "desligado" : "ligado"}`, { ctx: ctxDa(resto), fonte: fonteDa(resto) }); }
+    else if (tipo === "audio") item(`Escutar live do ${FONTES[fonteDa(resto)] ?? resto} ${d === true ? "ligado" : "desligado"}`, { ctx: ctxDa(resto), fonte: fonteDa(resto) });
+    else if (tipo === "leitura") item(`YouTube lê ${{ todos: "todos os canais", robo: "só os robôs", trader: "só os traders" }[d] ?? d}`, { ctx: ctxDa(resto), fonte: "youtube" });
+    else if (/^execucao(@bovespa)?:(demo|real)$/.test(l.chave)) {
+      const modo = l.chave.endsWith(":real") ? "REAL" : "demo", ctx = ctxDa(l.chave), a = l.antes ?? {}, b = d ?? {};
+      for (const f of new Set([...Object.keys(a.fontes ?? {}), ...Object.keys(b.fontes ?? {})])) {
+        if ((a.fontes?.[f] === true) !== (b.fontes?.[f] === true)) item(`Execução ${modo} ${b.fontes?.[f] === true ? "ligada" : "desligada"}: todo o ${FONTES[f] ?? f}`, { ctx, fonte: f });
+      }
+      for (const f of Object.keys(b.unidades ?? {})) for (const [u, v] of Object.entries(b.unidades[f] ?? {})) {
+        if (typeof v === "boolean" && a.unidades?.[f]?.[u] !== v) item(`Execução ${modo} ${v ? "ligada" : "desligada"}: ${u} (${FONTES[f] ?? f})`, { ctx, fonte: f });
+      }
+    }
+  }
+  return saida;
+}
 async function registrarComando(registro) {
   await fonte.acrescentarComando({ em: new Date().toISOString(), ctx: ctxLente, ...registro });
 }
@@ -3729,6 +3802,8 @@ document.addEventListener("click", (ev) => {
   if (acao === "prioridade") {
     const modo = b.dataset.modo;
     if (modo === (estado.prioridade ?? "normal")) return;
+    desfazerPrioridade = b.dataset.desfazer ? null : { anterior: estado.prioridade ?? "normal", ate: Date.now() + 8000 };
+    if (desfazerPrioridade) setTimeout(() => { if (desfazerPrioridade && Date.now() >= desfazerPrioridade.ate) { desfazerPrioridade = null; render(); } }, 8200);
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarPrioridade(modo), { texto: `Lives: ${(PRIORIDADES.find(([k]) => k === modo) ?? [0, modo])[1]}`, ctx: "todos" });
   }
