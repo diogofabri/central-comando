@@ -2337,7 +2337,11 @@ function situacaoDoHistorico(x, ordens) {
   return x.fechamento && (x.v != null || x.saida != null) ? "exec" : /^(aberta|pendente)/.test(x.desfecho ?? "") ? "viva" : "nao";
 }
 // "recusada: preço 4013,2 já perto do stop 4012 (resta …)" e "… 3950,1 …" são o mesmo motivo: sem números nem parênteses
-const motivoCurto = (t) => String(t ?? "").replace(/\([^)]*\)/g, "").replace(/·\s*parcial\s+\d+\s+de\s+\d+/gi, "").replace(/instrumento\s+\S+\s+sem/i, "instrumento sem").replace(/[-+−]?\d[\d.,]*/g, "").replace(/\s+/g, " ").replace(/\s+([:,.])/g, "$1").trim().replace(/[:,·\s]+$/, "") || "sem motivo";
+// ativos que só executam na conta real (22/11/2026, decisão do Diogo): o NQ não existe no MT4 da demo; a recusa é esperada
+// e sai numa linha própria, fora do grupo "instrumento sem símbolo" (que aponta mapa faltando)
+const SO_CONTA_REAL = ["NQ"];
+const soContaReal = (t) => SO_CONTA_REAL.find((a) => new RegExp(`instrumento\\s+${a}\\s+sem`, "i").test(String(t ?? "")));
+const motivoCurto = (t) => soContaReal(t) ? `${soContaReal(t)}: só na conta real (esperado: a demo não tem este ativo)` : String(t ?? "").replace(/\([^)]*\)/g, "").replace(/·\s*parcial\s+\d+\s+de\s+\d+/gi, "").replace(/instrumento\s+\S+\s+sem/i, "instrumento sem").replace(/[-+−]?\d[\d.,]*/g, "").replace(/\s+/g, " ").replace(/\s+([:,.])/g, "$1").trim().replace(/[:,·\s]+$/, "") || "sem motivo";
 function htmlMotivos(linhas) {
   const n = {};
   linhas.forEach((x) => { const k = motivoCurto(x.desfecho); n[k] = (n[k] ?? 0) + 1; });
