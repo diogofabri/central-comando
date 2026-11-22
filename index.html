@@ -770,6 +770,24 @@ a.btn.primario { color: var(--accent-ink); }
 .grafico .linha-teorica { fill: none; stroke: var(--ink-3); stroke-width: 1.5; stroke-dasharray: 5 4; }
 .grafico .eixo-teorico { fill: var(--ink-3); }
 .amostra-teorica { stroke: var(--ink-3); stroke-width: 1.5; stroke-dasharray: 5 4; }
+/* crítica Impeccable de 22/11/2026 (28/40) */
+small.amostra { font-size: 12px; }
+.hist-filtros .segmentado button .num { opacity: 1; color: var(--ink-2); }
+.hist-filtros .segmentado button[aria-pressed="true"] .num { color: inherit; }
+.tabela td.agora .detalhe { white-space: normal; overflow: visible; }
+.corpo-fonte > summary { margin-top: 4px; }
+.corpo-fonte[open] > summary .ico { transform: rotate(90deg); }
+@media (min-width: 560px) { .corpo-fonte > summary { display: none; } }
+@media (max-width: 560px) {
+  .ctx-faixa { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .cabecalho-proj.compacto .meta { display: none; }  /* a descrição da página fica no computador */
+  .resumo-painel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .resumo-painel .total-corretora { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 10px 12px; }
+  .resumo-painel .total-corretora:nth-child(2n) { border-right: 0; }
+  .tabela.vira-lista td.cel-vazia { display: none; }
+  .hist-filtros .segmentado { border-radius: 14px; }
+}
+@media (pointer: coarse) { .aba-seta { min-width: 44px; min-height: 44px; } a.canal { display: inline-flex; align-items: center; min-height: 32px; } }
 </style>
 </head>
 <body>
@@ -817,6 +835,6 @@ a.btn.primario { color: var(--accent-ink); }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=125"></script>
+<script src="app.js?v=126"></script>
 </body>
 </html>

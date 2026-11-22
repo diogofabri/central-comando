@@ -677,6 +677,10 @@ function rotaAtual() {
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? doMonitor({ tipo: "monitor" }) : { tipo: "projeto", id: m[1], ctx: "forex" };
   if (h.startsWith("#/monitor")) return doMonitor({ tipo: "monitor" });
   if (h.startsWith("#/termometro")) return doMonitor({ tipo: "termometro" });
+  if (h.startsWith("#/historico")) {
+    const q = new URLSearchParams(h.split("?")[1] ?? ""), m = q.get("m");
+    return doMonitor({ tipo: "historico", modo: MODOS_VALIDOS.has(m) ? m : "todos", conta: q.get("c") === "real" ? "real" : "demo" });
+  }
   if (h.startsWith("#/comandos")) return doMonitor({ tipo: "comandos", fonte: new URLSearchParams(h.split("?")[1] ?? "").get("f") ?? undefined });
   const an = h.match(/^#\/(consolidado|agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
   if (an) {
@@ -882,7 +886,7 @@ const hrefCtx = (ctx, caminho = "monitor") => (ctx === "todos" ? "#/todos/compar
 function htmlGrupoMonitor(rota, e) {
   const total = (estadoBruto?.monitorSinais ?? []).filter((s) => sinalAberto(s) && (ctxAtual === "todos" || ctxDe(s.fonte) === ctxAtual)).length;
   return `<div class="aba-grupo" data-menu="monitor"${menuMonitorAberto ? " data-aberto" : ""}>
-    <a class="aba" href="${hrefCtx(ctxAtual)}" ${["monitor", "analise", "termometro", "comparar", "comandos"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
+    <a class="aba" href="${hrefCtx(ctxAtual)}" ${["monitor", "analise", "termometro", "comparar", "comandos", "historico"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
     <button type="button" class="aba-seta" data-menu-seta aria-expanded="${menuMonitorAberto}" aria-controls="menu-monitor" aria-label="Fontes do monitor">${ico("chevron")}</button>
   </div>`;
 }
@@ -897,8 +901,9 @@ function htmlSubmenuMonitor(rota, e) {
     ? `<li><a href="#/todos/comparar" ${rota.tipo === "comparar" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Comparar</a></li>`
     // Painel do mercado (18/11/2026): com Forex/Bovespa só selecionando o mercado, a página principal (sinais ativos, saúde
     // das fontes, ao vivo, placar) ganhou um item próprio
-    : `<li><a href="${hrefCtx(ctxM)}" ${rota.tipo === "monitor" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Painel</a></li>`
-    + `<li><a href="${hrefCtx(ctxM, CONSOLIDADO)}" ${rota.tipo === "analise" && rota.fonte === CONSOLIDADO && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Consolidado</a></li>`
+    : `<li><a href="${hrefCtx(ctxM)}" ${rota.tipo === "monitor" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Agora</a></li>`
+    + `<li><a href="${hrefCtx(ctxM, CONSOLIDADO)}" ${rota.tipo === "analise" && rota.fonte === CONSOLIDADO && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Resultado</a></li>`
+    + `<li><a href="${hrefCtx(ctxM, "historico")}" ${rota.tipo === "historico" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Histórico</a></li>`
     + CONTEXTOS[ctxM].fontes.map((f) => {
       const n = sinaisAbertosDe(el, f);
       const s = saudeFonte(f, el).status;
@@ -910,7 +915,7 @@ function htmlSubmenuMonitor(rota, e) {
 
 // Faixa do contexto: diz em qual mercado e corretora a tela está (as telas do Forex e da Bovespa são parecidas)
 function htmlFaixaContexto(rota) {
-  if (!["monitor", "analise", "termometro", "comparar", "comandos"].includes(rota.tipo)) return "";
+  if (!["monitor", "analise", "termometro", "comparar", "comandos", "historico"].includes(rota.tipo)) return "";
   if (rota.tipo === "comparar") return `<p class="ctx-faixa" data-ctx="todos"><b>Todos</b><span>Forex × Bovespa lado a lado · ${rota.visao === "efetiva" ? "ordens executadas" : "placar teórico"} · resultado em R</span></p>`;
   const c = CONTEXTOS[ctxLente];
   const texto = ctxLente === "forex" ? `dados Capital.com · execução ${corretoraExec()}` : c.corretora;
@@ -1966,11 +1971,13 @@ function htmlMonitor(e) {
       <div class="titulo titulo-fonte"><span class="nome-fonte">${FONTES[f]}</span></div>
       <div class="meta estado-fonte">${selo}${motivos.filter((m) => m !== "sem login").map((m) => htmlBadge("warning", m, "alert")).join("")}${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}${htmlMaquinaFonte(f, e)}</div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
+      <details class="corpo-fonte" ${innerWidth >= 560 ? "open" : ""}><summary>${ico("chevron")}detalhes da fonte</summary>
       ${f === "youtube" ? htmlLoginYoutube(e).replace(/<button[^>]*data-acao="login"[\s\S]*?<\/button>/g, "") : f === "tiktok" ? htmlLoginTiktok(e) : ""}
       ${FONTES_COM_VIDEO.has(f) && e.audio?.[`${f}${sufixoDe(ctxLente)}`] === true ? `<div class="meta"><span class="badge auto">${ico("radio")}escutando a live</span></div>` : ""}
       ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
       ${rodada}
       ${resumoStatusFonte(f, visiveis)}
+      </details>
       </div>
       <details class="fila"><summary>${ico("chevron")}${GRUPOS_FONTE[f].titulo} <span class="count">${nItens}</span></summary>
         ${(COMO_SITES.has(f) ? htmlStatusSites(visiveis, f) : htmlStatusFonte(f, visiveis)) || `<p class="vazio">Os itens com sinal aberto estão em Sinais ativos.</p>`}
@@ -2237,8 +2244,7 @@ function vistaMonitor() {
     ${htmlAoVivo(e)}
     ${htmlMonitor(e)}
     ${htmlTermometroCompacto(e)}
-    ${htmlPlacar(e)}
-    ${htmlAtrasos(e)}
+    <p class="meta nota">O placar dos sinais e o atraso das leituras estão em <a href="${hrefCtx(ctxLente, CONSOLIDADO)}">Resultado</a>; as operações uma a uma, em <a href="${hrefCtx(ctxLente, "historico")}">Histórico</a>.</p>
     ${NOTA_USO}
   </main>`;
 }
@@ -2367,9 +2373,9 @@ function svgSaldo(a) {
   const folga = (yMax - yMin || 1) * 0.12; yMin -= yMin < 0 ? folga : 0; yMax += folga;
   const x = (t) => L + (w * (t - t0)) / Math.max(1, t1 - t0), y = (v) => T + h - (h * (v - yMin)) / (yMax - yMin);
   const d = pts.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const area = `${d} L${x(t1).toFixed(1)},${y(0).toFixed(1)} L${x(t0).toFixed(1)},${y(0).toFixed(1)} Z`;
+  const area = `${d} L${x(pts[pts.length - 1][0]).toFixed(1)},${y(0).toFixed(1)} L${x(t0).toFixed(1)},${y(0).toFixed(1)} Z`;
   // o zero sempre rotulado (é a linha de referência do saldo); rótulo a menos de 14 px de outro sai
-  const ticks = ticksRedondos(yMin, yMax, estreito ? 3 : 4).filter((t) => t >= yMin && t <= yMax);
+  const ticks = ticksRedondos(yMin, yMax, estreito ? 3 : 5).filter((t) => t >= yMin && t <= yMax);
   // grade por dia: no máximo 6 datas, sempre à meia-noite local; com menos de 2 dias ficam só as datas das pontas
   const DIA = 864e5, nDias = (t1 - t0) / DIA, passoDia = Math.max(1, Math.ceil(nDias / (estreito ? 4 : 6)));
   const dias = [];
@@ -2383,7 +2389,7 @@ function svgSaldo(a) {
   for (const [tm, texto] of comandos) {
     const xm = Math.round(x(tm) * 10) / 10, rot = `${new Date(tm).toLocaleString("pt-BR", dataHoraMarco)} · ${texto}`;
     const ult = marcos[marcos.length - 1];
-    if (ult && xm - ult[0] < 6) ult[1] += ` | ${rot}`; else marcos.push([xm, rot]);
+    if (ult && xm - ult[0] < 20) ult[1] += ` | ${rot}`; else marcos.push([xm, rot]);
   }
   // pontos para o cursor: no máximo ~240, já em coordenadas do desenho, com o texto pronto (data, hora e saldo)
   const passoH = Math.max(1, Math.ceil(pts.length / 240)), dataHora = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
@@ -2395,7 +2401,12 @@ function svgSaldo(a) {
   if (serieTeo) {
     const dinT = curvaTeoricaDaPagina.din;
     teorica = `<path class="linha-teorica" d="${serieTeo.map(([tp, v], q) => `${q ? "L" : "M"}${x(tp).toFixed(1)},${y(v * kTeo).toFixed(1)}`).join(" ")}"/>
-      ${ticks.filter((tk) => tk !== 0).map((tk) => `<text class="eixo-teorico" x="${W - R + 4}" y="${(y(tk) + 3.5).toFixed(1)}">${esc(Math.abs(tk / kTeo) >= 100 ? dinT(tk / kTeo).replace(/,\d+$/, "") : dinT(tk / kTeo))}</text>`).join("")}`;
+      ${(() => {
+        const vs = serieTeo.map((q) => q[1]), mn = Math.min(0, ...vs), mx = Math.max(0, ...vs);
+        const marcas = [mx, mx / 2, mn / 2, mn].filter((v, k, l) => v !== 0 && l.indexOf(v) === k)
+          .filter((v, k, l) => k === 0 || Math.abs(y(v * kTeo) - y(l[k - 1] * kTeo)) >= 14);
+        return marcas.map((v) => `<text class="eixo-teorico" x="${W - R + 4}" y="${(y(v * kTeo) + 3.5).toFixed(1)}">${esc(Math.abs(v) >= 100 ? dinT(v).replace(/,\d+$/, "") : dinT(v))}</text>`).join("");
+      })()}`;
     legendaTeorica = `<span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-teorica"/></svg>teórico dos mesmos sinais no período (escala à direita, ${esc(curvaTeoricaDaPagina.moeda)}): ${esc(dinT(serieTeo[serieTeo.length - 1][1]))}</span>`;
   }
   const rotFundo = fundo && queda > 0 ? `<circle class="fundo" cx="${x(fundo[0]).toFixed(1)}" cy="${y(fundo[1]).toFixed(1)}" r="3.5"/>
@@ -2635,9 +2646,12 @@ const linkDaUnidade = (a) => { const u = urlDaUnidade(a); const o = a.tipo === "
 // indicadores, curva e pontos fracos), depois a Comparação, que é também o seletor de canal (a tira de abas saiu), e por
 // fim o histórico e os recortes. A faixa de totais é o seletor de modalidade (a pílula "Mostrar" e a tabela "por
 // modalidade" saíram: repetiam os mesmos números).
-function htmlAgenteDetalhe(a) {
+const hrefHistorico = (modo = "todos", conta = "demo") => `${hrefCtx(ctxLente, "historico")}${modo && modo !== "todos" ? `?m=${modo}${corretoraDoModo(modo) && conta === "real" ? "&c=real" : ""}` : ""}`;
+// `paraHistorico`: no Resultado do mercado as operações uma a uma ficam na página Histórico (22/11/2026: o mesmo
+// histórico aparecia aqui e ocuparia as duas páginas); nas páginas de fonte e de canal o histórico continua no lugar
+function htmlAgenteDetalhe(a, paraHistorico = null) {
   return `<section class="painel agente detalhe" aria-label="Histórico e recortes de ${esc(a.id)}">
-    ${htmlHistorico(a)}
+    ${paraHistorico ? `<p class="meta"><a class="btn pequeno" href="${paraHistorico}">${ico("clock")} Ver as ${a.historico?.length ?? 0} operações no Histórico</a><span>com filtro por situação, lado e ativo</span></p>` : htmlHistorico(a)}
     <h3>Onde atua</h3>
     ${htmlAtuacao(a)}
     ${htmlRecortes(a)}
@@ -2796,7 +2810,7 @@ function leituraUsd(a, [um]) {
   const c = a.por_lado.compra, v = a.por_lado.venda;
   if (c && v && c.ops >= 3 && v.ops >= 3 && (c.lucro_usd > 0) !== (v.lucro_usd > 0)) {
     const [ruim, bom] = c.lucro_usd < 0 ? ["compras", "vendas"] : ["vendas", "compras"];
-    fracos.push(`As ${ruim} perdem enquanto as ${bom} ganham: o lado importa neste ${um}.`);
+    fracos.push(`As ${ruim} perdem enquanto as ${bom} ganham: o lado importa ${um === "fonte" ? "nesta" : "neste"} ${um}.`);
   }
   const expirados = a.desfechos.expirado?.ops ?? 0;
   if (n >= 10 && expirados / n > 0.4) fracos.push(`${Math.round((100 * expirados) / n)}% das operações expiram sem bater alvo nem stop: alvo longe demais?`);
@@ -3173,14 +3187,39 @@ function htmlEstadoComandos(e) {
   return `<p class="meta estado-comandos" aria-label="Estado dos comandos do monitor">${partes.map((x) => `<span>${x}</span>`).join("")}
     <a class="btn pequeno" href="${hrefCtx(ctxLente, "comandos")}">${ico("power")} Comandos</a></p>`;
 }
-function htmlHistoricoComandos() {
+// Histórico (22/11/2026, pedido do Diogo): uma página só para o que já aconteceu. As operações do mercado inteiro, na
+// modalidade escolhida (cada corretora, teórico ou sem disparo), e as mudanças de comando. O histórico de cada fonte e
+// de cada canal continua na página dele.
+function vistaHistorico(modo = "todos", conta = "demo") {
+  modo = modoNoCtx(modo);
+  if (ctxLente !== "forex" && !(estado.monitorFontes ?? []).length) return vistaContextoVazio(`Histórico · ${CONTEXTOS[ctxLente].nome}`);
+  const p = painelDaModalidade(CONSOLIDADO, estado, modo, conta), corr = corretoraDoModo(modo), todos = p?.agentes?.find((a) => a.id === TODOS) ?? p?.agentes?.[0];
+  const nav = `<div class="linha-modalidades"><nav class="segmentado modalidades" aria-label="Qual histórico mostrar"><span class="seg-rot">Mostrar</span>${modalidadesDoCtx()
+    .map(([k, rot]) => `<a href="${hrefHistorico(k, conta)}" ${k === modo ? 'aria-current="page"' : ""}>${rot}</a>`).join("")}</nav>${corr
+    ? `<nav class="segmentado contas" aria-label="Conta"><span class="seg-rot">Conta</span>${[["demo", "Demo"], ["real", "Real"]].map(([k, rot]) => `<a href="${hrefHistorico(modo, k)}" ${k === conta ? 'aria-current="page"' : ""}>${rot}</a>`).join("")}</nav>` : ""}</div>`;
+  return `<main class="uma">
+    ${avisoErro()}
+    <div class="cabecalho-proj compacto" style="--cor:${cor("monitor")}">
+      <div class="bloco">
+        <a class="voltar" href="${hrefCtx(ctxLente, CONSOLIDADO)}">${ico("back")} Resultado</a>
+        <h1><i class="ponto" aria-hidden="true"></i>Histórico · ${esc(CONTEXTOS[ctxLente].nome)}</h1>
+        <div class="meta"><span>Tudo que já aconteceu: as operações do mercado, uma a uma, e as mudanças de comando. O histórico de cada fonte e de cada canal fica na página dele.</span></div>
+      </div>
+    </div>
+    ${nav}
+    <section class="painel agente" aria-label="Operações do ${esc(CONTEXTOS[ctxLente].nome)}">${todos ? htmlHistorico(todos) : `<p class="vazio">Nenhuma operação nesta modalidade nos últimos 30 dias.</p>`}</section>
+    ${htmlHistoricoComandos()}
+  </main>`;
+}
+function htmlHistoricoComandos(limite = 80) {
   const lista = (estadoBruto?.comandosHistorico ?? []).filter((m) => m?.em && m.texto && (!m.ctx || m.ctx === "todos" || m.ctx === ctxLente))
     .sort((p, q) => new Date(q.em) - new Date(p.em));
   const quandoFoi = (iso) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   return `<section class="painel" aria-labelledby="h-cmd-hist"><h2 id="h-cmd-hist">${ico("clock")} Histórico de comandos <span class="count">${lista.length}</span></h2>
     <p class="meta">Cada mudança feita nesta página fica registrada e aparece como um marco na curva de saldo, para comparar o resultado antes e depois. Vale para qualquer origem: esta página, script ou a troca automática da prioridade (que aparece aqui, mas não vira marco).</p>
-    ${lista.length ? `<ul class="lista compacta rolavel" data-rolavel="cmd-historico">${lista.slice(0, 80).map((m) => `<li><b class="num">${quandoFoi(m.em)}</b><span>${esc(m.texto)}</span>${m.fonte && FONTES[m.fonte] ? `<span class="badge muted">${FONTES[m.fonte]}</span>` : ""}${m.ctx === "todos" ? `<span class="badge muted">os dois mercados</span>` : ""}${m.auto ? `<span class="badge muted">automática</span>` : ""}</li>`).join("")}</ul>`
+    ${lista.length ? `<ul class="lista compacta rolavel" data-rolavel="cmd-historico">${lista.slice(0, limite).map((m) => `<li><b class="num">${quandoFoi(m.em)}</b><span>${esc(m.texto)}</span>${m.fonte && FONTES[m.fonte] ? `<span class="badge muted">${FONTES[m.fonte]}</span>` : ""}${m.ctx === "todos" ? `<span class="badge muted">os dois mercados</span>` : ""}${m.auto ? `<span class="badge muted">automática</span>` : ""}</li>`).join("")}</ul>`
       : `<p class="vazio">Nenhuma mudança registrada ainda.</p>`}
+    ${lista.length > limite ? `<p class="meta"><a href="${hrefCtx(ctxLente, "historico")}">Ver as ${lista.length} mudanças no Histórico</a></p>` : ""}
   </section>`;
 }
 function botaoFonte(f, e) {
@@ -3222,12 +3261,12 @@ function vistaComandos(foco) {
     ${avisoErro()}
     <div class="cabecalho-proj compacto" style="--cor:${cor("monitor")}">
       <div class="bloco">
-        <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Painel</a>
+        <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Agora</a>
         <h1><i class="ponto" aria-hidden="true"></i>Comandos do monitor · ${esc(CONTEXTOS[ctxLente].nome)}</h1>
         <div class="meta"><span>O único lugar que liga, desliga e escolhe. Painel, Consolidado e as páginas das fontes só mostram o estado.</span></div>
       </div>
     </div>
-    ${blocoFontes}${blocoLeitura}${blocoExec}${blocoAgentes}${blocoMaquina}${htmlHistoricoComandos()}
+    ${blocoFontes}${blocoLeitura}${blocoExec}${blocoAgentes}${blocoMaquina}${htmlHistoricoComandos(8)}
   </main>`;
 }
 
@@ -3249,7 +3288,7 @@ function painelDeOrdens(f, e, modo, corretora = null) {
       .map((o) => ({ r: rDaOrdem(o), v: Number(o.resultado), momento: o.fechado_em, aberto_em: o.aberto_em ?? o.sinal_desde, ativo: o.instrumento, lado: o.direcao, status: DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "outro" }));
     const abertos = lista.filter((o) => o.status === "aberta" || o.status === "pendente")
       .map((o) => ({ instrumento: o.instrumento, direcao: o.direcao, entrada: o.preco_execucao ?? o.preco_pedido, stop: o.stop, alvos: o.alvo }));
-    const base = nome === TODOS ? `Soma das ordens ${conta} de todos os ${SUBSTANTIVO[f][1]}${corretora ? ` na ${corretora}` : ""}` : `Ordens ${conta} da ${corretora ?? corretoraExec()}`;
+    const base = nome === TODOS ? `Soma das ordens ${conta} de ${f === CONSOLIDADO ? "todas as" : "todos os"} ${SUBSTANTIVO[f][1]}${corretora ? ` na ${corretora}` : ""}` : `Ordens ${conta} da ${corretora ?? corretoraExec()}`;
     const recusas = lista.filter((o) => o.status === "recusada" || o.status === "erro").length;
     return Object.assign(unidadeDeOps(f, nome, ops, abertos, base + (recusas ? ` · ${recusas} recusadas` : ""),
       { sinais: lista.length, executadas: lista.filter((o) => o.preco_execucao != null).length, moeda, legenda: `resultado real das ordens ${conta} (com swap e comissão, em ${moeda})` }),
@@ -3497,7 +3536,8 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
       try { return htmlAgente(atual); } finally { curvaTeoricaDaPagina = null; }
     })()}
     ${comparacao}
-    ${htmlAgenteDetalhe(atual)}
+    ${consol ? `${htmlFiltroAtivo(estado)}${htmlPlacar(estado)}${htmlAtrasos(estado)}` : ""}
+    ${htmlAgenteDetalhe(atual, consol ? hrefHistorico(modo, conta) : null)}
     ${painelExec}
   </main>`;
 }
@@ -3565,6 +3605,7 @@ function marcarRolagem(el) {
 }
 
 function rotularTabelas(raiz) {
+  raiz.querySelectorAll("table.historico-ops tbody td").forEach((c) => { if (c.textContent.trim() === "—") c.classList.add("cel-vazia"); });
   raiz.querySelectorAll("table.vira-lista").forEach((t) => {
     const titulos = [...t.querySelectorAll("thead th")].map((th) => th.textContent.trim());
     t.querySelectorAll("tbody tr").forEach((tr) => [...tr.children].forEach((c, i) => {
@@ -3595,14 +3636,14 @@ function render(forcar = true) {
   rotaRenderizada = chaveRota(rota);
   if (nova) { histFiltro = "padrao"; histLimite = HIST_PASSO; histOrdem = { col: null, dir: -1 }; histAtivo = ""; histLado = ""; listasAbertas.clear(); }  // cada página abre o histórico do início
   // contexto da tela (lente) e do menu: nas telas do monitor os dois coincidem; nas outras o menu segue o último contexto escolhido
-  const doMonitor = ["monitor", "analise", "termometro", "comparar", "comandos"].includes(rota.tipo);
+  const doMonitor = ["monitor", "analise", "termometro", "comparar", "comandos", "historico"].includes(rota.tipo);
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
   ctxAtual = doMonitor ? (rota.tipo === "comparar" ? "todos" : rota.ctx) : ctxLembrado;
   estado = ctxLente === "todos" ? estadoBruto : lente(estadoBruto, ctxLente);
   const vp = calcularVersaoPaineis(estadoBruto);
   if (vp !== versaoPaineis) { versaoPaineis = vp; memoPaineis = new Map(); }
   const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar(rota.visao)
-    : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
+    : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "historico" ? vistaHistorico(rota.modo, rota.conta) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
   const focoMenu = focoNoMenu();
@@ -3614,7 +3655,7 @@ function render(forcar = true) {
   prepararRolagens(app);
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
-  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comandos" ? "Comandos · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
+  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comandos" ? "Comandos · Central de Comando" : rota.tipo === "historico" ? "Histórico · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
     main.classList.add("entrada");
