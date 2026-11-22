@@ -298,7 +298,9 @@ function fonteSupabase(cfg) {
                // botão de troca (13/11/2026): pedido do dashboard e plano vigente gravado pelo seguidor das máquinas
                maquinasPedido: ctl["maquinas:pedido"] ?? null, maquinasPlano: ctl["maquinas:plano"] ?? null,
                // switcher de prioridade dos navegadores (17/11/2026): "normal" | "bovespa" | "forex"
-               prioridade: ["bovespa", "forex"].includes(ctl["prioridade:navegadores"]) ? ctl["prioridade:navegadores"] : "normal" };
+               prioridade: ["bovespa", "forex"].includes(ctl["prioridade:navegadores"]) ? ctl["prioridade:navegadores"] : "normal",
+               // categoria de canal que o YouTube do Forex lê (22/11/2026): controle.leitura:youtube = todos | robo | trader
+               leituraYoutube: ["robo", "trader"].includes(ctl["leitura:youtube"]) ? ctl["leitura:youtube"] : "todos" };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -320,6 +322,7 @@ function fonteSupabase(cfg) {
     pedirTroca: (maquina) => sb.from("controle").upsert({ chave: "maquinas:pedido", valor: { operar: maquina, em: new Date().toISOString() } }).then(ok),
     // prioridade dos navegadores entre Forex e Bovespa (lida pelas fontes de vídeo a cada ~10 s)
     comandarPrioridade: (modo) => sb.from("controle").upsert({ chave: "prioridade:navegadores", valor: modo }).then(ok),
+    comandarLeituraYoutube: (modo) => sb.from("controle").upsert({ chave: "leitura:youtube", valor: modo }).then(ok),
     // corretora das ordens novas do Forex (18/11/2026): lida pelas pontes a cada ciclo (~15 s)
     comandarCorretora: (id) => sb.from("controle").upsert({ chave: "execucao:corretora", valor: id }).then(ok),
     // seleção do que a ponte do MT5 executa (lida a cada ciclo de ~15 s): {fontes: {tiktok: true}, unidades: {tiktok: {"@canal": false}}}
@@ -512,6 +515,7 @@ function fonteDemo() {
     async pedirLogin(f) { s.loginFonte[f] = { ...s.loginFonte[f], estado: "aguardando", atualizado_em: new Date().toISOString() }; },
     async pedirTroca(maquina) { s.maquinasPedido = { operar: maquina, em: new Date().toISOString() }; },
     async comandarPrioridade(modo) { s.prioridade = modo; },
+    async comandarLeituraYoutube(modo) { s.leituraYoutube = modo; },
     async comandarCorretora(id) { s.execucao.corretora = id; },
     aoMudar() {},
   };
@@ -1889,6 +1893,17 @@ function htmlPrioridade(e) {
     `<button type="button" data-acao="prioridade" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(`${dica} ${PRIORIDADE_AUTO}`)}">${rot}</button>`).join("")}</span>`;
 }
 
+// Quais canais o YouTube do Forex lê (22/11/2026, pedido do Diogo): todos, só os robôs ou só os traders ao vivo. O
+// monitor lê a chave a cada ciclo (controle.leitura:youtube); a categoria de cada canal vem do canais-youtube.txt.
+const LEITURAS_YOUTUBE = [["todos", "Tudo", "Todos os canais da lista abrem live, com os limites de cada categoria."],
+  ["robo", "Só robôs", "Só os canais marcados como robô abrem live; traders e outros ficam parados."],
+  ["trader", "Só traders", "Só os canais marcados como trader abrem live; robôs e outros ficam parados."]];
+function htmlLeituraYoutube(e) {
+  const atual = e.leituraYoutube ?? "todos";
+  return `<span class="segmentado" role="group" aria-label="Canais que o YouTube lê"><span class="seg-rot">YouTube lê</span>${LEITURAS_YOUTUBE.map(([k, rot, dica]) =>
+    `<button type="button" data-acao="leitura-youtube" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(`${dica} Vale em segundos para as próximas lives; as já abertas saem ao fim da passagem.`)}">${rot}</button>`).join("")}</span>`;
+}
+
 function htmlResumoSaude(e) {
   const n = { ok: 0, atencao: 0, parada: 0, inativa: 0 };
   fontesDoCtx().forEach((f) => n[saudeFonte(f, e).status.nivel]++);
@@ -1936,12 +1951,13 @@ function htmlMonitor(e) {
   // à vista (pedido do Diogo) e a troca de máquina em andamento também, porque é estado, não comando.
   const troca = htmlTrocaMaquina(e), trocando = troca.startsWith("<span");
   const fx = ctxLente === "forex";
-  const estadoCmd = fx ? `${NOME_CORRETORA_FX[e.execucao?.corretora ?? "capitalcom"]} · consenso ${e.consensoLigado ? "ligado" : "desligado"}` : "";
+  const leitura = e.leituraYoutube ?? "todos";
+  const estadoCmd = fx ? `${NOME_CORRETORA_FX[e.execucao?.corretora ?? "capitalcom"]} · consenso ${e.consensoLigado ? "ligado" : "desligado"}${leitura !== "todos" ? ` · YouTube: ${leitura === "robo" ? "só robôs" : "só traders"}` : ""}` : "";
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span></h2>
     <div class="comandos-monitor">${htmlPrioridade(e)}${trocando ? troca : ""}
       <details class="mais-comandos"><summary>${ico("chevron")}<span class="rot-cmd">Comandos do monitor</span>${estadoCmd ? ` <span class="estado-cmd">${estadoCmd}</span>` : ""}</summary>
-        <div class="comandos-lista">${fx ? htmlSeletorCorretora(e) : ""}${trocando ? "" : troca}${fx ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
+        <div class="comandos-lista">${fx ? htmlSeletorCorretora(e) : ""}${fx ? htmlLeituraYoutube(e) : ""}${trocando ? "" : troca}${fx ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
         <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></div>
       </details></div>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
@@ -3564,6 +3580,13 @@ document.addEventListener("click", (ev) => {
     if (modo === (estado.prioridade ?? "normal")) return;
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarPrioridade(modo));
+  }
+  if (acao === "leitura-youtube") {
+    const modo = b.dataset.modo;
+    if (ctxLente !== "forex" || modo === (estado.leituraYoutube ?? "todos")) return;
+    if (modo !== "todos" && !confirm(`O YouTube do Forex passa a ler ${modo === "robo" ? "só os robôs" : "só os traders"}? Os outros canais param de abrir live até voltar para Tudo. Os sinais já abertos continuam.`)) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarLeituraYoutube(modo));
   }
   if (acao === "trocar-maquina") {
     const alvo = b.dataset.maquina, nome = NOME_MAQUINA[alvo];
