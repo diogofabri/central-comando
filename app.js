@@ -1745,7 +1745,7 @@ const visaoSinaisAtual = () => (visaoSinais === "tabela" || visaoSinais === "car
 function tabelaSinais(lista, chave) {
   const linha = (s) => {
     const venda = s.direcao === "venda", ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : "—";
-    return `<tr><td>${FONTES[s.fonte] ?? esc(s.fonte)}</td><td>${linkCanal(s.fonte, s.item, s.origem)}</td>
+    return `<tr><td>${FONTES[s.fonte] ?? esc(s.fonte)}</td><td>${linkCanal(s.fonte, s.item, String(s.origem ?? "").replace(/^Sinal do canal\s+/i, ""))}</td>
       <td><span class="ativo-nome"><span aria-hidden="true">${iconeAtivo(s.instrumento)}</span><b>${esc(s.instrumento)}</b></span></td>
       <td><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span></td>
       <td class="num">${esc(precoCurto(s.entrada))}</td><td class="num">${esc(precoCurto(s.stop))}</td><td class="num">${esc(precoCurto(s.alvos))}</td>
@@ -3154,12 +3154,13 @@ function botaoFonte(f, e) {
 function vistaComandos(foco) {
   const e = estado, fx = ctxLente === "forex", temExec = CONTEXTOS[ctxLente]?.execucao ?? true;
   if (!fx && !(e.monitorFontes ?? []).length) return vistaContextoVazio(`Comandos · ${CONTEXTOS[ctxLente].nome}`);
-  const cmd = (nome, oque, controle) => `<div class="cmd"><dt>${nome}<small>${oque}</small></dt><dd>${controle}</dd></div>`;
+  const cmd = (nome, oque, controle) => `<div class="cmd"><dt>${nome}${oque ? `<small>${oque}</small>` : ""}</dt><dd>${controle}</dd></div>`;
   const fontes = fontesDoCtx(), algum = fontes.some((f) => e.monitorComando?.[f] !== false);
   const selo = (f) => { const s = saudeFonte(f, e).status; return htmlBadge(s.c, s.t, NIVEL_SAUDE[s.nivel][2]); };
   const troca = htmlTrocaMaquina(e);
   const blocoFontes = `<section class="painel" aria-labelledby="h-cmd-fontes"><h2 id="h-cmd-fontes">${ico("radio")} Fontes</h2>
-    <dl class="cmd-lista">${fontes.map((f) => cmd(FONTES[f], "Liga ou desliga a leitura desta fonte.",
+    <p class="meta">Liga ou desliga a leitura de cada fonte. Desligada, ela para de abrir lives ou de rodar; os sinais já abertos continuam sendo conferidos.</p>
+    <dl class="cmd-lista">${fontes.map((f) => cmd(FONTES[f], "",
       `${selo(f)}${botaoFonte(f, e)}${htmlBotaoAudio(f, e).replace(/^<div class="meta">|<\/div>$/g, "")}${f === "youtube" ? htmlLoginYoutube(e) : ""}`)).join("")}
       ${cmd("Todas as fontes", "Para tudo de uma vez; os sinais já abertos continuam sendo conferidos.",
         `<button class="btn pequeno" data-acao="monitor" data-fontes="${fontes.join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todas" : "Ligar todas"}</button>`)}

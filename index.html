@@ -754,6 +754,16 @@ a.btn { color: var(--ink); text-decoration: none; }  /* link com cara de botão 
 a.btn.primario { color: var(--accent-ink); }
 .marcos-lista[open] > summary .ico { transform: rotate(90deg); }
 .marcos-lista .lista li, #h-cmd-hist ~ .lista li { align-items: baseline; }
+/* revisão de 22/11/2026 nas telas novas */
+.cmd .seg-rot { display: none; }  /* o título da linha já diz o que o seletor é */
+.cmd dd .badge { white-space: normal; line-height: 1.3; padding-block: 3px; overflow-wrap: anywhere; max-width: 100%; }
+.cmd, .cmd dt, .cmd dd { min-width: 0; }
+/* Sinais ativos em tabela: teórico e ordem lado a lado, numa linha cada (a linha tinha 101 px de altura) */
+.sinais-tab td.exec-sinal > .exec-sinal { display: flex; flex-wrap: wrap; gap: 2px 18px; align-items: baseline; }
+.sinais-tab .exec-ordem { flex-wrap: nowrap; white-space: nowrap; }
+.sinais-tab td { white-space: nowrap; }
+.sinais-tab td:nth-child(2), .sinais-tab td.exec-sinal { white-space: normal; }
+.sinais-tab td:nth-child(2) { max-width: 26ch; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -801,6 +811,6 @@ a.btn.primario { color: var(--accent-ink); }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=122"></script>
+<script src="app.js?v=123"></script>
 </body>
 </html>
