@@ -222,6 +222,41 @@ function fonteSupabase(cfg) {
     return linhas;
   };
   const ha30d = () => new Date(Date.now() - 31 * 864e5).toISOString();
+    // Carga incremental (22/11/2026, migração 0018): resultados e ordens eram lidos inteiros a cada 30 s (~3,1 MB). A
+    // coluna `mudou_em` só anda quando o conteúdo da linha muda; depois da 1.ª carga, o dashboard pede só as linhas
+    // mudadas desde a última vista (com 90 s de folga) e junta às que já tem. A cada 10 min recarrega tudo, para tirar
+    // as linhas apagadas e as que saíram da janela de 31 dias. Sem a coluna (migração não aplicada), carga completa.
+    // A lista devolvida é o MESMO objeto enquanto nada muda: é o que deixa guardar os painéis entre redesenhos.
+    const cacheTabelas = {};
+    const RECARGA_COMPLETA_MS = 10 * 60e3, FOLGA_MS = 90e3;
+    async function incremental(nome, chaveDe, base, ordenar) {
+      const c = cacheTabelas[nome];
+      const completa = async () => {
+        const linhas = await todas(() => base().order("mudou_em").order(nome === "monitor_ordens" ? "id" : "fonte").order(nome === "monitor_ordens" ? "id" : "sinal_id"))
+          .catch(() => { cacheTabelas[nome] = { semColuna: true }; return todas(() => base().order(nome === "monitor_ordens" ? "id" : "fonte").order(nome === "monitor_ordens" ? "id" : "sinal_id")); });
+        const antes = cacheTabelas[nome], semColuna = antes?.semColuna === true || !linhas.some((l) => l.mudou_em);
+        const mapa = new Map(linhas.map((l) => [chaveDe(l), l]));
+        const igual = !!c?.lista && c.lista.length === linhas.length && linhas.every((l) => c.mapa.get(chaveDe(l))?.mudou_em === l.mudou_em && l.mudou_em);
+        const lista = igual ? c.lista : [...linhas].sort(ordenar);
+        const cursor = linhas.reduce((m, l) => (l.mudou_em > m ? l.mudou_em : m), "");
+        cacheTabelas[nome] = { mapa, lista, cursor, completaEm: Date.now(), semColuna, versao: (c?.versao ?? 0) + (igual ? 0 : 1) };
+        versaoTabelas[nome] = cacheTabelas[nome].versao;
+        return lista;
+      };
+      if (!c?.lista || c.semColuna || !c.cursor || Date.now() - c.completaEm > RECARGA_COMPLETA_MS) return completa();
+      try {
+        const desde = new Date(new Date(c.cursor).getTime() - FOLGA_MS).toISOString();
+        const novas = await todas(() => sb.from(nome).select("*").gte("mudou_em", desde).order("mudou_em").order(nome === "monitor_ordens" ? "id" : "fonte").order(nome === "monitor_ordens" ? "id" : "sinal_id"));
+        const mudou = novas.filter((l) => c.mapa.get(chaveDe(l))?.mudou_em !== l.mudou_em);
+        if (!mudou.length) return c.lista;
+        mudou.forEach((l) => c.mapa.set(chaveDe(l), l));
+        c.lista = [...c.mapa.values()].sort(ordenar);
+        c.cursor = mudou.reduce((m, l) => (l.mudou_em > m ? l.mudou_em : m), c.cursor);
+        c.versao += 1;
+        versaoTabelas[nome] = c.versao;
+        return c.lista;
+      } catch (e) { return completa(); }
+    }
   return {
     demo: false,
     sb,
@@ -237,12 +272,13 @@ function fonteSupabase(cfg) {
         sb.from("monitor_fontes").select("*").then(ok),
         sb.from("monitor_itens").select("*").order("nome").then(ok),
         sb.from("monitor_sinais").select("*").order("desde", { ascending: false }).then(ok),
-        todas(() => sb.from("monitor_resultados").select("*").gte("resolvido_em", ha30d())
-          .order("resolvido_em", { ascending: false }).order("fonte").order("sinal_id")),
+        incremental("monitor_resultados", (r) => `${r.fonte}|${r.sinal_id}`,
+          () => sb.from("monitor_resultados").select("*").gte("resolvido_em", ha30d()),
+          (a, b) => new Date(b.resolvido_em ?? 0) - new Date(a.resolvido_em ?? 0) || String(a.fonte).localeCompare(String(b.fonte)) || a.sinal_id - b.sinal_id),
         sb.from("kpis").select("data,projeto_id,kpi,valor").order("data", { ascending: false }).limit(600).then(ok),
         sb.from("v_lancamentos_usd").select("data,projeto_id,tipo,valor,moeda,valor_usd,descricao").order("data", { ascending: false }).limit(600).then(ok),
         // ordens da ponte do MT5 (migração 0011); sem a tabela ainda, a página segue só com o placar teórico
-        todas(() => sb.from("monitor_ordens").select("*").gte("criado_em", ha30d()).order("id")).catch(() => []),
+        incremental("monitor_ordens", (o) => String(o.id), () => sb.from("monitor_ordens").select("*").gte("criado_em", ha30d()), (a, b) => a.id - b.id).catch(() => []),
         // máquina dona de cada fonte (Mac × VPS, migração 0006): renovada a cada passagem do monitor
         sb.from("monitor_maquinas").select("fonte,maquina,visto_em").then(ok).catch(() => []),
       ]);
@@ -2648,14 +2684,27 @@ function ordensPorSinal() {
   }
   return ix;
 }
-const memoPaineis = new WeakMap();
+// Os painéis dependem de: resultados, ordens, sinais, categorias, painel dos agentes e corretora/moeda das contas.
+// `versaoPaineis` (calculada no render) muda quando um deles muda; enquanto for a mesma, o redesenho de cada minuto
+// (fontes, itens, termômetro) reaproveita os painéis já calculados em vez de refazê-los (~1 s no Consolidado).
+const versaoTabelas = {};
+let versaoPaineis = "", memoPaineis = new Map(), idsDeEstado = new WeakMap(), proximoIdEstado = 0;
+function calcularVersaoPaineis(bruto) {
+  if (!bruto) return "";
+  if (fonte.demo || !versaoTabelas.monitor_resultados) {  // demonstração ou carga sem cache: vale só para este estado
+    if (!idsDeEstado.has(bruto)) idsDeEstado.set(bruto, ++proximoIdEstado);
+    return `e${idsDeEstado.get(bruto)}`;
+  }
+  const conta = (x) => (x ? [x.corretora, x.moeda] : null), exec = (x) => (x ? [x.corretora, conta(x.estado?.demo), conta(x.estado?.real),
+    Object.entries(x.porCorretora ?? {}).map(([m, pc]) => [m, Object.entries(pc).map(([k, s]) => [k, s?.moeda])])] : null);
+  return `${versaoTabelas.monitor_resultados}|${versaoTabelas.monitor_ordens ?? 0}|${hashEstado([(bruto.monitorSinais ?? []).map(({ atualizado_em, ...s }) => s),
+    bruto.categorias, bruto.agentesPainel, exec(bruto.execucao), exec(bruto.execucaoBovespa)])}`;
+}
 function memoPorEstado(chave, fn) {
   if (!estado) return fn();
-  let m = memoPaineis.get(estado);
-  if (!m) { m = new Map(); memoPaineis.set(estado, m); }
   const k = `${ctxLente}|${chave}`;
-  if (!m.has(k)) m.set(k, fn());
-  return m.get(k);
+  if (!memoPaineis.has(k)) memoPaineis.set(k, fn());
+  return memoPaineis.get(k);
 }
 function ordemDoSinal(r) {
   const os = (ordensPorSinal().sinal.get(`${r.fonte}|${Number(r.sinal_id)}`) ?? []).filter((o) => o.instrumento === r.instrumento && o.direcao === r.direcao);
@@ -3292,6 +3341,8 @@ function render(forcar = true) {
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
   ctxAtual = doMonitor ? (rota.tipo === "comparar" ? "todos" : rota.ctx) : ctxLembrado;
   estado = ctxLente === "todos" ? estadoBruto : lente(estadoBruto, ctxLente);
+  const vp = calcularVersaoPaineis(estadoBruto);
+  if (vp !== versaoPaineis) { versaoPaineis = vp; memoPaineis = new Map(); }
   const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar(rota.visao)
     : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
   const app = document.getElementById("app");
