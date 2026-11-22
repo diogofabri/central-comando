@@ -2280,7 +2280,7 @@ function situacaoDoHistorico(x, ordens) {
   return x.fechamento && (x.v != null || x.saida != null) ? "exec" : /^(aberta|pendente)/.test(x.desfecho ?? "") ? "viva" : "nao";
 }
 // "recusada: preço 4013,2 já perto do stop 4012 (resta …)" e "… 3950,1 …" são o mesmo motivo: sem números nem parênteses
-const motivoCurto = (t) => String(t ?? "").replace(/\([^)]*\)/g, "").replace(/[-+−]?\d[\d.,]*/g, "").replace(/\s+/g, " ").replace(/\s+([:,.])/g, "$1").trim().replace(/[:,·\s]+$/, "") || "sem motivo";
+const motivoCurto = (t) => String(t ?? "").replace(/\([^)]*\)/g, "").replace(/·\s*parcial\s+\d+\s+de\s+\d+/gi, "").replace(/instrumento\s+\S+\s+sem/i, "instrumento sem").replace(/[-+−]?\d[\d.,]*/g, "").replace(/\s+/g, " ").replace(/\s+([:,.])/g, "$1").trim().replace(/[:,·\s]+$/, "") || "sem motivo";
 function htmlMotivos(linhas) {
   const n = {};
   linhas.forEach((x) => { const k = motivoCurto(x.desfecho); n[k] = (n[k] ?? 0) + 1; });
@@ -2568,9 +2568,36 @@ const DESFECHO_SINAL = { alvo: "alvo", stop: "stop", expirado: "expirado", nao_a
 // corretora com sinais que nunca viraram ordem, como os atrasados). A ordem do sinal (mesma fonte e sinal_id; real antes
 // de demo) dá o resultado REAL; sem ordem, a linha diz "não executado" e o motivo, e o R/dinheiro ficam como teóricos.
 const ORDEM_FECHADA = new Set(["fechada"]);
+// Desempenho (22/11/2026): com ~2.000 ordens e ~2.300 resultados, procurar a ordem de cada sinal com um filtro em todas
+// as ordens custava milhões de comparações por painel, e o Consolidado levava 2,7 s para redesenhar. O índice é montado
+// uma vez por lista de ordens (a lista muda a cada carga) e os painéis são guardados por estado (um por redesenho).
+const indiceOrdens = new WeakMap();
+function ordensPorSinal() {
+  const lista = estado?.monitorOrdens ?? [];
+  let ix = indiceOrdens.get(lista);
+  if (!ix) {
+    ix = { sinal: new Map(), modo: new Map() };
+    for (const o of lista) {
+      const k = `${o.fonte}|${Number(o.sinal_id)}`, km = `${k}|${o.modo}`;
+      if (!ix.sinal.has(k)) ix.sinal.set(k, []);
+      ix.sinal.get(k).push(o);
+      ix.modo.set(km, (ix.modo.get(km) ?? 0) + 1);
+    }
+    indiceOrdens.set(lista, ix);
+  }
+  return ix;
+}
+const memoPaineis = new WeakMap();
+function memoPorEstado(chave, fn) {
+  if (!estado) return fn();
+  let m = memoPaineis.get(estado);
+  if (!m) { m = new Map(); memoPaineis.set(estado, m); }
+  const k = `${ctxLente}|${chave}`;
+  if (!m.has(k)) m.set(k, fn());
+  return m.get(k);
+}
 function ordemDoSinal(r) {
-  const os = (estado?.monitorOrdens ?? []).filter((o) => o.fonte === r.fonte && Number(o.sinal_id) === Number(r.sinal_id)
-    && o.instrumento === r.instrumento && o.direcao === r.direcao);
+  const os = (ordensPorSinal().sinal.get(`${r.fonte}|${Number(r.sinal_id)}`) ?? []).filter((o) => o.instrumento === r.instrumento && o.direcao === r.direcao);
   return os.find((o) => o.modo === "real" && ORDEM_FECHADA.has(o.status)) ?? os.find((o) => ORDEM_FECHADA.has(o.status))
     ?? os.find((o) => o.status === "aberta" || o.status === "pendente") ?? os[0] ?? null;
 }
@@ -2601,7 +2628,7 @@ function linhaDeResultado(r) {
 // saídas parciais (18/11/2026): um sinal com vários alvos vira uma ordem por alvo (coluna `parcial`, migração 0017)
 function rotuloParcial(o) {
   if (o.parcial == null) return "";
-  const n = (estado?.monitorOrdens ?? []).filter((x) => x.fonte === o.fonte && String(x.sinal_id) === String(o.sinal_id) && x.modo === o.modo).length;
+  const n = ordensPorSinal().modo.get(`${o.fonte}|${Number(o.sinal_id)}|${o.modo}`) ?? 0;
   return n > 1 ? ` · parcial ${o.parcial} de ${n}` : "";
 }
 function linhaDeOrdem(o) {
@@ -2885,6 +2912,9 @@ function painelDeOrdens(f, e, modo, corretora = null) {
 }
 
 function painelDaModalidade(f, e, modo, conta = "demo") {
+  return e === estado ? memoPorEstado(`modalidade|${f}|${modo}|${conta}`, () => painelDaModalidadeCru(f, e, modo, conta)) : painelDaModalidadeCru(f, e, modo, conta);
+}
+function painelDaModalidadeCru(f, e, modo, conta = "demo") {
   const corr = corretoraDoModo(modo);
   if (corr) return painelDeOrdens(f, e, conta, corr[1]);
   if (modo === "demo" || modo === "real") return painelDeOrdens(f, e, modo);
@@ -2952,7 +2982,7 @@ const hrefAnalise = (f, id, modo = rotaAtual().modo ?? "todos", conta = rotaAtua
 function htmlFaixaTotais(f, id, modo, conta) {
   if (!corretorasDoCtx().length) return "";
   const cartoes = [...corretorasDoCtx().map(([k, n]) => {
-    const p = painelDeOrdens(f, estado, conta, n), a = p.agentes.find((x) => x.id === id) ?? (id === TODOS ? null : undefined);
+    const p = painelDaModalidade(f, estado, k, conta), a = p.agentes.find((x) => x.id === id) ?? (id === TODOS ? null : undefined);
     const ordens = (estado.monitorOrdens ?? []).filter((o) => o.corretora === n && o.modo === conta);
     const desde = ordens.map((o) => o.sinal_desde ?? o.criado_em).filter(Boolean).sort()[0];
     const semConta = !estadoDaCorretora(conta, n) && !ordens.length;
@@ -2963,7 +2993,7 @@ function htmlFaixaTotais(f, id, modo, conta) {
     return `<a class="total-corretora${k === modo ? " atual" : ""}${a ? "" : " vazio"}" href="${hrefAnalise(f, id, k, conta)}" ${k === modo ? 'aria-current="page"' : ""}>
       <span class="total-rot">${esc(n)}</span>${corpo}</a>`;
   }), (() => {
-    const p = f !== CONSOLIDADO ? painelDeResultados(f, estado) : painelConsolidado(estado), a = p?.agentes?.find((x) => x.id === id);
+    const p = memoPorEstado(`teorico|${f}`, () => (f !== CONSOLIDADO ? painelDeResultados(f, estado) : painelConsolidado(estado))), a = p?.agentes?.find((x) => x.id === id);
     const corpo = a ? `<b class="num ${a.metricas.lucro_usd < 0 ? "neg" : a.metricas.lucro_usd > 0 ? "pos" : ""}">${dinheiro(a ?? { moeda: p?.moeda })(a.metricas.lucro_usd)}</b>
         <span>${a.metricas.ops} ${a.metricas.ops === 1 ? "sinal resolvido" : "sinais resolvidos"} · acerto ${pct(a.metricas.acerto_pct)}</span>
         <span class="meta">todos os sinais pelo preço · 30 dias</span>` : `<span class="meta">sem sinais resolvidos</span>`;
