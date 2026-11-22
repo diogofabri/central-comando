@@ -2266,6 +2266,28 @@ function htmlCiclos(a) {
   </details>`;
 }
 
+// Histórico que escala (21/11/2026, crítica Impeccable): o Consolidado do Forex tinha 2.311 linhas e 38.081 nós na
+// página. Agora a tabela mostra 50 linhas por vez, com filtro por situação, ordenação pelo cabeçalho e, nas ordens, as
+// recusadas e canceladas fora da lista padrão, resumidas por motivo. As métricas do topo continuam com todas as linhas.
+const HIST_PASSO = 50;
+let histFiltro = "padrao", histLimite = HIST_PASSO, histOrdem = { col: null, dir: -1 }, histAtivo = "", histLado = "";
+const HIST_COLUNAS = { abertura: (x) => new Date(x.abertura ?? 0).getTime(), fechamento: (x) => new Date(x.fechamento ?? x.abertura ?? 0).getTime(),
+  ativo: (x) => String(x.ativo ?? ""), r: (x) => x.r, v: (x) => x.v };
+// situação da linha: placar (execucao) ou ordem (sem o campo: fechada tem saída ou resultado; viva = aberta ou pendente)
+function situacaoDoHistorico(x, ordens) {
+  if (!ordens) return x.execucao === "executada" ? "exec" : x.execucao === "em_curso" ? "viva" : "nao";
+  return x.fechamento && (x.v != null || x.saida != null) ? "exec" : /^(aberta|pendente)/.test(x.desfecho ?? "") ? "viva" : "nao";
+}
+// "recusada: preço 4013,2 já perto do stop 4012 (resta …)" e "… 3950,1 …" são o mesmo motivo: sem números nem parênteses
+const motivoCurto = (t) => String(t ?? "").replace(/\([^)]*\)/g, "").replace(/[-+−]?\d[\d.,]*/g, "").replace(/\s+/g, " ").replace(/\s+([:,.])/g, "$1").trim().replace(/[:,·\s]+$/, "") || "sem motivo";
+function htmlMotivos(linhas) {
+  const n = {};
+  linhas.forEach((x) => { const k = motivoCurto(x.desfecho); n[k] = (n[k] ?? 0) + 1; });
+  const ord = Object.entries(n).sort((p, q) => q[1] - p[1]);
+  return `<details class="motivos"><summary>${ico("chevron")}Por que não executou <span class="count">${linhas.length}</span></summary>
+    <ul class="lista compacta">${ord.map(([k, v]) => `<li><span>${esc(k)}</span><b class="num">${v}</b></li>`).join("")}</ul></details>`;
+}
+
 function htmlHistorico(a) {
   const h = a.historico;
   if (!h) return "";
@@ -2281,18 +2303,43 @@ function htmlHistorico(a) {
   const titulo = ordens ? "Histórico de ordens" : "Histórico de operações";
   const nota = ordens ? "Ordens enviadas à corretora, da mais recente para a mais antiga: preço executado, saída e resultado reais (com custos). Recusadas e canceladas aparecem com o motivo."
     : "Sinais resolvidos nos últimos 30 dias, do mais recente para o mais antigo. Executada = preço, saída e resultado reais da ordem na corretora. Não executado (em cinza) = o motivo (sinal em atraso, cancelada, sem ordem) e o resultado teórico do placar: a saída é o alvo ou o stop tocado, e o dinheiro segue a regra da página (lote 0,01 líquido de spread no Forex; 1 minicontrato ou 100 ações na Bovespa).";
+  const sit = h.map((x) => situacaoDoHistorico(x, ordens)), conta = (k) => sit.filter((s) => s === k).length;
+  const nNao = conta("nao"), nExec = conta("exec");
+  const pilulas = ordens ? [["padrao", "Executadas e abertas", h.length - nNao], ["nao", "Recusadas e canceladas", nNao], ["todas", "Todas", h.length]]
+    : [["padrao", "Todas", h.length], ["exec", "Executadas", nExec], ["nao", "Não executadas", nNao]];
+  const filtro = pilulas.some(([k]) => k === histFiltro) ? histFiltro : "padrao";
+  const passa = (s) => (filtro === "todas" || (filtro === "padrao" && !ordens) ? true : filtro === "padrao" ? s !== "nao" : s === filtro);
+  const ativos = Object.entries(h.reduce((m, x) => { if (x.ativo) m[x.ativo] = (m[x.ativo] ?? 0) + 1; return m; }, {})).sort((p, q) => q[1] - p[1] || p[0].localeCompare(q[0]));
+  const ativoSel = ativos.some(([k]) => k === histAtivo) ? histAtivo : "";
+  let vis = h.filter((x, i) => passa(sit[i]) && (!ativoSel || x.ativo === ativoSel) && (!histLado || x.lado === histLado));
+  const chaveOrd = HIST_COLUNAS[histOrdem.col];
+  if (chaveOrd) vis = [...vis].sort((p, q) => { const x = chaveOrd(p), y = chaveOrd(q);
+    if (x == null || y == null) return (x == null) - (y == null);  // sem valor vai para o fim, nos dois sentidos
+    return (typeof x === "string" ? x.localeCompare(y) : x - y) * histOrdem.dir; });
+  const mostradas = vis.slice(0, histLimite), resto = vis.length - mostradas.length;
+  const th = (col, rot, cls = "") => { const ativa = histOrdem.col === col;
+    return `<th scope="col"${cls ? ` class="${cls}"` : ""}${ativa ? ` aria-sort="${histOrdem.dir > 0 ? "ascending" : "descending"}"` : ""}><button type="button" class="th-ordem" data-acao="hist-ordem" data-col="${col}" title="Ordenar por ${rot.toLowerCase()}">${rot}${ativa ? ico("chevron") : ""}</button></th>`; };
   return `<details class="historico" ${h.length ? "open" : ""}><summary>${ico("chevron")}${titulo} <span class="count">${h.length}</span></summary>
     ${!ordens ? `<p class="meta">Executadas na corretora (${exe.length}): fator de lucro <b class="num">${fator(rsE)}</b> em R (${r2(rsE.reduce((s, x) => s + x, 0))}) · <b class="num">${fator(vsE)}</b> em dinheiro (${din(vsE.reduce((s, x) => s + x, 0))})</p>` : ""}
     <p class="meta">${ordens ? "" : "Teórico de todos os sinais: "}Fator de lucro: <b class="num">${fator(rs)}</b> em R (${r2(rs.reduce((s, x) => s + x, 0))}) · <b class="num">${fator(vs)}</b> em dinheiro (${din(vs.reduce((s, x) => s + x, 0))})</p>
-    ${h.length ? `<div class="rolagem rolavel-y" data-rolavel="historico-${esc(a.id)}"><table class="tabela vira-lista historico-ops">
-      <thead><tr><th scope="col">Abertura</th><th scope="col">Fechamento</th>${todos ? `<th scope="col">Origem</th>` : ""}
-        <th scope="col">Ativo</th><th scope="col">Lado</th><th scope="col">Entrada</th><th scope="col">Stop</th><th scope="col">Alvo</th><th scope="col">Saída</th>
-        <th scope="col" class="desfecho">Desfecho</th><th scope="col">R</th><th scope="col">${ordens ? "Resultado" : "Dinheiro"}</th></tr></thead>
-      <tbody>${h.map((x) => `<tr${x.execucao === "teorico" ? ` class="teorico" title="Não executado: R e dinheiro só teóricos"` : ""}><td class="num">${hora(x.abertura)}</td><td class="num">${hora(x.fechamento)}</td>${todos ? `<td>${esc(x.unidade ?? "—")}</td>` : ""}
+    ${h.length ? `<div class="hist-filtros"><span class="segmentado" role="group" aria-label="Filtrar o histórico"><span class="seg-rot">Linhas</span>${pilulas.map(([k, rot, n]) =>
+      `<button type="button" data-acao="hist-filtro" data-filtro="${k}" aria-pressed="${k === filtro}">${rot} <span class="num">${n}</span></button>`).join("")}</span>
+      <span class="segmentado" role="group" aria-label="Filtrar por lado"><span class="seg-rot">Lado</span>${[["", "Todos"], ["compra", "Compra"], ["venda", "Venda"]].map(([k, rot]) =>
+        `<button type="button" data-acao="hist-lado" data-lado="${k}" aria-pressed="${k === histLado}">${rot}</button>`).join("")}</span>
+      ${ativos.length > 1 ? `<label class="hist-ativo"><span>Ativo</span><select data-acao="hist-ativo" aria-label="Filtrar o histórico por ativo"><option value="">Todos (${h.length})</option>${ativos.map(([k, n]) =>
+        `<option value="${esc(k)}"${k === ativoSel ? " selected" : ""}>${esc(k)} (${n})</option>`).join("")}</select></label>` : ""}</div>
+    ${ordens && nNao ? htmlMotivos(h.filter((_, i) => sit[i] === "nao")) : ""}` : ""}
+    ${!h.length ? `<p class="vazio">Nenhuma operação ainda.</p>` : !vis.length ? `<p class="vazio">Nenhuma linha neste filtro.</p>` : `<div class="rolagem rolavel-y" data-rolavel="historico-${esc(a.id)}"><table class="tabela vira-lista historico-ops">
+      <thead><tr>${th("abertura", "Abertura")}${th("fechamento", "Fechamento")}${todos ? `<th scope="col">Origem</th>` : ""}
+        ${th("ativo", "Ativo")}<th scope="col">Lado</th><th scope="col">Entrada</th><th scope="col">Stop</th><th scope="col">Alvo</th><th scope="col">Saída</th>
+        <th scope="col" class="desfecho">Desfecho</th>${th("r", "R")}${th("v", ordens ? "Resultado" : "Dinheiro")}</tr></thead>
+      <tbody>${mostradas.map((x) => `<tr${x.execucao === "teorico" ? ` class="teorico" title="Não executado: R e dinheiro só teóricos"` : ""}><td class="num">${hora(x.abertura)}</td><td class="num">${hora(x.fechamento)}</td>${todos ? `<td>${esc(x.unidade ?? "—")}</td>` : ""}
         <td>${esc(x.ativo ?? "—")}</td><td>${x.lado === "compra" ? `<span class="badge compra">COMPRA</span>` : x.lado === "venda" ? `<span class="badge venda">VENDA</span>` : "—"}</td>
         <td class="num">${precoCurto(x.entrada)}</td><td class="num">${precoCurto(x.stop)}</td><td class="num">${precoCurto(x.alvo)}</td><td class="num">${precoCurto(x.saida)}</td>
         <td class="desfecho">${esc(x.desfecho)}</td><td class="num">${x.r == null ? `<span class="meta">—</span>` : `<span class="${x.r < 0 ? "neg" : x.r > 0 ? "pos" : ""}">${r2(x.r)}</span>`}</td>
-        <td class="num">${celV(x.v)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="vazio">Nenhuma operação ainda.</p>`}
+        <td class="num">${celV(x.v)}</td></tr>`).join("")}</tbody></table></div>
+    <p class="meta hist-pe" role="status"><span>Mostrando <b class="num">${mostradas.length}</b> de <b class="num">${vis.length}</b>${vis.length < h.length ? ` (filtro; ${h.length} no total)` : ""}</span>${resto > 0
+      ? `<button type="button" class="btn pequeno" data-acao="hist-mais" data-passo="${HIST_PASSO * 4}">Mostrar mais ${Math.min(resto, HIST_PASSO * 4)}</button>` : ""}</p>`}
     <p class="meta nota">${nota}</p>
   </details>`;
 }
@@ -3154,6 +3201,7 @@ function render(forcar = true) {
   ultimoRender = { chave, hash, em: Date.now() };
   const nova = chaveRota(rota) !== rotaRenderizada;
   rotaRenderizada = chaveRota(rota);
+  if (nova) { histFiltro = "padrao"; histLimite = HIST_PASSO; histOrdem = { col: null, dir: -1 }; histAtivo = ""; histLado = ""; }  // cada página abre o histórico do início
   // contexto da tela (lente) e do menu: nas telas do monitor os dois coincidem; nas outras o menu segue o último contexto escolhido
   const doMonitor = ["monitor", "analise", "termometro", "comparar"].includes(rota.tipo);
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
@@ -3235,6 +3283,17 @@ document.addEventListener("click", (ev) => {
   if (acao === "pausa") { b.disabled = true; return agir(() => fonte.pausar(!estado.pausado)); }
   if (acao === "filtro") return definirFiltro(b.dataset.ativo);
   if (acao === "filtro-eventos") { filtroEventos = b.dataset.projeto; return render(); }
+  // histórico: filtro, ordenação e "mostrar mais" só mexem na tela (nada é gravado)
+  if (acao === "hist-filtro") { histFiltro = b.dataset.filtro; histLimite = HIST_PASSO; return render(); }
+  if (acao === "hist-lado") { histLado = b.dataset.lado; histLimite = HIST_PASSO; return render(); }
+  if (acao === "hist-mais") { histLimite += Number(b.dataset.passo) || HIST_PASSO; return render(); }
+  if (acao === "hist-ordem") {
+    const col = b.dataset.col;
+    histOrdem = histOrdem.col !== col ? { col, dir: -1 } : histOrdem.dir < 0 ? { col, dir: 1 } : { col: null, dir: -1 };  // 3.º clique volta à ordem padrão
+    histLimite = HIST_PASSO;
+    render();
+    return document.querySelector(`.th-ordem[data-col="${col}"]`)?.focus({ preventScroll: true });
+  }
   if (acao === "ir-exec") {  // só navega: abre o painel de execução e leva o foco até ele
     const painel = document.getElementById("painel-exec"), det = painel?.querySelector("details.exec-editar");
     if (!painel) return;
@@ -3342,6 +3401,11 @@ function definirFiltro(sym) {
 
 document.addEventListener("change", (ev) => {
   if (ev.target.matches("select[data-acao='filtro-lista']") && ev.target.value) definirFiltro(ev.target.value);
+  if (ev.target.matches("select[data-acao='hist-ativo']")) {  // só filtra a tela; o foco volta ao seletor depois do redesenho
+    histAtivo = ev.target.value; histLimite = HIST_PASSO;
+    render();
+    document.querySelector("select[data-acao='hist-ativo']")?.focus({ preventScroll: true });
+  }
 });
 
 document.addEventListener("submit", (ev) => {

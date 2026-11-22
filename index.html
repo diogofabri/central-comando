@@ -164,6 +164,23 @@ details.historico { margin-top: 18px; }
 details.historico .rolagem.rolavel-y { max-height: min(440px, 60vh); }
 .historico-ops td, .historico-ops th { white-space: nowrap; }
 .historico-ops .badge { font-size: 11.5px; }
+/* histórico que escala (21/11/2026): filtro por situação, cabeçalho que ordena, 50 linhas por vez */
+.hist-filtros { margin: 10px 0 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.hist-ativo { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+.hist-ativo select { width: auto; min-height: 40px; padding: 4px 10px; font-size: 13.5px; }
+@media (pointer: coarse) { .hist-ativo select { min-height: 44px; font-size: 16px; } }
+.hist-filtros .segmentado button .num { font-size: 12px; opacity: .75; margin-left: 5px; }
+.th-ordem { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; font: inherit; color: inherit; }
+.th-ordem:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.th-ordem:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+.th-ordem .ico { width: 12px; height: 12px; transform: rotate(90deg); }
+th[aria-sort="ascending"] .th-ordem .ico { transform: rotate(-90deg); }
+th[aria-sort] .th-ordem { color: var(--ink); font-weight: 600; }
+.hist-pe { justify-content: space-between; margin-top: 8px; }
+details.motivos > summary { margin-top: 0; }
+details.motivos[open] > summary .ico { transform: rotate(90deg); }
+details.motivos .lista li { justify-content: space-between; gap: 12px; }
+@media (pointer: coarse) { .th-ordem { min-height: 44px; } }
 .historico-ops .desfecho { text-align: left; white-space: normal; min-width: 10ch; max-width: 28ch; }
 /* sinal não executado (18/11/2026): R e dinheiro só teóricos, em cinza; o texto do desfecho diz o motivo */
 .historico-ops tr.teorico td, .historico-ops tr.teorico .pos, .historico-ops tr.teorico .neg { color: var(--ink-2); }@media (max-width: 560px) { .barras.horas.rolavel-movel { max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; } }
@@ -710,6 +727,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=106"></script>
+<script src="app.js?v=107"></script>
 </body>
 </html>
