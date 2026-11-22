@@ -780,6 +780,7 @@ small.amostra { font-size: 12px; }
 @media (min-width: 560px) { .corpo-fonte > summary { display: none; } }
 @media (max-width: 560px) {
   .ctx-faixa { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .ctx-faixa b { margin-right: 8px; }
   .cabecalho-proj.compacto .meta { display: none; }  /* a descrição da página fica no computador */
   .resumo-painel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .resumo-painel .total-corretora { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 10px 12px; }
@@ -788,6 +789,30 @@ small.amostra { font-size: 12px; }
   .hist-filtros .segmentado { border-radius: 14px; }
 }
 @media (pointer: coarse) { .aba-seta { min-width: 44px; min-height: 44px; } a.canal { display: inline-flex; align-items: center; min-height: 32px; } }
+/* v127 (22/11/2026): sugestões da crítica sem perder informação */
+a.nome-fonte { color: inherit; text-decoration: none; }
+a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
+.recolhe-movel > summary { font-size: 16px; font-weight: 600; color: var(--ink); min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--raio); background: var(--surface); width: 100%; margin: 0; }
+.recolhe-movel[open] > summary { margin-bottom: 12px; }
+.recolhe-movel[open] > summary .ico { transform: rotate(90deg); }
+.recolhe-movel > section + section, .recolhe-movel > .painel { margin-top: 0; }
+@media (min-width: 560px) { .recolhe-movel > summary { display: none; } }
+@media (max-width: 560px) {
+  /* cartão de sinal: entrada, stop e alvo numa linha só */
+  .sinal-niveis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 6px 0 4px; }
+  .sinal-niveis > div { padding: 0 8px; }
+  .sinal-niveis > div:nth-child(3) { grid-column: auto; padding-left: 8px; border-left: 1px solid var(--line-2); }
+  .sinal-niveis dd { white-space: normal; overflow-wrap: anywhere; }
+}
+/* v127: cartão de sinal em poucas linhas no celular e alvo de toque dos nomes de canal */
+@media (max-width: 560px) {
+  .sinal-niveis { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 4px 0; }
+  .sinal-niveis > div, .sinal-niveis > div:nth-child(2), .sinal-niveis > div:nth-child(3) { display: flex; align-items: baseline; gap: 5px; padding: 0; border: 0; grid-column: auto; }
+  .sinal-niveis dt::after { content: ":"; }
+  .sinal .exec-ordem:not(.st-teorico) > .meta { display: none; }  /* stop e alvo da ordem já estão na linha de cima */
+  .lista li.sinal { padding: 8px 0; }
+}
+@media (pointer: coarse) { a.canal { min-height: 44px; } }
 </style>
 </head>
 <body>
@@ -835,6 +860,6 @@ small.amostra { font-size: 12px; }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=126"></script>
+<script src="app.js?v=127"></script>
 </body>
 </html>
