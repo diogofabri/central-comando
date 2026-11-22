@@ -2080,6 +2080,34 @@ function vistaContextoVazio(titulo) {
   </main>`;
 }
 
+// Resumo do Painel (22/11/2026, crítica Impeccable): as perguntas de várias vezes ao dia ("o mercado está aberto?",
+// "está tudo no ar?", "quanto estou ganhando agora?") respondidas na primeira dobra, antes das listas longas. Só leitura.
+function htmlResumoPainel(e) {
+  const niveis = fontesDoCtx().map((f) => saudeFonte(f, e).status.nivel);
+  const noAr = niveis.filter((n) => n === "ok" || n === "atencao").length, paradas = niveis.filter((n) => n === "parada").length;
+  const atencao = niveis.filter((n) => n === "atencao").length;
+  const abertos = fontesDoCtx().reduce((n, f) => n + sinaisVigentes(e, f).filter((s) => !foraDaExecucao(s)).length, 0);  // a mesma conta do painel Sinais ativos
+  const item = (rot, corpo, cls = "") => `<div class="total-corretora estatico ${cls}"><span class="total-rot">${rot}</span>${corpo}</div>`;
+  const contas = ["real", "demo"].map((modo) => {
+    const s = e.execucao?.estado?.[modo];
+    if (!s) return "";
+    const nome = `Conta ${modo}${s.corretora ? ` · ${esc(s.corretora)}` : ""}`;
+    const vivo = s.conectado && Date.now() - new Date(s.atualizado_em).getTime() < 120e3;
+    if (!vivo && modo === "real") return "";  // conta real nunca ligada: fora do resumo (o aviso fica na página da corretora)
+    if (!vivo) return item(nome, `${htmlBadge("warning", "ponte sem conexão", "alert")}<span class="meta">última notícia ${quando(s.atualizado_em)}</span>`);
+    const din = dinheiro({ moeda: s.moeda }), flut = Object.values(s.flutuante ?? {}).reduce((a, x) => a + (Number(x?.lucro) || 0), 0), dia = Number(s.resultado_dia) || 0;
+    const cor = (v) => (v < 0 ? "neg" : v > 0 ? "pos" : "");
+    return item(nome, `<b class="num ${cor(flut)}">${din(flut)}</b><span>lucro aberto · ${s.abertas ?? 0} ${s.abertas === 1 ? "aberta" : "abertas"} · ${s.pendentes ?? 0} ${s.pendentes === 1 ? "pendente" : "pendentes"}</span>
+      <span class="meta">resultado do dia <b class="num ${cor(dia)}">${din(dia)}</b></span>`);
+  }).join("");
+  return `<section class="faixa-totais resumo-painel" aria-label="Resumo do ${esc(CONTEXTOS[ctxLente].nome)} agora">
+    ${PREGOES[ctxLente] ? item("Mercado", `<div class="pregao-b3" data-pregao="${ctxLente}">${htmlPregao(ctxLente)}</div>`, "rp-mercado") : ""}
+    ${item("Fontes", `<b class="num">${noAr} de ${niveis.length}</b><span>no ar${paradas ? ` · ${paradas} ${paradas > 1 ? "paradas" : "parada"}` : ""}${atencao ? ` · ${atencao} com atenção` : ""}</span>`, paradas ? "rp-alerta" : "")}
+    ${item("Sinais abertos", `<b class="num">${abertos}</b><span>${abertos === 1 ? "sinal ativo agora" : "sinais ativos agora"}</span>`)}
+    ${contas}
+  </section>`;
+}
+
 function vistaMonitor() {
   const e = estado;
   if (ctxLente !== "forex" && !(e.monitorFontes ?? []).length) return vistaContextoVazio(`Monitor ${CONTEXTOS[ctxLente].nome}`);
@@ -2094,6 +2122,7 @@ function vistaMonitor() {
         ${ctxLente !== "forex" ? "" : p?.fase || c.cfg.status ? `<div class="meta">${p?.fase ? `<span>${esc(p.fase)}</span>` : ""}${c.cfg.status ? `<span>${esc(c.cfg.status)}</span>` : ""}</div>` : ""}
       </div>
     </div>
+    ${htmlResumoPainel(e)}
     ${htmlSinaisAtivos(e)}
     ${htmlAoVivo(e)}
     ${htmlMonitor(e)}
@@ -2180,6 +2209,16 @@ function controleSelfLearning(p, { compacto = false } = {}) {
     <button class="btn pequeno ${ligado ? "" : "primario"}" data-acao="self-learning" data-ligar="${!ligado}">${ico(ligado ? "pause" : "play")} ${ligado ? "Pausar self-learning" : "Retomar self-learning"}</button></div>`;
 }
 
+// Curva de saldo legível (22/11/2026, crítica Impeccable): escala com valores redondos, grade por dia, verde acima do
+// zero e vermelho abaixo (antes a linha inteira trocava de cor pelo saldo final) e a marca da queda máxima.
+let idGrafico = 0;
+function ticksRedondos(min, max, n = 4) {
+  const vao = max - min || 1, pot = 10 ** Math.floor(Math.log10(vao / n));
+  const passo = [1, 2, 2.5, 5, 10].map((m) => m * pot).find((p) => vao / p <= n + 1) ?? pot * 10;
+  const out = [];
+  for (let v = Math.ceil(min / passo) * passo; v <= max + passo * 1e-6; v += passo) out.push(Math.round(v / passo) * passo);
+  return out.includes(0) ? out : [...out, 0].sort((p, q) => p - q);
+}
 function svgSaldo(a) {
   const pts = a.curva.map(([t, v]) => [new Date(t).getTime(), v]);
   // a curva começa no zero, como um extrato (16/11/2026): antes, o 1.º ponto já era o resultado da 1.ª operação e um
@@ -2195,28 +2234,46 @@ function svgSaldo(a) {
   const d = pts.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const area = `${d} L${x(t1).toFixed(1)},${y(0).toFixed(1)} L${x(t0).toFixed(1)},${y(0).toFixed(1)} Z`;
   // o zero sempre rotulado (é a linha de referência do saldo); rótulo a menos de 14 px de outro sai
-  const ticks = (yMin < 0 ? [yMin, 0, yMax] : [0, yMax / 2, yMax]).filter((t, i, l) => i === 0 || t === 0 || Math.abs(y(t) - y(l[i - 1])) >= 14)
-    .filter((t, i, l) => t === 0 || !l.includes(0) || Math.abs(y(t) - y(0)) >= 14);
+  const ticks = ticksRedondos(yMin, yMax, estreito ? 3 : 4).filter((t) => t >= yMin && t <= yMax);
+  // grade por dia: no máximo 6 datas, sempre à meia-noite local; com menos de 2 dias ficam só as datas das pontas
+  const DIA = 864e5, nDias = (t1 - t0) / DIA, passoDia = Math.max(1, Math.ceil(nDias / (estreito ? 4 : 6)));
+  const dias = [];
+  if (nDias >= 2) for (let dt = new Date(new Date(t0).setHours(24, 0, 0, 0)); dt.getTime() < t1; dt.setDate(dt.getDate() + passoDia)) dias.push(dt.getTime());
+  // queda máxima: do pico ao fundo, pelo saldo acumulado
+  let pico = pts[0], fundo = null, queda = 0;
+  for (const p of pts) { if (p[1] > pico[1]) pico = p; if (pico[1] - p[1] > queda) { queda = pico[1] - p[1]; fundo = p; } }
+  const id = ++idGrafico, y0 = y(0);
   const trocas = (a.trocas ?? []).filter((m) => { const t = new Date(m.em).getTime(); return t >= t0 && t <= t1; });
   const ult = pts[pts.length - 1];
   const din = dinheiro(a), curto = a.unidade === "r" ? (t) => String(Math.round(t * 10) / 10).replace(".", ",") : usdCurto;
   const desc = `Saldo acumulado de ${a.id}: ${din(ult[1])} em ${a.metricas.ops} operações, de ${dataCurta(a.curva[0][0])} a ${dataCurta(a.curva[a.curva.length - 1][0])}. Queda máxima ${din(-a.metricas.drawdown_usd)}.`;
+  const rotFundo = fundo && queda > 0 ? `<circle class="fundo" cx="${x(fundo[0]).toFixed(1)}" cy="${y(fundo[1]).toFixed(1)}" r="3.5"/>
+      <text class="fundo-rot" x="${(x(fundo[0]) + (x(fundo[0]) > W - 150 ? -7 : 7)).toFixed(1)}" y="${Math.min(H - B - 4, y(fundo[1]) + 14).toFixed(1)}" text-anchor="${x(fundo[0]) > W - 150 ? "end" : "start"}">queda máx. ${din(-queda)}</text>` : "";
   return `<div class="grafico saldo ${ult[1] < 0 ? "negativo" : ""}">
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(desc)}"><title>${esc(desc)}</title>
       ${ticks.map((t) => `<line class="grade" x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text x="${L - 6}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end">${curto(t)}</text>`).join("")}
-      <path class="area" d="${area}"/>
+      <defs><clipPath id="cp-pos-${id}"><rect x="${L - 3}" y="${T - 3}" width="${w + 6}" height="${(y0 - T + 3).toFixed(1)}"/></clipPath>
+        <clipPath id="cp-neg-${id}"><rect x="${L - 3}" y="${y0.toFixed(1)}" width="${w + 6}" height="${(T + h - y0 + 3).toFixed(1)}"/></clipPath></defs>
+      ${dias.map((t) => `<line class="grade dia" x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${T}" y2="${T + h}"/><text x="${x(t).toFixed(1)}" y="${H - 6}" text-anchor="middle">${dataCurta(t)}</text>`).join("")}
+      <path class="area pos" clip-path="url(#cp-pos-${id})" d="${area}"/><path class="area neg" clip-path="url(#cp-neg-${id})" d="${area}"/>
       <line class="eixo zero-linha" x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>
       ${trocas.map((m) => `<line class="troca" x1="${x(new Date(m.em).getTime()).toFixed(1)}" x2="${x(new Date(m.em).getTime()).toFixed(1)}" y1="${T}" y2="${T + h}"/><text class="troca-rot" x="${(x(new Date(m.em).getTime()) + 3).toFixed(1)}" y="${T + 9}">v${m.versao}${m.ativo ? ` ${esc(m.ativo)}` : ""}</text>`).join("")}
-      <path class="linha-saldo" pathLength="1" d="${d}"/>
+      <path class="linha-saldo pos" clip-path="url(#cp-pos-${id})" pathLength="1" d="${d}"/><path class="linha-saldo neg" clip-path="url(#cp-neg-${id})" pathLength="1" d="${d}"/>
+      ${rotFundo}
       <circle class="ponto-real" cx="${x(ult[0]).toFixed(1)}" cy="${y(ult[1]).toFixed(1)}" r="4"/>
-      <text x="${L}" y="${H - 6}">${dataCurta(a.curva[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dataCurta(a.curva[a.curva.length - 1][0])}</text>
+      ${dias.length >= 2 ? "" : `<text x="${L}" y="${H - 6}">${dataCurta(a.curva[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dataCurta(a.curva[a.curva.length - 1][0])}</text>`}
     </svg>
     <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}</div>
   </div>`;
 }
 
+// Um formato só (22/11/2026, crítica Impeccable): fator de lucro sempre com 2 casas e vírgula; os textos que o executor
+// publica com ponto decimal ("US$ -22.17", "2.01×") saem no padrão do resto da página ("−US$ 22,17", "2,01×").
+const fatorTxt = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const numerosPt = (t) => String(t ?? "").replace(/US\$ ([+-]?)(\d+\.\d+)(?![\d,])/g, (_, s, n) => `${s === "-" ? "−" : s}US$ ${Number(n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+  .replace(/(\d+)\.(\d+)(×|%| R(?![A-Za-z]))/g, "$1,$2$3");
 function htmlLeitura(a) {
-  const item = (t, tipo) => `<li class="leitura-${tipo}">${ico(tipo === "fraco" ? "alert" : "check")}<span>${esc(t)}</span></li>`;
+  const item = (t, tipo) => `<li class="leitura-${tipo}">${ico(tipo === "fraco" ? "alert" : "check")}<span>${esc(numerosPt(t))}</span></li>`;
   return `<div class="leitura">
     <h3>Pontos fracos</h3>
     <ul class="lista compacta">${a.pontos_fracos.map((t) => item(t, "fraco")).join("") || `<li class="vazio">Nada que os números apontem por enquanto.</li>`}</ul>
@@ -2384,7 +2441,7 @@ function htmlAgente(a) {
       ${cel(a.rotulo_saldo ?? rotuloSaldo, `<span class="${m.lucro_usd < 0 ? "neg" : m.lucro_usd > 0 ? "pos" : ""}">${din(m.lucro_usd)}</span>`,
         a.nota_saldo ? `${m.ops} operações · ${esc(a.nota_saldo.replace(/ \(\d+\)$/, ""))}` : `${m.ops} operações resolvidas`)}
       ${cel("Acerto", pct(m.acerto_pct), m.ops < 10 ? "amostra pequena" : "")}
-      ${cel("Fator de lucro", m.fator_lucro == null ? "—" : String(m.fator_lucro).replace(".", ","), "ganhos ÷ perdas")}
+      ${cel("Fator de lucro", m.fator_lucro == null ? "—" : fatorTxt(m.fator_lucro), "ganhos ÷ perdas")}
       ${cel("Queda máxima", din(-m.drawdown_usd), a.unidade === "r" ? "do pico ao fundo" : `R total ${String(m.r_total).replace(".", ",")}`)}
     </div>
     <div class="agente-grade">
@@ -2530,7 +2587,7 @@ function leituraUsd(a, [um]) {
   const expirados = a.desfechos.expirado?.ops ?? 0;
   if (n >= 10 && expirados / n > 0.4) fracos.push(`${Math.round((100 * expirados) / n)}% das operações expiram sem bater alvo nem stop: alvo longe demais?`);
   if (n && m.drawdown_usd > Math.abs(m.lucro_usd) && m.drawdown_usd > 0) fracos.push(`Queda máxima (${usd2(-m.drawdown_usd)}) maior que o saldo acumulado.`);
-  if (m.fator_lucro && m.fator_lucro >= 1.3 && n >= 10) fortes.push(`Fator de lucro ${String(m.fator_lucro).replace(".", ",")}: ganha ${String(m.fator_lucro).replace(".", ",")}× o que perde.`);
+  if (m.fator_lucro && m.fator_lucro >= 1.3 && n >= 10) fortes.push(`Fator de lucro ${fatorTxt(m.fator_lucro)}: ganha ${fatorTxt(m.fator_lucro)}× o que perde.`);
   return [fracos, fortes];
 }
 
@@ -3130,7 +3187,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
           ${ehAgentes ? `<td>${a.tipo === "todos" ? "" : a.self_learning ? seloAuto("self-learning") : `<span class="badge muted">fixo</span>`}</td>` : ""}
           <td class="num" data-rot="Operações">${a.metricas.ops}</td><td class="num" data-rot="Acerto">${pct(a.metricas.acerto_pct)}</td>
           <td class="col-zero" data-rot="${comOrdens ? "Resultado" : rotSaldoTab}">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
-          <td class="num" data-rot="Fator de lucro">${a.metricas.fator_lucro == null ? "—" : String(a.metricas.fator_lucro).replace(".", ",")}</td>
+          <td class="num" data-rot="Fator de lucro">${a.metricas.fator_lucro == null ? "—" : fatorTxt(a.metricas.fator_lucro)}</td>
           <td class="num" data-rot="Queda máxima">${din(-a.metricas.drawdown_usd)}</td>
           <td class="exec-cel">${!temExec || a.tipo === "todos" ? "" : consol ? (a.fonte ? seloExecucao(a.fonte) : "") : seloExecucao(f, a.id)}</td></tr>`).join("")}</tbody></table></div>
     </section>`;

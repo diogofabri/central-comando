@@ -594,6 +594,12 @@ main.uma > p.nota { margin-top: 0; }
 .total-corretora span { font-size: 13px; color: var(--ink-2); overflow-wrap: break-word; }
 .total-corretora .meta { font-size: 12px; color: var(--ink-3); }
 .total-corretora.vazio b { color: var(--ink-3); }
+/* resumo do Painel (22/11/2026): a mesma faixa, sem link; mercado, fontes, sinais e conta na primeira dobra */
+.total-corretora.estatico:hover { background: none; }
+.resumo-painel .pregao-b3 { margin: 2px 0 0; }
+.resumo-painel .rp-alerta b { color: var(--critical); }
+.resumo-painel .total-corretora .meta b.pos { color: var(--good); } .resumo-painel .total-corretora .meta b.neg { color: var(--critical); }
+.resumo-painel .total-corretora .meta b { font-size: inherit; }
 @media (max-width: 560px) { .total-corretora { border-right: 0; border-bottom: 1px solid var(--line); } .total-corretora:last-child { border-bottom: 0; } }
 details.como { margin-top: 4px; }
 details.como > summary { font-size: 13px; color: var(--ink-2); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 4px; min-height: 24px; }
@@ -667,6 +673,12 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 .desfechos .d-expirado, .desfechos .d-nao_acionada, .desfechos .d-sem_dados { background: var(--chip); color: var(--ink-2); }
 .grafico.saldo .linha-saldo { stroke: var(--accent); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .grafico.saldo .area { fill: var(--accent); opacity: .08; }
+/* 22/11/2026: verde acima do zero e vermelho abaixo, grade por dia e marca da queda máxima */
+div.grafico.saldo .linha-saldo.pos { stroke: var(--good); } div.grafico.saldo .linha-saldo.neg { stroke: var(--critical); }
+div.grafico.saldo .area.pos { fill: var(--good); opacity: .10; } div.grafico.saldo .area.neg { fill: var(--critical); opacity: .10; }
+.grafico .grade.dia { stroke-dasharray: 1 5; }
+.grafico.saldo .fundo { fill: var(--surface); stroke: var(--critical); stroke-width: 1.5; }
+.grafico.saldo .fundo-rot { fill: var(--critical); font-weight: 600; }
 .grafico.saldo.negativo .linha-saldo { stroke: var(--critical); } .grafico.saldo.negativo .area { fill: var(--critical); }
 .grafico.saldo .ponto-real { stroke: var(--accent); } .grafico.saldo.negativo .ponto-real { stroke: var(--critical); }
 .grafico .zero-linha { stroke: var(--ink-3); }
@@ -730,6 +742,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=110"></script>
+<script src="app.js?v=111"></script>
 </body>
 </html>
