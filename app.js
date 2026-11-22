@@ -302,7 +302,9 @@ function fonteSupabase(cfg) {
                // categoria de canal que o YouTube do Forex lê (22/11/2026): controle.leitura:youtube = todos | robo | trader
                leituraYoutube: ["robo", "trader"].includes(ctl["leitura:youtube"]) ? ctl["leitura:youtube"] : "todos",
                // sala de análise pelo Zoom (22/11/2026): só `true` liga; o monitor publica o que fez por último
-               zoomLigado: ctl["zoom:ligado"] === true, zoomEstado: ctl["zoom:estado"] ?? null };
+               zoomLigado: ctl["zoom:ligado"] === true, zoomEstado: ctl["zoom:estado"] ?? null,
+               // histórico de comandos (22/11/2026): cada mudança feita em Comandos, com data e hora, para marcar na curva
+               comandosHistorico: Array.isArray(ctl["comandos:historico"]) ? ctl["comandos:historico"] : [] };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -326,6 +328,12 @@ function fonteSupabase(cfg) {
     comandarPrioridade: (modo) => sb.from("controle").upsert({ chave: "prioridade:navegadores", valor: modo }).then(ok),
     comandarLeituraYoutube: (modo) => sb.from("controle").upsert({ chave: "leitura:youtube", valor: modo }).then(ok),
     comandarZoom: (ligar) => sb.from("controle").upsert({ chave: "zoom:ligado", valor: ligar }).then(ok),
+    // lê a lista do banco na hora de acrescentar: outra aba ou o celular pode ter gravado um comando entre as cargas
+    async acrescentarComando(item) {
+      const atual = ok(await sb.from("controle").select("valor").eq("chave", "comandos:historico"))[0]?.valor;
+      const lista = [...(Array.isArray(atual) ? atual : []), item].slice(-400);
+      return sb.from("controle").upsert({ chave: "comandos:historico", valor: lista }).then(ok);
+    },
     // corretora das ordens novas do Forex (18/11/2026): lida pelas pontes a cada ciclo (~15 s)
     comandarCorretora: (id) => sb.from("controle").upsert({ chave: "execucao:corretora", valor: id }).then(ok),
     // seleção do que a ponte do MT5 executa (lida a cada ciclo de ~15 s): {fontes: {tiktok: true}, unidades: {tiktok: {"@canal": false}}}
@@ -520,6 +528,7 @@ function fonteDemo() {
     async comandarPrioridade(modo) { s.prioridade = modo; },
     async comandarLeituraYoutube(modo) { s.leituraYoutube = modo; },
     async comandarZoom(ligar) { s.zoomLigado = ligar; },
+    async acrescentarComando(item) { s.comandosHistorico = [...(s.comandosHistorico ?? []), item]; },
     async comandarCorretora(id) { s.execucao.corretora = id; },
     aoMudar() {},
   };
@@ -2316,7 +2325,13 @@ function svgSaldo(a) {
   if (pts.length < 2) return `<p class="vazio">A curva aparece a partir de 2 operações resolvidas (${a.metricas.ops} até agora).</p>`;
   const estreito = innerWidth < 560;
   const W = estreito ? 360 : 640, H = estreito ? 180 : 210, L = 52, R = 12, T = 12, B = 26, w = W - L - R, h = H - T - B;
-  const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+  // marcos de comando: os deste mercado; numa página de fonte, os gerais e os dela (no Consolidado, todos)
+  const fonteDaPagina = rotaAtual().fonte, dataHoraMarco = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
+  const comandos = (estadoBruto?.comandosHistorico ?? []).filter((m) => m?.em && m.texto && (!m.ctx || m.ctx === "todos" || m.ctx === ctxLente)
+    && (!m.fonte || !fonteDaPagina || fonteDaPagina === CONSOLIDADO || m.fonte === fonteDaPagina))
+    .map((m) => [new Date(m.em).getTime(), String(m.texto)]).filter(([tm]) => tm >= pts[0][0]).sort((p, q) => p[0] - q[0]);
+  // a curva acaba na última operação resolvida; o eixo vai até o último comando, para ele caber
+  const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0] || t0 + 1, ...comandos.map(([tm]) => tm));
   let yMin = Math.min(0, ...pts.map((p) => p[1])), yMax = Math.max(0, ...pts.map((p) => p[1]));
   const folga = (yMax - yMin || 1) * 0.12; yMin -= yMin < 0 ? folga : 0; yMax += folga;
   const x = (t) => L + (w * (t - t0)) / Math.max(1, t1 - t0), y = (v) => T + h - (h * (v - yMin)) / (yMax - yMin);
@@ -2332,6 +2347,13 @@ function svgSaldo(a) {
   let pico = pts[0], fundo = null, queda = 0;
   for (const p of pts) { if (p[1] > pico[1]) pico = p; if (pico[1] - p[1] > queda) { queda = pico[1] - p[1]; fundo = p; } }
   const id = ++idGrafico, y0 = y(0);
+  // comandos a menos de 6 px um do outro viram um marco só, com os textos juntos
+  const marcos = [];
+  for (const [tm, texto] of comandos) {
+    const xm = Math.round(x(tm) * 10) / 10, rot = `${new Date(tm).toLocaleString("pt-BR", dataHoraMarco)} · ${texto}`;
+    const ult = marcos[marcos.length - 1];
+    if (ult && xm - ult[0] < 6) ult[1] += ` | ${rot}`; else marcos.push([xm, rot]);
+  }
   // pontos para o cursor: no máximo ~240, já em coordenadas do desenho, com o texto pronto (data, hora e saldo)
   const passoH = Math.max(1, Math.ceil(pts.length / 240)), dataHora = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
   const trocas = (a.trocas ?? []).filter((m) => { const t = new Date(m.em).getTime(); return t >= t0 && t <= t1; });
@@ -2340,8 +2362,10 @@ function svgSaldo(a) {
   const desc = `Saldo acumulado de ${a.id}: ${din(ult[1])} em ${a.metricas.ops} operações, de ${dataCurta(a.curva[0][0])} a ${dataCurta(a.curva[a.curva.length - 1][0])}. Queda máxima ${din(-a.metricas.drawdown_usd)}.`;
   const rotFundo = fundo && queda > 0 ? `<circle class="fundo" cx="${x(fundo[0]).toFixed(1)}" cy="${y(fundo[1]).toFixed(1)}" r="3.5"/>
       <text class="fundo-rot" x="${(x(fundo[0]) + (x(fundo[0]) > W - 150 ? -7 : 7)).toFixed(1)}" y="${Math.min(H - B - 4, y(fundo[1]) + 14).toFixed(1)}" text-anchor="${x(fundo[0]) > W - 150 ? "end" : "start"}">queda máx. ${din(-queda)}</text>` : "";
+  const listaMarcos = comandos.length ? `<details class="marcos-lista"><summary>${ico("chevron")}Mudanças de comando neste período <span class="count">${comandos.length}</span></summary>
+      <ul class="lista compacta">${[...comandos].reverse().map(([tm, texto]) => `<li><b class="num">${new Date(tm).toLocaleString("pt-BR", dataHoraMarco)}</b><span>${esc(texto)}</span></li>`).join("")}</ul></details>` : "";
   return `<div class="grafico saldo ${ult[1] < 0 ? "negativo" : ""}">
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(desc)}" data-topo="${T}" data-base="${T + h}" data-hover="${esc(JSON.stringify(pts.filter((_, k) => k % passoH === 0 || k === pts.length - 1)
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(desc)}" data-topo="${T}" data-base="${T + h}" data-marcos="${esc(JSON.stringify(marcos))}" data-hover="${esc(JSON.stringify(pts.filter((_, k) => k % passoH === 0 || k === pts.length - 1)
       .map(([tp, v]) => [Math.round(x(tp) * 10) / 10, Math.round(y(v) * 10) / 10, `${new Date(tp).toLocaleString("pt-BR", dataHora)} · ${din(v)}`])))}">
       ${ticks.map((t) => `<line class="grade" x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text x="${L - 6}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end">${curto(t)}</text>`).join("")}
       <defs><clipPath id="cp-pos-${id}"><rect x="${L - 3}" y="${T - 3}" width="${w + 6}" height="${(y0 - T + 3).toFixed(1)}"/></clipPath>
@@ -2353,10 +2377,12 @@ function svgSaldo(a) {
       <path class="linha-saldo pos" clip-path="url(#cp-pos-${id})" pathLength="1" d="${d}"/><path class="linha-saldo neg" clip-path="url(#cp-neg-${id})" pathLength="1" d="${d}"/>
       ${rotFundo}
       <circle class="ponto-real" cx="${x(ult[0]).toFixed(1)}" cy="${y(ult[1]).toFixed(1)}" r="4"/>
+      ${marcos.map(([xm, rot]) => `<g class="marco-cmd"><title>${esc(rot)}</title><line x1="${xm}" x2="${xm}" y1="${T}" y2="${T + h}"/><rect x="${xm - 4}" y="${T - 4}" width="8" height="8" transform="rotate(45 ${xm} ${T})"/></g>`).join("")}
       <g class="cursor" display="none" aria-hidden="true"><line class="cursor-linha" y1="${T}" y2="${T + h}"/><circle class="cursor-ponto" r="4"/><text class="cursor-rot" y="${T - 2}"/></g>
       ${dias.length >= 2 ? "" : `<text x="${L}" y="${H - 6}">${dataCurta(a.curva[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dataCurta(a.curva[a.curva.length - 1][0])}</text>`}
     </svg>
-    <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}</div>
+    <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}${marcos.length ? `<span><svg viewBox="0 0 22 10"><rect x="7" y="1" width="8" height="8" transform="rotate(45 11 5)" class="amostra-marco"/></svg>mudança de comando (passe o mouse)</span>` : ""}</div>
+    ${listaMarcos}
   </div>`;
 }
 
@@ -2374,10 +2400,14 @@ function cursorDaCurva(ev) {
   const px = ((ev.clientX - r.left) / r.width) * vb.width;
   let m = pts[0];
   for (const q of pts) if (Math.abs(q[0] - px) < Math.abs(m[0] - px)) m = q;
-  const g = svg.querySelector(".cursor"), fim = m[0] > vb.width - 170;
+  // perto de um marco de comando (7 px), o cursor mostra o que mudou naquele instante, em vez do saldo
+  const marcos = svg._marcos ?? (svg._marcos = JSON.parse(svg.dataset.marcos || "[]"));
+  const marco = marcos.find((q) => Math.abs(q[0] - px) <= 7);
+  if (marco) m = [marco[0], -99, marco[1].length > 110 ? `${marco[1].slice(0, 108)}…` : marco[1]];
+  const g = svg.querySelector(".cursor"), fim = m[0] > vb.width / 2;
   g.removeAttribute("display");
   g.querySelector(".cursor-linha").setAttribute("x1", m[0]); g.querySelector(".cursor-linha").setAttribute("x2", m[0]);
-  g.querySelector(".cursor-ponto").setAttribute("cx", m[0]); g.querySelector(".cursor-ponto").setAttribute("cy", m[1]);
+  g.querySelector(".cursor-ponto").setAttribute("cx", m[0]); g.querySelector(".cursor-ponto").setAttribute("cy", m[1]); g.querySelector(".cursor-ponto").setAttribute("display", marco ? "none" : "inline");
   const rot = g.querySelector(".cursor-rot");
   rot.setAttribute("x", m[0] + (fim ? -6 : 6)); rot.setAttribute("text-anchor", fim ? "end" : "start"); rot.textContent = m[2];
 }
@@ -3077,6 +3107,16 @@ function htmlEstadoComandos(e) {
   return `<p class="meta estado-comandos" aria-label="Estado dos comandos do monitor">${partes.map((x) => `<span>${x}</span>`).join("")}
     <a class="btn pequeno" href="${hrefCtx(ctxLente, "comandos")}">${ico("power")} Comandos</a></p>`;
 }
+function htmlHistoricoComandos() {
+  const lista = (estadoBruto?.comandosHistorico ?? []).filter((m) => m?.em && m.texto && (!m.ctx || m.ctx === "todos" || m.ctx === ctxLente))
+    .sort((p, q) => new Date(q.em) - new Date(p.em));
+  const quandoFoi = (iso) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return `<section class="painel" aria-labelledby="h-cmd-hist"><h2 id="h-cmd-hist">${ico("clock")} Histórico de comandos <span class="count">${lista.length}</span></h2>
+    <p class="meta">Cada mudança feita nesta página fica registrada e aparece como um marco na curva de saldo, para comparar o resultado antes e depois. A troca automática da prioridade das lives não entra.</p>
+    ${lista.length ? `<ul class="lista compacta rolavel" data-rolavel="cmd-historico">${lista.slice(0, 80).map((m) => `<li><b class="num">${quandoFoi(m.em)}</b><span>${esc(m.texto)}</span>${m.fonte && FONTES[m.fonte] ? `<span class="badge muted">${FONTES[m.fonte]}</span>` : ""}${m.ctx === "todos" ? `<span class="badge muted">os dois mercados</span>` : ""}</li>`).join("")}</ul>`
+      : `<p class="vazio">Nenhuma mudança registrada ainda.</p>`}
+  </section>`;
+}
 function botaoFonte(f, e) {
   const { querLigado } = saudeFonte(f, e);
   return `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}" aria-label="${querLigado ? "Desligar" : "Ligar"} ${esc(FONTES[f])}">${ico(querLigado ? "power" : "play")}${querLigado ? "Desligar" : "Ligar"}</button>`;
@@ -3120,7 +3160,7 @@ function vistaComandos(foco) {
         <div class="meta"><span>O único lugar que liga, desliga e escolhe. Painel, Consolidado e as páginas das fontes só mostram o estado.</span></div>
       </div>
     </div>
-    ${blocoFontes}${blocoLeitura}${blocoExec}${blocoAgentes}${blocoMaquina}
+    ${blocoFontes}${blocoLeitura}${blocoExec}${blocoAgentes}${blocoMaquina}${htmlHistoricoComandos()}
   </main>`;
 }
 
@@ -3546,7 +3586,17 @@ async function recarregar(forcar = false) {  // só a atualização periódica p
   if (sync) { sync.classList.add("piscou"); setTimeout(() => sync.classList.remove("piscou"), 600); }
 }
 
-async function agir(fn) {
+// Histórico de comandos (22/11/2026, pedido do Diogo): toda mudança feita em Comandos fica registrada com data e
+// hora (`controle.comandos:historico`) e vira um marco na curva de saldo, para ver o resultado antes e depois dela.
+// `ctx`: "todos" quando vale para os dois mercados; `fonte`: quando a mudança é só de uma fonte.
+async function registrarComando(registro) {
+  await fonte.acrescentarComando({ em: new Date().toISOString(), ctx: ctxLente, ...registro });
+}
+async function agir(fn, registro) {
+  if (registro) {
+    const acao = fn;
+    fn = async () => { await acao(); try { await registrarComando(registro); } catch (e) { /* o comando valeu; só o registro falhou */ } };
+  }
   try { await fn(); erro = ""; } catch (e) { erro = e.message.includes("já foi resolvida") ? "Essa decisão já tinha sido resolvida por outro canal (Telegram)." : e.message; }
   ajustando = null;
   await recarregar(true);
@@ -3566,7 +3616,7 @@ document.addEventListener("click", (ev) => {
   const id = Number(b.dataset.id), acao = b.dataset.acao;
   if (acao === "ajustar") { ajustando = id; return render(); }
   if (acao === "cancelar-ajuste") { ajustando = null; return render(); }
-  if (acao === "pausa") { b.disabled = true; return agir(() => fonte.pausar(!estado.pausado)); }
+  if (acao === "pausa") { b.disabled = true; return agir(() => fonte.pausar(!estado.pausado), { texto: estado.pausado ? "Agentes retomados" : "Todos os agentes pausados", ctx: "todos" }); }
   if (acao === "filtro") return definirFiltro(b.dataset.ativo);
   if (acao === "filtro-eventos") { filtroEventos = b.dataset.projeto; return render(); }
   // histórico: filtro, ordenação e "mostrar mais" só mexem na tela (nada é gravado)
@@ -3607,19 +3657,19 @@ document.addEventListener("click", (ev) => {
     const ligar = b.dataset.ligar === "true";
     if (!ligar && !confirm("Pausar o self-learning? As rodadas dos agentes continuam; só param os ajustes automáticos de parâmetros até retomar.")) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarSelfLearning(ligar));
+    return agir(() => fonte.comandarSelfLearning(ligar), { texto: `Self-learning ${ligar ? "retomado" : "pausado"}`, fonte: "agentes" });
   }
   if (acao === "consenso") {
     const ligar = b.dataset.ligar === "true";
     if (ligar && !confirm("Ligar o consenso? O TikTok e o YouTube só geram sinal quando vários canais concordam (mínimo de canais, tolerância e bloqueio do lado oposto). Os sinais já abertos continuam. Vale em até ~10 s, sem reiniciar.")) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarConsenso(ligar));
+    return agir(() => fonte.comandarConsenso(ligar), { texto: `Consenso ${ligar ? "ligado" : "desligado"} (TikTok e YouTube)` });
   }
   if (acao === "audio") {
     const ligar = b.dataset.ligar === "true";
     if (ligar && !confirm("Escutar o áudio das lives desta fonte? A fala é enviada ao Groq para transcrição (grátis até ~8 h de áudio por dia) e entra na leitura das próximas passagens.")) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarAudio(b.dataset.chave, ligar));
+    return agir(() => fonte.comandarAudio(b.dataset.chave, ligar), { texto: `Escutar live do ${FONTES[b.dataset.chave.split("@")[0]] ?? b.dataset.chave} ${ligar ? "ligado" : "desligado"}`, fonte: b.dataset.chave.split("@")[0] });
   }
   if (acao === "execucao") {
     const modo = b.dataset.modo, f = b.dataset.fonte, u = b.dataset.unidade, ligar = b.dataset.ligar === "true";
@@ -3634,7 +3684,8 @@ document.addEventListener("click", (ev) => {
       if (!ligar) sel.unidades[f] = Object.fromEntries(Object.entries(sel.unidades[f] ?? {}).filter(([, v]) => v === false));
     } else sel.unidades[f] = { ...(sel.unidades[f] ?? {}), [u]: ligar };
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarExecucao(modo, sel, sufixoDe(ctxLente)));
+    return agir(() => fonte.comandarExecucao(modo, sel, sufixoDe(ctxLente)),
+      { texto: `Execução ${modo === "real" ? "REAL" : "demo"} ${ligar ? "ligada" : "desligada"}: ${u == null ? `todo o ${FONTES[f]}` : `${u} (${FONTES[f]})`}`, fonte: f });
   }
   if (acao === "corretora") {
     const nova = b.dataset.corretora, atual = estado.execucao?.corretora ?? "capitalcom";
@@ -3642,33 +3693,33 @@ document.addEventListener("click", (ev) => {
     const vivas = (estado.monitorOrdens ?? []).filter((o) => o.corretora === NOME_CORRETORA_FX[atual] && (o.status === "aberta" || o.status === "pendente")).length;
     if (!confirm(`Mandar as ordens novas do Forex para a ${NOME_CORRETORA_FX[nova]}?${vivas ? ` As ${vivas} ordens vivas na ${NOME_CORRETORA_FX[atual]} continuam lá, vigiadas até o stop ou o alvo.` : ""}${nova === "activtrades" ? " A ActivTrades ainda não está configurada no VPS: até a ponte dela rodar, nenhum sinal novo vira ordem." : ""}`)) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarCorretora(nova));
+    return agir(() => fonte.comandarCorretora(nova), { texto: `Ordens novas do Forex na ${NOME_CORRETORA_FX[nova]}` });
   }
   if (acao === "prioridade") {
     const modo = b.dataset.modo;
     if (modo === (estado.prioridade ?? "normal")) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarPrioridade(modo));
+    return agir(() => fonte.comandarPrioridade(modo), { texto: `Lives: ${(PRIORIDADES.find(([k]) => k === modo) ?? [0, modo])[1]}`, ctx: "todos" });
   }
   if (acao === "zoom") {
     const ligar = b.dataset.ligar === "true";
     if (ctxLente !== "forex") return;
     if (ligar && !confirm("Ligar o monitor da sala do Zoom? Nos horários da sala (seg a sex 09:15–11:15 e seg a qui a partir das 20:00, Brasília) o Chrome do monitor entra com a sua conta e guarda um print a cada 30 s, só no VPS. O seu nome aparece na lista de participantes, e você pode não conseguir entrar ao mesmo tempo com o mesmo link.")) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarZoom(ligar));
+    return agir(() => fonte.comandarZoom(ligar), { texto: `Sala do Zoom ${ligar ? "ligada" : "desligada"}` });
   }
   if (acao === "leitura-youtube") {
     const modo = b.dataset.modo;
     if (ctxLente !== "forex" || modo === (estado.leituraYoutube ?? "todos")) return;
     if (modo !== "todos" && !confirm(`O YouTube do Forex passa a ler ${modo === "robo" ? "só os robôs" : "só os traders"}? Os outros canais param de abrir live até voltar para Tudo. Os sinais já abertos continuam.`)) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarLeituraYoutube(modo));
+    return agir(() => fonte.comandarLeituraYoutube(modo), { texto: `YouTube lê ${{ todos: "todos os canais", robo: "só os robôs", trader: "só os traders" }[modo]}`, fonte: "youtube" });
   }
   if (acao === "trocar-maquina") {
     const alvo = b.dataset.maquina, nome = NOME_MAQUINA[alvo];
     if (!confirm(`Passar o monitor para o ${nome}? TikTok, YouTube, Sites, Agentes, TradingView e Telegram param na outra máquina e ligam no ${nome} em 1 a 3 min; as gravações em andamento são encerradas. O MT5 e o YouTube da Bovespa continuam no VPS.${alvo === "mac" ? " O Mac precisa estar acordado e com o Rancher Desktop aberto." : ""}`)) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.pedirTroca(alvo));
+    return agir(() => fonte.pedirTroca(alvo), { texto: `Monitor passa a operar no ${nome}`, ctx: "todos" });
   }
   if (acao === "login") {
     b.disabled = true; b.classList.add("ocupado");
@@ -3681,7 +3732,8 @@ document.addEventListener("click", (ev) => {
     if (!ligar && !confirm(soPeriodicas ? `Desligar os agentes (${nomes})? As rodadas param (os sinais abertos continuam a ser conferidos) até ligar de novo.`
       : `Desligar o monitor (${nomes})? As gravações em andamento são encerradas e nada é capturado até ligar de novo.`)) return;
     b.disabled = true; b.classList.add("ocupado");
-    return agir(() => fonte.comandarMonitor(fontes.map((f) => f + sufixoDe(ctxLente)), ligar));  // youtube@bovespa nunca liga/desliga o youtube do Forex
+    return agir(() => fonte.comandarMonitor(fontes.map((f) => f + sufixoDe(ctxLente)), ligar),  // youtube@bovespa nunca liga/desliga o youtube do Forex
+      { texto: `${fontes.length > 1 ? "Todas as fontes" : nomes} ${fontes.length > 1 ? (ligar ? "ligadas" : "desligadas") : (ligar ? "ligado" : "desligado")}`, ...(fontes.length === 1 ? { fonte: fontes[0] } : {}) });
   }
   if (acao === "confirmar-ajuste") {
     const texto = document.getElementById(`aj-${id}`).value.trim();
