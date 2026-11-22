@@ -177,6 +177,9 @@ details.historico .rolagem.rolavel-y { max-height: min(440px, 60vh); }
 th[aria-sort="ascending"] .th-ordem .ico { transform: rotate(-90deg); }
 th[aria-sort] .th-ordem { color: var(--ink); font-weight: 600; }
 .hist-pe { justify-content: space-between; margin-top: 8px; }
+/* página de análise enxuta (22/11/2026): a Comparação é o seletor de canal; o detalhe vem depois dela */
+.dica-comp { font-weight: 400; }
+section.agente.detalhe > details.historico > summary { margin-top: 0; }
 details.motivos > summary { margin-top: 0; }
 details.motivos[open] > summary .ico { transform: rotate(90deg); }
 details.motivos .lista li { justify-content: space-between; gap: 12px; }
@@ -727,6 +730,6 @@ section.agente .faixa-agente { box-shadow: none; margin-top: 12px; border-radius
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=107"></script>
+<script src="app.js?v=108"></script>
 </body>
 </html>

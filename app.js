@@ -2359,6 +2359,19 @@ function urlDaUnidade(a) {
 const linkDaUnidade = (a) => { const u = urlDaUnidade(a); const o = a.tipo === "sites" ? "o site" : a.tipo === "telegram" ? "o canal" : "a live";
   return u ? `<a class="abrir-live" href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Abrir ${o} de ${esc(normNome(a.id))} em outra aba">${ico("external")}abrir ${o.split(" ")[1]}</a>` : ""; };
 
+// Páginas de análise enxutas (22/11/2026, crítica Impeccable): a resposta "como este canal foi?" vem primeiro (totais,
+// indicadores, curva e pontos fracos), depois a Comparação, que é também o seletor de canal (a tira de abas saiu), e por
+// fim o histórico e os recortes. A faixa de totais é o seletor de modalidade (a pílula "Mostrar" e a tabela "por
+// modalidade" saíram: repetiam os mesmos números).
+function htmlAgenteDetalhe(a) {
+  return `<section class="painel agente detalhe" aria-label="Histórico e recortes de ${esc(a.id)}">
+    ${htmlHistorico(a)}
+    <h3>Onde atua</h3>
+    ${htmlAtuacao(a)}
+    ${htmlRecortes(a)}
+    ${htmlCiclos(a)}
+  </section>`;
+}
 function htmlAgente(a) {
   const m = a.metricas, din = dinheiro(a);
   const cel = (rot, valor, sub = "") => `<div><span class="rotulo">${rot}</span><span class="valor">${valor}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
@@ -2377,11 +2390,6 @@ function htmlAgente(a) {
       <div><h3>Evolução do saldo</h3>${svgSaldo(a)}</div>
       ${htmlLeitura(a)}
     </div>
-    ${htmlHistorico(a)}
-    <h3>Onde atua</h3>
-    ${htmlAtuacao(a)}
-    ${htmlRecortes(a)}
-    ${htmlCiclos(a)}
   </section>`;
 }
 
@@ -2936,28 +2944,6 @@ function htmlOutrasCorretoras(modo) {
   }).join("");
 }
 
-// comparativo da unidade aberta nas quatro modalidades (Todos e Sem disparo no placar teórico; Demo e Real com o resultado real)
-function htmlPorModalidade(f, id) {
-  const temReal = (estado.monitorOrdens ?? []).some((o) => o.modo === "real");
-  const lista = [...corretorasDoCtx().flatMap(([k, n]) => [[k, `${n} · demo`, "demo"], ...(temReal ? [[k, `${n} · real`, "real"]] : [])]),
-    ["todos", "Teórico"], ["sem", "Sem disparo"]];
-  const linhas = lista.map(([k, rotulo, conta = "demo"]) => {
-    const p = k === "todos" && f !== CONSOLIDADO ? painelDeResultados(f, estado) : painelDaModalidade(f, estado, k, conta);
-    const a = p?.agentes?.find((x) => x.id === id), din = dinheiro(a ?? { moeda: p?.moeda });
-    if (!a) return `<tr><th scope="row"><a href="${hrefAnalise(f, id, k, conta)}">${rotulo}</a></th><td class="num">0</td><td class="num">0</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
-    const m = a.metricas;
-    return `<tr><th scope="row"><a href="${hrefAnalise(f, id, k, conta)}">${rotulo}</a></th><td class="num">${a.sinais}</td><td class="num">${a.executadas}</td>
-      <td class="num">${a.ganhos}</td><td class="num">${a.perdas}</td><td class="num">${pct(m.acerto_pct)}</td><td class="num ${m.lucro_usd < 0 ? "neg" : m.lucro_usd > 0 ? "pos" : ""}">${din(m.lucro_usd)}</td></tr>`;
-  });
-  return `<section class="painel" aria-labelledby="h-modal">
-    <h2 id="h-modal">${ico("target")} ${esc(id)} por modalidade</h2>
-    <div class="rolagem"><table class="tabela vira-lista">
-      <thead><tr><th scope="col">Modalidade</th><th scope="col">Sinais</th><th scope="col">Executadas</th><th scope="col">Ganhos</th><th scope="col">Perdas</th><th scope="col">Acerto</th><th scope="col">Resultado</th></tr></thead>
-      <tbody>${linhas.join("")}</tbody></table></div>
-    <p class="meta">Sinais: recebidos (Teórico e Sem disparo) ou que viraram ordem (cada corretora, com recusas). Executadas: resolvidas pelo preço (teórico) ou com posição aberta na corretora. Cada corretora fica na moeda da conta e nunca se mistura com outra; o Teórico não depende da seleção de execução.</p>
-  </section>`;
-}
-
 const hrefAnalise = (f, id, modo = rotaAtual().modo ?? "todos", conta = rotaAtual().conta ?? "demo") =>
   `#/${f}/${encodeURIComponent(id)}${modo && modo !== "todos" ? `?m=${modo}${corretoraDoModo(modo) && conta === "real" ? "&c=real" : ""}` : ""}`;
 
@@ -2982,8 +2968,15 @@ function htmlFaixaTotais(f, id, modo, conta) {
         <span class="meta">todos os sinais pelo preço · 30 dias</span>` : `<span class="meta">sem sinais resolvidos</span>`;
     return `<a class="total-corretora teorico${modo === "todos" ? " atual" : ""}" href="${hrefAnalise(f, id, "todos")}" ${modo === "todos" ? 'aria-current="page"' : ""}>
       <span class="total-rot">Teórico</span>${corpo}</a>`;
+  })(), (() => {
+    const p = painelDaModalidade(f, estado, "sem"), a = p?.agentes?.find((x) => x.id === id);
+    const corpo = a ? `<b class="num ${a.metricas.lucro_usd < 0 ? "neg" : a.metricas.lucro_usd > 0 ? "pos" : ""}">${dinheiro(a ?? { moeda: p?.moeda })(a.metricas.lucro_usd)}</b>
+        <span>${a.metricas.ops} ${a.metricas.ops === 1 ? "sinal resolvido" : "sinais resolvidos"} · acerto ${pct(a.metricas.acerto_pct)}</span>
+        <span class="meta">sinais que não viraram ordem · teórico</span>` : `<span class="meta">todos os sinais viraram ordem</span>`;
+    return `<a class="total-corretora teorico${modo === "sem" ? " atual" : ""}${a ? "" : " vazio"}" href="${hrefAnalise(f, id, "sem")}" ${modo === "sem" ? 'aria-current="page"' : ""}>
+      <span class="total-rot">Sem disparo</span>${corpo}</a>`;
   })()];
-  return `<section class="faixa-totais" aria-label="Totais por corretora e teórico de ${esc(id)}">${cartoes.join("")}</section>`;
+  return `<nav class="faixa-totais" aria-label="Resultado de ${esc(id)} por modalidade: escolha qual mostrar">${cartoes.join("")}</nav>`;
 }
 
 // Comparar (contexto Todos): cada fonte de cada contexto, lado a lado, em R (independe de moeda e de lote). O resultado em euros
@@ -3079,9 +3072,11 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
       ${consol ? `<div class="exec-fonte">${htmlPrioridade(estado)}</div>` : ""}
       ${ehAgentes ? controleSelfLearning(p) : ""}
     </div>`);
-  const modalidades = !(CONTEXTOS[ctxLente]?.execucao ?? true) ? "" : `<div class="linha-modalidades"><nav class="segmentado modalidades" aria-label="Resultado"><span class="seg-rot">Mostrar</span>${modalidadesDoCtx()
-    .map(([k, rotulo]) => `<a href="${hrefAnalise(f, id ?? TODOS, k, conta)}" ${k === modo ? 'aria-current="page"' : ""}>${rotulo}</a>`).join("")}</nav>${comOrdens
-    ? `<nav class="segmentado contas" aria-label="Conta"><span class="seg-rot">Conta</span>${[["demo", "Demo"], ["real", "Real"]].map(([k, rot]) => `<a href="${hrefAnalise(f, id ?? TODOS, modo, k)}" ${k === conta ? 'aria-current="page"' : ""}>${rot}</a>`).join("")}</nav>` : ""}</div>`;
+  const temFaixa = corretorasDoCtx().length > 0;  // com a faixa de totais, ela é o seletor de modalidade
+  const navMostrar = temFaixa ? "" : `<nav class="segmentado modalidades" aria-label="Resultado"><span class="seg-rot">Mostrar</span>${modalidadesDoCtx()
+    .map(([k, rotulo]) => `<a href="${hrefAnalise(f, id ?? TODOS, k, conta)}" ${k === modo ? 'aria-current="page"' : ""}>${rotulo}</a>`).join("")}</nav>`;
+  const navConta = comOrdens ? `<nav class="segmentado contas" aria-label="Conta"><span class="seg-rot">Conta</span>${[["demo", "Demo"], ["real", "Real"]].map(([k, rot]) => `<a href="${hrefAnalise(f, id ?? TODOS, modo, k)}" ${k === conta ? 'aria-current="page"' : ""}>${rot}</a>`).join("")}</nav>` : "";
+  const modalidades = !temExec || !(navMostrar || navConta) ? "" : `<div class="linha-modalidades">${navMostrar}${navConta}</div>`;
   const estadoConta = comOrdens ? htmlEstadoExecucao(conta, corr[1]) : "";
   const aviso = erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : "";
   if (!p?.agentes?.length) {
@@ -3095,7 +3090,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
   const max = Math.max(1, ...unidades.map((a) => Math.abs(a.metricas.lucro_usd)));
   const rotSaldoTab = p.agentes.find((a) => a.rotulo_saldo)?.rotulo_saldo ?? rotuloSaldo;
   const comparacao =`<section class="painel" aria-labelledby="h-comp">
-      <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span>${temExec
+      <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span><span class="meta dica-comp">clique num nome para abrir</span>${temExec
         ? `<span class="direita"><button class="btn pequeno" data-acao="ir-exec" title="Abre o painel Execução automática, no fim da página">${ico("power")} Alterar execução</button></span>` : ""}</h2>
       <div class="rolagem rolavel-y" data-rolavel="comparacao-${f}"><table class="tabela comparacao vira-lista">
         <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : rotSaldoTab}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
@@ -3108,17 +3103,15 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
           <td class="num" data-rot="Queda máxima">${din(-a.metricas.drawdown_usd)}</td>
           <td class="exec-cel">${!temExec || a.tipo === "todos" ? "" : consol ? (a.fonte ? seloExecucao(a.fonte) : "") : seloExecucao(f, a.id)}</td></tr>`).join("")}</tbody></table></div>
     </section>`;
-  const abas = `<nav class="abas-agentes" aria-label="${varios[0].toUpperCase() + varios.slice(1)}">${p.agentes.map((a) => `<a href="${hrefAnalise(f, a.id)}" ${a.id === atual.id ? 'aria-current="page"' : ""}>${esc(a.id)}${a.self_learning ? ` ${ico("bulb")}` : ""}</a>`).join("")}</nav>`;
   return `<main class="uma">
     ${aviso}
     ${cab}
-    ${modalidades}
     ${htmlFaixaTotais(f, atual.id, modo, conta)}
+    ${modalidades}
     ${estadoConta}
-    ${comparacao}
-    ${abas}
     ${htmlAgente(atual)}
-    ${htmlPorModalidade(f, atual.id)}
+    ${comparacao}
+    ${htmlAgenteDetalhe(atual)}
     ${painelExec}
   </main>`;
 }
