@@ -746,6 +746,10 @@ div.grafico.saldo .area.pos { fill: var(--good); opacity: .10; } div.grafico.sal
 .grafico .marco-cmd line { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; }
 .grafico .marco-cmd rect, .amostra-marco { fill: var(--accent); }
 .marcos-lista > summary { margin-top: 6px; }
+.ad-bloco { border-top: 1px solid var(--line); padding: 10px 0 6px; }
+.ad-bloco > .meta { margin-bottom: 4px; }
+.ad-bloco .tabela th[scope=row] { font-weight: 500; text-align: left; white-space: nowrap; }
+.ad-bloco .tabela .pos { color: var(--good); } .ad-bloco .tabela .neg { color: var(--critical); }
 a.btn { color: var(--ink); text-decoration: none; }  /* link com cara de botão (Comandos, Alterar execução) */
 a.btn.primario { color: var(--accent-ink); }
 .marcos-lista[open] > summary .ico { transform: rotate(90deg); }
@@ -797,6 +801,6 @@ a.btn.primario { color: var(--accent-ink); }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=120"></script>
+<script src="app.js?v=121"></script>
 </body>
 </html>

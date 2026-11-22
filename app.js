@@ -2364,6 +2364,33 @@ function svgSaldo(a) {
       <text class="fundo-rot" x="${(x(fundo[0]) + (x(fundo[0]) > W - 150 ? -7 : 7)).toFixed(1)}" y="${Math.min(H - B - 4, y(fundo[1]) + 14).toFixed(1)}" text-anchor="${x(fundo[0]) > W - 150 ? "end" : "start"}">queda máx. ${din(-queda)}</text>` : "";
   const listaMarcos = comandos.length ? `<details class="marcos-lista"><summary>${ico("chevron")}Mudanças de comando neste período <span class="count">${comandos.length}</span></summary>
       <ul class="lista compacta">${[...comandos].reverse().map(([tm, texto]) => `<li><b class="num">${new Date(tm).toLocaleString("pt-BR", dataHoraMarco)}</b><span>${esc(texto)}</span></li>`).join("")}</ul></details>` : "";
+  // Antes × depois (22/11/2026, pedido do Diogo): para cada mudança, o resultado da janela DEPOIS dela (até agora) ao
+  // lado de uma janela do MESMO tamanho ANTES. Sai das operações da própria curva (cada ponto é uma operação). Mudanças
+  // a menos de 1 h uma da outra contam como uma só. Com menos de 10 operações depois, a linha avisa: é cedo para concluir.
+  const HORA = 36e5, agoraMs = Date.now(), ops = pts.slice(1).map((q, k) => [q[0], q[1] - pts[k][1]]);
+  const janela = (de, ate) => {
+    const l = ops.filter(([tp]) => tp >= de && tp < ate), dec = l.filter(([, v]) => v !== 0);
+    return { n: l.length, soma: l.reduce((s, [, v]) => s + v, 0), acerto: dec.length ? Math.round((1000 * dec.filter(([, v]) => v > 0).length) / dec.length) / 10 : null };
+  };
+  const durTxt = (ms) => (ms >= 2 * DIA ? `${Math.round(ms / DIA)} dias` : ms >= 2 * HORA ? `${Math.round(ms / HORA)} h` : `${Math.max(1, Math.round(ms / 6e4))} min`);
+  const grupos = [];
+  for (const [tm, texto] of comandos) {
+    const g = grupos[grupos.length - 1];
+    if (g && tm - g.tm < HORA) g.textos.push(texto); else grupos.push({ tm, textos: [texto] });
+  }
+  const linhaJanela = (rot, j, dur) => `<tr><th scope="row">${rot}</th><td class="num">${j.n}</td><td class="num">${j.acerto == null ? "—" : pct(j.acerto)}</td>
+      <td class="num"><span class="${j.soma < 0 ? "neg" : j.soma > 0 ? "pos" : ""}">${din(j.soma)}</span></td><td class="num">${dur >= DIA ? din(j.soma / (dur / DIA)) : "—"}</td></tr>`;
+  const antesDepois = grupos.length ? `<details class="marcos-lista antes-depois"><summary>${ico("chevron")}Antes × depois de cada mudança <span class="count">${grupos.length}</span></summary>
+      ${[...grupos].reverse().slice(0, 8).map((g) => {
+        const dur = Math.max(agoraMs - g.tm, 6e4), de = Math.max(g.tm - dur, pts[0][0]), antes = janela(de, g.tm), depois = janela(g.tm, agoraMs + 1);
+        const curto = g.tm - de < dur * 0.95;
+        return `<div class="ad-bloco"><p class="meta"><b class="num">${new Date(g.tm).toLocaleString("pt-BR", dataHoraMarco)}</b><span>${g.textos.map(esc).join(" · ")}</span></p>
+          <div class="rolagem"><table class="tabela"><thead><tr><th scope="col">Janela</th><th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col">Resultado</th><th scope="col">Por dia</th></tr></thead>
+            <tbody>${linhaJanela(`Antes · ${durTxt(g.tm - de)}`, antes, g.tm - de)}${linhaJanela(`Depois · ${durTxt(dur)}`, depois, dur)}</tbody></table></div>
+          ${depois.n < 10 ? `<p class="meta"><small class="amostra">${depois.n === 0 ? "nenhuma operação resolvida depois da mudança ainda" : `só ${depois.n} ${depois.n === 1 ? "operação" : "operações"} depois da mudança: cedo para concluir`}</small></p>` : ""}
+          ${curto ? `<p class="meta"><small>A curva começa em ${dataCurta(pts[0][0])}: a janela de antes é mais curta que a de depois; compare pelo "por dia".</small></p>` : ""}</div>`;
+      }).join("")}
+      <p class="meta nota">Mesma régua da curva acima (${esc(a.legenda ?? "saldo acumulado")}). Outras coisas mudam junto com o comando (mercado, horário, canais no ar): a diferença é um indício, não uma prova.</p></details>` : "";
   return `<div class="grafico saldo ${ult[1] < 0 ? "negativo" : ""}">
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(desc)}" data-topo="${T}" data-base="${T + h}" data-marcos="${esc(JSON.stringify(marcos))}" data-hover="${esc(JSON.stringify(pts.filter((_, k) => k % passoH === 0 || k === pts.length - 1)
       .map(([tp, v]) => [Math.round(x(tp) * 10) / 10, Math.round(y(v) * 10) / 10, `${new Date(tp).toLocaleString("pt-BR", dataHora)} · ${din(v)}`])))}">
@@ -2382,7 +2409,7 @@ function svgSaldo(a) {
       ${dias.length >= 2 ? "" : `<text x="${L}" y="${H - 6}">${dataCurta(a.curva[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dataCurta(a.curva[a.curva.length - 1][0])}</text>`}
     </svg>
     <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}${marcos.length ? `<span><svg viewBox="0 0 22 10"><rect x="7" y="1" width="8" height="8" transform="rotate(45 11 5)" class="amostra-marco"/></svg>mudança de comando (passe o mouse)</span>` : ""}</div>
-    ${listaMarcos}
+    ${listaMarcos}${antesDepois}
   </div>`;
 }
 
