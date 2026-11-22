@@ -1530,7 +1530,7 @@ function htmlFiltroAtivo(e) {
   const chip = ([sym, rotulo]) => `<button class="btn" data-acao="filtro" data-ativo="${sym}" aria-pressed="${filtroAtivo === sym}">${sym ? iconeAtivo(sym) : ""}${rotulo}</button>`;
   return `<div class="filtros" style="align-items:center" role="group" aria-label="Filtrar por ativo">
     <span class="meta">Ativo:</span>${atalhosAtivo().map(chip).join("")}
-    <select data-acao="filtro-lista" aria-label="Filtrar por ativo" style="width:auto;min-height:30px;padding:2px 8px;font-size:12.5px">
+    <select data-acao="filtro-lista" aria-label="Filtrar por ativo" style="width:auto;min-height:30px;padding:2px 8px;font-size:13px">
       <option value="">Outro ativo…</option>${opcoes.map((s) => `<option value="${s}" ${filtroAtivo === s ? "selected" : ""}>${s} (${NOME_CLASSE[classeAtivo(s)]})</option>`).join("")}
     </select>
     ${filtroAtivo ? `<span class="meta">mostrando só <b>${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</b></span>` : ""}
@@ -1718,9 +1718,29 @@ function htmlAoVivo(e) {
   </section>`;
 }
 
+// Sinais ativos (22/11/2026, crítica Impeccable): no computador a lista vem como TABELA densa, uma linha por sinal
+// (antes só cartões por fonte: 3.000 px no celular e difícil de comparar); os cartões continuam como alternativa e são o
+// padrão no celular. Com o mercado fechado, a seção diz isso: os sinais do último pregão não estão valendo agora.
+let visaoSinais = (() => { try { return localStorage.getItem("visaoSinais") || ""; } catch (e) { return ""; } })();
+const visaoSinaisAtual = () => (visaoSinais === "tabela" || visaoSinais === "cartoes" ? visaoSinais : innerWidth >= 900 ? "tabela" : "cartoes");
+function tabelaSinais(lista, chave) {
+  const linha = (s) => {
+    const venda = s.direcao === "venda", ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : "—";
+    return `<tr><td>${FONTES[s.fonte] ?? esc(s.fonte)}</td><td>${linkCanal(s.fonte, s.item, s.origem)}</td>
+      <td><span class="ativo-nome"><span aria-hidden="true">${iconeAtivo(s.instrumento)}</span><b>${esc(s.instrumento)}</b></span></td>
+      <td><span class="badge ${venda ? "venda" : s.direcao === "compra" ? "compra" : ""}">${esc((s.direcao || "?").toUpperCase())}</span></td>
+      <td class="num">${esc(precoCurto(s.entrada))}</td><td class="num">${esc(precoCurto(s.stop))}</td><td class="num">${esc(precoCurto(s.alvos))}</td>
+      <td class="num">há ${duracao(s.desde)}</td><td class="num">${ate}</td><td class="exec-sinal">${htmlExecucaoSinal(s)}</td></tr>`;
+  };
+  return `<div class="rolagem rolavel-y" data-rolavel="${chave}"><table class="tabela vira-lista sinais-tab">
+    <thead><tr><th scope="col">Fonte</th><th scope="col">Origem</th><th scope="col">Ativo</th><th scope="col">Lado</th><th scope="col">Entrada</th><th scope="col">Stop</th>
+      <th scope="col">Alvo</th><th scope="col">Desde</th><th scope="col">Válido até</th><th scope="col">Execução e resultado</th></tr></thead>
+    <tbody>${lista.map(linha).join("")}</tbody></table></div>`;
+}
 function htmlSinaisAtivos(e) {
   const por = fontesDoCtx().map((f) => [f, sinaisVigentes(e, f)]);
   const total = por.reduce((n, [, l]) => n + l.filter((s) => !foraDaExecucao(s)).length, 0);
+  const visao = visaoSinaisAtual(), mercado = PREGOES[ctxLente]?.calc();
   // fonte sem sinal não ganha cartão vazio: entra numa linha só, embaixo da grade. Os sinais que NÃO vão executar (ordem
   // recusada, cancelada ou sinal atrasado sem ordem) ficam num bloco recolhido, para a lista bater com a corretora
   // (pedido do Diogo, 16/11/2026); o placar continua medindo todos
@@ -1732,12 +1752,19 @@ function htmlSinaisAtivos(e) {
       ${fora.length ? `<details class="fora-execucao"><summary>Fora da execução <span class="count">${fora.length}</span></summary>
         <ul class="lista rolavel" data-rolavel="fora-${f}">${fora.map(htmlSinal).join("")}</ul></details>` : ""}</div>`;
   });
+  const todos = por.flatMap(([, l]) => l), dentro = todos.filter((s) => !foraDaExecucao(s)), fora = todos.filter(foraDaExecucao);
+  const tabela = `${dentro.length ? tabelaSinais(dentro, "sinais-tabela") : `<p class="meta">Nenhum sinal em execução ou executável agora.</p>`}
+    ${fora.length ? `<details class="fora-execucao"><summary>Fora da execução <span class="count">${fora.length}</span></summary>${tabelaSinais(fora, "sinais-tabela-fora")}</details>` : ""}`;
   const semSinal = por.filter(([, l]) => !l.length).map(([f]) => FONTES[f]);
+  const alterna = `<span class="direita"><span class="segmentado" role="group" aria-label="Como mostrar os sinais"><span class="seg-rot">Ver</span>${[["tabela", "Tabela"], ["cartoes", "Cartões"]].map(([k, rot]) =>
+    `<button type="button" data-acao="visao-sinais" data-visao="${k}" aria-pressed="${k === visao}">${rot}</button>`).join("")}</span></span>`;
+  const fechado = mercado && !mercado.aberto ? `<p class="meta nota mercado-fechado">${htmlBadge("muted", "mercado fechado", "pause")}<span>Os sinais abaixo ficaram do último pregão e só voltam a valer na abertura, em ${textoPrazoLongo(mercado.ate)}.${ctxLente === "forex" ? " Cripto segue aberta no fim de semana." : ""}</span></p>` : "";
   return `<section class="painel" aria-labelledby="h-sinais">
-    <h2 id="h-sinais">${ico("zap")} Sinais ativos <span class="count">${total}</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}</h2>
+    <h2 id="h-sinais">${ico("zap")} Sinais ativos <span class="count">${total}</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}${todos.length ? alterna : ""}</h2>
+    ${fechado}
     ${htmlFiltroAtivo(e)}
-    ${cartoes.length ? `<div class="grade-cartoes larga sinais">${cartoes.join("")}</div>` : `<p class="vazio">Nenhum sinal ativo${filtroAtivo ? ` em ${esc(filtroAtivo)}` : ""}.</p>`}
-    ${cartoes.length && semSinal.length ? `<p class="meta nota">Sem sinal ativo: ${semSinal.join(", ")}.</p>` : ""}
+    ${!todos.length ? `<p class="vazio">Nenhum sinal ativo${filtroAtivo ? ` em ${esc(filtroAtivo)}` : ""}.</p>` : visao === "tabela" ? tabela : `<div class="grade-cartoes larga sinais">${cartoes.join("")}</div>`}
+    ${todos.length && semSinal.length ? `<p class="meta nota">Sem sinal ativo: ${semSinal.join(", ")}.</p>` : ""}
   </section>`;
 }
 
@@ -2279,6 +2306,8 @@ function svgSaldo(a) {
   let pico = pts[0], fundo = null, queda = 0;
   for (const p of pts) { if (p[1] > pico[1]) pico = p; if (pico[1] - p[1] > queda) { queda = pico[1] - p[1]; fundo = p; } }
   const id = ++idGrafico, y0 = y(0);
+  // pontos para o cursor: no máximo ~240, já em coordenadas do desenho, com o texto pronto (data, hora e saldo)
+  const passoH = Math.max(1, Math.ceil(pts.length / 240)), dataHora = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
   const trocas = (a.trocas ?? []).filter((m) => { const t = new Date(m.em).getTime(); return t >= t0 && t <= t1; });
   const ult = pts[pts.length - 1];
   const din = dinheiro(a), curto = a.unidade === "r" ? (t) => String(Math.round(t * 10) / 10).replace(".", ",") : usdCurto;
@@ -2286,7 +2315,8 @@ function svgSaldo(a) {
   const rotFundo = fundo && queda > 0 ? `<circle class="fundo" cx="${x(fundo[0]).toFixed(1)}" cy="${y(fundo[1]).toFixed(1)}" r="3.5"/>
       <text class="fundo-rot" x="${(x(fundo[0]) + (x(fundo[0]) > W - 150 ? -7 : 7)).toFixed(1)}" y="${Math.min(H - B - 4, y(fundo[1]) + 14).toFixed(1)}" text-anchor="${x(fundo[0]) > W - 150 ? "end" : "start"}">queda máx. ${din(-queda)}</text>` : "";
   return `<div class="grafico saldo ${ult[1] < 0 ? "negativo" : ""}">
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(desc)}"><title>${esc(desc)}</title>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(desc)}" data-topo="${T}" data-base="${T + h}" data-hover="${esc(JSON.stringify(pts.filter((_, k) => k % passoH === 0 || k === pts.length - 1)
+      .map(([tp, v]) => [Math.round(x(tp) * 10) / 10, Math.round(y(v) * 10) / 10, `${new Date(tp).toLocaleString("pt-BR", dataHora)} · ${din(v)}`])))}">
       ${ticks.map((t) => `<line class="grade" x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text x="${L - 6}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end">${curto(t)}</text>`).join("")}
       <defs><clipPath id="cp-pos-${id}"><rect x="${L - 3}" y="${T - 3}" width="${w + 6}" height="${(y0 - T + 3).toFixed(1)}"/></clipPath>
         <clipPath id="cp-neg-${id}"><rect x="${L - 3}" y="${y0.toFixed(1)}" width="${w + 6}" height="${(T + h - y0 + 3).toFixed(1)}"/></clipPath></defs>
@@ -2297,6 +2327,7 @@ function svgSaldo(a) {
       <path class="linha-saldo pos" clip-path="url(#cp-pos-${id})" pathLength="1" d="${d}"/><path class="linha-saldo neg" clip-path="url(#cp-neg-${id})" pathLength="1" d="${d}"/>
       ${rotFundo}
       <circle class="ponto-real" cx="${x(ult[0]).toFixed(1)}" cy="${y(ult[1]).toFixed(1)}" r="4"/>
+      <g class="cursor" display="none" aria-hidden="true"><line class="cursor-linha" y1="${T}" y2="${T + h}"/><circle class="cursor-ponto" r="4"/><text class="cursor-rot" y="${T - 2}"/></g>
       ${dias.length >= 2 ? "" : `<text x="${L}" y="${H - 6}">${dataCurta(a.curva[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dataCurta(a.curva[a.curva.length - 1][0])}</text>`}
     </svg>
     <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}</div>
@@ -2308,6 +2339,25 @@ function svgSaldo(a) {
 const fatorTxt = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const numerosPt = (t) => String(t ?? "").replace(/US\$ ([+-]?)(\d+\.\d+)(?![\d,])/g, (_, s, n) => `${s === "-" ? "−" : s}US$ ${Number(n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
   .replace(/(\d+)\.(\d+)(×|%| R(?![A-Za-z]))/g, "$1,$2$3");
+// cursor da curva de saldo: o ponto mais próximo do ponteiro ganha linha, marca e o valor escrito
+function cursorDaCurva(ev) {
+  const svg = ev.target.closest?.(".grafico.saldo svg[data-hover]");
+  document.querySelectorAll(".grafico.saldo .cursor:not([display])").forEach((g) => { if (g.ownerSVGElement !== svg || ev.type === "pointerleave") g.setAttribute("display", "none"); });
+  if (!svg || ev.type === "pointerleave") return;
+  const pts = svg._pts ?? (svg._pts = JSON.parse(svg.dataset.hover)), r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+  const px = ((ev.clientX - r.left) / r.width) * vb.width;
+  let m = pts[0];
+  for (const q of pts) if (Math.abs(q[0] - px) < Math.abs(m[0] - px)) m = q;
+  const g = svg.querySelector(".cursor"), fim = m[0] > vb.width - 170;
+  g.removeAttribute("display");
+  g.querySelector(".cursor-linha").setAttribute("x1", m[0]); g.querySelector(".cursor-linha").setAttribute("x2", m[0]);
+  g.querySelector(".cursor-ponto").setAttribute("cx", m[0]); g.querySelector(".cursor-ponto").setAttribute("cy", m[1]);
+  const rot = g.querySelector(".cursor-rot");
+  rot.setAttribute("x", m[0] + (fim ? -6 : 6)); rot.setAttribute("text-anchor", fim ? "end" : "start"); rot.textContent = m[2];
+}
+document.addEventListener("pointermove", cursorDaCurva);
+document.addEventListener("pointerdown", cursorDaCurva);
+document.addEventListener("pointerleave", cursorDaCurva, true);
 function htmlLeitura(a) {
   const item = (t, tipo) => `<li class="leitura-${tipo}">${ico(tipo === "fraco" ? "alert" : "check")}<span>${esc(numerosPt(t))}</span></li>`;
   return `<div class="leitura">
@@ -2377,7 +2427,9 @@ function situacaoDoHistorico(x, ordens) {
 // e sai numa linha própria, fora do grupo "instrumento sem símbolo" (que aponta mapa faltando)
 const SO_CONTA_REAL = ["NQ"];
 const soContaReal = (t) => SO_CONTA_REAL.find((a) => new RegExp(`instrumento\\s+${a}\\s+sem`, "i").test(String(t ?? "")));
-const motivoCurto = (t) => soContaReal(t) ? `${soContaReal(t)}: só na conta real (esperado: a demo não tem este ativo)` : String(t ?? "").replace(/\([^)]*\)/g, "").replace(/·\s*parcial\s+\d+\s+de\s+\d+/gi, "").replace(/instrumento\s+\S+\s+sem/i, "instrumento sem").replace(/[-+−]?\d[\d.,]*/g, "").replace(/\s+/g, " ").replace(/\s+([:,.])/g, "$1").trim().replace(/[:,·\s]+$/, "") || "sem motivo";
+const altcoinSemSimbolo = (t) => /instrumento\s+(?!BTC|ETH)[A-Z0-9]+USD[TC]\s+sem/i.test(String(t ?? ""));
+const motivoCurto = (t) => soContaReal(t) ? `${soContaReal(t)}: só na conta real (esperado: a demo não tem este ativo)`
+  : altcoinSemSimbolo(t) ? "Altcoins: só no teórico (esperado: nenhuma corretora ligada as opera)" : String(t ?? "").replace(/\([^)]*\)/g, "").replace(/·\s*parcial\s+\d+\s+de\s+\d+/gi, "").replace(/instrumento\s+\S+\s+sem/i, "instrumento sem").replace(/[-+−]?\d[\d.,]*/g, "").replace(/\s+/g, " ").replace(/\s+([:,.])/g, "$1").trim().replace(/[:,·\s]+$/, "") || "sem motivo";
 function htmlMotivos(linhas) {
   const n = {};
   linhas.forEach((x) => { const k = motivoCurto(x.desfecho); n[k] = (n[k] ?? 0) + 1; });
@@ -3275,8 +3327,21 @@ function detalhesComChave(raiz) {
 // que o CSS mostra antes do valor abaixo de 560 px; a 1.ª célula da linha vira o título do item
 // listas com rolagem própria (17/11/2026, pedido do Diogo): a barra de rolagem some no Windows e no celular, então cada
 // lista ganha um aviso de que há mais itens: degradê na borda de baixo e um selo "+N abaixo" clicável, que somem no fim
+const listasAbertas = new Set();  // listas que o usuário mandou mostrar inteiras no celular (por página)
 function prepararRolagens(raiz) {
+  const estreita = matchMedia("(max-width: 560px)").matches;
   raiz.querySelectorAll("[data-rolavel]").forEach((el) => {
+    // celular (22/11/2026): sem altura máxima nem rolagem própria; a lista longa mostra os primeiros itens e um botão
+    if (estreita) {
+      const itens = el.matches("ul") ? [...el.children] : [...el.querySelectorAll("tbody tr")], limite = el.matches("ul") ? 4 : 6;
+      if (itens.length > limite && !listasAbertas.has(el.dataset.rolavel)) {
+        itens.slice(limite).forEach((x) => x.classList.add("oculta-movel"));
+        const mais = document.createElement("button");
+        mais.type = "button"; mais.className = "btn pequeno ver-todos"; mais.dataset.acao = "lista-toda"; mais.dataset.lista = el.dataset.rolavel;
+        mais.textContent = `Mostrar todos (${itens.length})`;
+        el.after(mais);
+      }
+    }
     if (!el.parentElement.classList.contains("rola-caixa")) {
       const caixa = document.createElement("div");
       caixa.className = "rola-caixa";
@@ -3335,7 +3400,7 @@ function render(forcar = true) {
   ultimoRender = { chave, hash, em: Date.now() };
   const nova = chaveRota(rota) !== rotaRenderizada;
   rotaRenderizada = chaveRota(rota);
-  if (nova) { histFiltro = "padrao"; histLimite = HIST_PASSO; histOrdem = { col: null, dir: -1 }; histAtivo = ""; histLado = ""; }  // cada página abre o histórico do início
+  if (nova) { histFiltro = "padrao"; histLimite = HIST_PASSO; histOrdem = { col: null, dir: -1 }; histAtivo = ""; histLado = ""; listasAbertas.clear(); }  // cada página abre o histórico do início
   // contexto da tela (lente) e do menu: nas telas do monitor os dois coincidem; nas outras o menu segue o último contexto escolhido
   const doMonitor = ["monitor", "analise", "termometro", "comparar"].includes(rota.tipo);
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
@@ -3421,6 +3486,8 @@ document.addEventListener("click", (ev) => {
   if (acao === "filtro-eventos") { filtroEventos = b.dataset.projeto; return render(); }
   // histórico: filtro, ordenação e "mostrar mais" só mexem na tela (nada é gravado)
   if (acao === "hist-filtro") { histFiltro = b.dataset.filtro; histLimite = HIST_PASSO; return render(); }
+  if (acao === "lista-toda") { listasAbertas.add(b.dataset.lista); return render(); }
+  if (acao === "visao-sinais") { visaoSinais = b.dataset.visao; try { localStorage.setItem("visaoSinais", visaoSinais); } catch (e) { /* sem armazenamento: vale só nesta página */ } return render(); }
   if (acao === "hist-lado") { histLado = b.dataset.lado; histLimite = HIST_PASSO; return render(); }
   if (acao === "hist-mais") { histLimite += Number(b.dataset.passo) || HIST_PASSO; return render(); }
   if (acao === "hist-ordem") {
