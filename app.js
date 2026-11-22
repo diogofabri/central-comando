@@ -667,6 +667,7 @@ function rotaAtual() {
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? doMonitor({ tipo: "monitor" }) : { tipo: "projeto", id: m[1], ctx: "forex" };
   if (h.startsWith("#/monitor")) return doMonitor({ tipo: "monitor" });
   if (h.startsWith("#/termometro")) return doMonitor({ tipo: "termometro" });
+  if (h.startsWith("#/comandos")) return doMonitor({ tipo: "comandos", fonte: new URLSearchParams(h.split("?")[1] ?? "").get("f") ?? undefined });
   const an = h.match(/^#\/(consolidado|agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
   if (an) {
     const q = new URLSearchParams(h.split("?")[1] ?? ""), m = q.get("m");
@@ -871,7 +872,7 @@ const hrefCtx = (ctx, caminho = "monitor") => (ctx === "todos" ? "#/todos/compar
 function htmlGrupoMonitor(rota, e) {
   const total = (estadoBruto?.monitorSinais ?? []).filter((s) => sinalAberto(s) && (ctxAtual === "todos" || ctxDe(s.fonte) === ctxAtual)).length;
   return `<div class="aba-grupo" data-menu="monitor"${menuMonitorAberto ? " data-aberto" : ""}>
-    <a class="aba" href="${hrefCtx(ctxAtual)}" ${["monitor", "analise", "termometro", "comparar"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
+    <a class="aba" href="${hrefCtx(ctxAtual)}" ${["monitor", "analise", "termometro", "comparar", "comandos"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
     <button type="button" class="aba-seta" data-menu-seta aria-expanded="${menuMonitorAberto}" aria-controls="menu-monitor" aria-label="Fontes do monitor">${ico("chevron")}</button>
   </div>`;
 }
@@ -892,13 +893,14 @@ function htmlSubmenuMonitor(rota, e) {
       const n = sinaisAbertosDe(el, f);
       const s = saudeFonte(f, el).status;
       return `<li><a href="${hrefCtx(ctxM, f)}" ${rota.tipo === "analise" && rota.fonte === f && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto saude-${s.nivel}" title="${esc(s.t)}" aria-hidden="true"></i>${FONTES[f]}${s.nivel === "ok" ? "" : `<span class="so-leitor"> (${esc(s.t)})</span>`}${n ? `<span class="count" title="sinais abertos">${n}</span>` : ""}</a></li>`;
-    }).join("") + (CONTEXTOS[ctxM].termometro ? `<li><a href="${hrefCtx(ctxM, "termometro")}" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>` : "");
+    }).join("") + (CONTEXTOS[ctxM].termometro ? `<li><a href="${hrefCtx(ctxM, "termometro")}" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>` : "")
+    + `<li><a href="${hrefCtx(ctxM, "comandos")}" ${rota.tipo === "comandos" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Comandos</a></li>`;
   return `<ul class="submenu" id="menu-monitor" aria-label="Contexto e fontes do monitor"${menuMonitorAberto ? " data-aberto" : ""}>${seletor}${itens}</ul>`;
 }
 
 // Faixa do contexto: diz em qual mercado e corretora a tela está (as telas do Forex e da Bovespa são parecidas)
 function htmlFaixaContexto(rota) {
-  if (!["monitor", "analise", "termometro", "comparar"].includes(rota.tipo)) return "";
+  if (!["monitor", "analise", "termometro", "comparar", "comandos"].includes(rota.tipo)) return "";
   if (rota.tipo === "comparar") return `<p class="ctx-faixa" data-ctx="todos"><b>Todos</b><span>Forex × Bovespa lado a lado · ${rota.visao === "efetiva" ? "ordens executadas" : "placar teórico"} · resultado em R</span></p>`;
   const c = CONTEXTOS[ctxLente];
   const texto = ctxLente === "forex" ? `dados Capital.com · execução ${corretoraExec()}` : c.corretora;
@@ -1943,11 +1945,11 @@ function htmlMonitor(e) {
       : htmlBadge(status.c, status.t, NIVEL_SAUDE[status.nivel][2]);
     return `<div class="cartao" data-fonte="${f}" data-saude="${status.nivel}">
       <div class="cartao-topo">
-      <div class="titulo titulo-fonte"><span class="nome-fonte">${FONTES[f]}</span>${botao}</div>
+      <div class="titulo titulo-fonte"><span class="nome-fonte">${FONTES[f]}</span></div>
       <div class="meta estado-fonte">${selo}${motivos.filter((m) => m !== "sem login").map((m) => htmlBadge("warning", m, "alert")).join("")}${info ? `<span>atualizado ${quando(info.atualizado_em)}</span>` : ""}${htmlMaquinaFonte(f, e)}</div>
       ${aviso ? `<div class="meta">${aviso}</div>` : ""}
-      ${f === "youtube" ? htmlLoginYoutube(e) : f === "tiktok" ? htmlLoginTiktok(e) : ""}
-      ${htmlBotaoAudio(f, e)}
+      ${f === "youtube" ? htmlLoginYoutube(e).replace(/<button[^>]*data-acao="login"[\s\S]*?<\/button>/g, "") : f === "tiktok" ? htmlLoginTiktok(e) : ""}
+      ${FONTES_COM_VIDEO.has(f) && e.audio?.[`${f}${sufixoDe(ctxLente)}`] === true ? `<div class="meta"><span class="badge auto">${ico("radio")}escutando a live</span></div>` : ""}
       ${info && (info.vagas || info.resumo) ? `<div class="meta"><span>${esc(info.vagas ?? "")}</span><span>${esc(info.resumo ?? "")}</span></div>` : ""}
       ${rodada}
       ${resumoStatusFonte(f, visiveis)}
@@ -1967,11 +1969,7 @@ function htmlMonitor(e) {
   const estadoCmd = fx ? `${NOME_CORRETORA_FX[e.execucao?.corretora ?? "capitalcom"]} · consenso ${e.consensoLigado ? "ligado" : "desligado"}${leitura !== "todos" ? ` · YouTube: ${leitura === "robo" ? "só robôs" : "só traders"}` : ""}${e.zoomLigado === true ? " · Zoom ligado" : ""}` : "";
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span></h2>
-    <div class="comandos-monitor">${htmlPrioridade(e)}${trocando ? troca : ""}
-      <details class="mais-comandos"><summary>${ico("chevron")}<span class="rot-cmd">Comandos do monitor</span>${estadoCmd ? ` <span class="estado-cmd">${estadoCmd}</span>` : ""}</summary>
-        <div class="comandos-lista">${fx ? htmlSeletorCorretora(e) : ""}${fx ? htmlLeituraYoutube(e) : ""}${fx ? htmlBotaoZoom(e) : ""}${trocando ? "" : troca}${fx ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
-        <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></div>
-      </details></div>
+    ${htmlEstadoComandos(e)}${trocando ? `<p class="meta">${troca}</p>` : ""}
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
   </section>`;
 }
@@ -2271,7 +2269,7 @@ function seloModo(a) {
 // cartão Agentes do monitor: o modo de cada agente (self-learning ou fixo) e o botão, dizendo a quem se aplica
 function htmlModosAgentes(e) {
   const ags = (e.agentesPainel?.agentes ?? []).filter((a) => a.tipo !== "todos");
-  if (!ags.length) return `<div class="meta">${controleSelfLearning(e.agentesPainel, { compacto: true })}<a href="#/agentes">Ver cada agente</a></div>`;
+  if (!ags.length) return `<div class="meta"><span class="badge ${estado.selfLearning ? "auto" : "muted"}">${ico("bulb")}self-learning ${estado.selfLearning ? "ligado" : "pausado"}</span><a href="#/agentes">Ver cada agente</a></div>`;
   const auto = ags.filter((a) => a.self_learning);
   const resumoAuto = (a) => {
     if (!a.por_ativo_versao) { const v = a.por_ativo.find((x) => x.auto)?.auto; return `self-learning v${v?.versao ?? 0} · ${v?.estado ?? "aprendendo"}`; }
@@ -2282,7 +2280,7 @@ function htmlModosAgentes(e) {
     <div class="meta"><b>Modo de cada agente</b></div>
     <ul class="lista compacta">${ags.map((a) => `<li><a href="#/agentes/${esc(a.id)}">${esc(a.id)}</a>
       ${a.self_learning ? seloAuto(resumoAuto(a)) : seloFixo()}${a.ligado ? "" : `<span class="badge muted">desligado</span>`}</li>`).join("")}</ul>
-    ${auto.length ? `${controleSelfLearning(e.agentesPainel, { compacto: true })}<div class="meta">O botão vale só para: ${auto.map((a) => esc(a.id)).join(", ")}. Os fixos não mudam.</div>`
+    ${auto.length ? `<div class="meta"><span class="badge ${estado.selfLearning ? "auto" : "muted"}">${ico("bulb")}self-learning ${estado.selfLearning ? "ligado" : "pausado"}</span><span>Vale só para: ${auto.map((a) => esc(a.id)).join(", ")}. Os fixos não mudam. Pausar ou retomar: em Comandos.</span></div>`
       : `<div class="meta">Nenhum agente com self-learning ligado.</div>`}
     <a href="#/agentes">Ver cada agente</a>
   </div>`;
@@ -3047,28 +3045,83 @@ function resumoExecucao(modo, f, ids) {
   return ligado ? `<span class="badge ${modo === "real" ? "venda" : "good"}">${ico(modo === "real" ? "alert" : "check")}${nome}: ${texto}</span>`
                 : `<span class="badge muted">${nome}: ${texto}</span>`;
 }
-function htmlPainelExecucao(f, ids) {
+function htmlPainelExecucao(f, ids) {  // bloco de uma fonte na página Comandos (22/11/2026)
   if (!(CONTEXTOS[ctxLente]?.execucao ?? true)) return "";
-  const consol = f === CONSOLIDADO, [um, varios] = SUBSTANTIVO[f];
-  const linhas = (modo) => (consol
-    ? fontesDoCtx().map((x) => `<li><span class="exec-nome">${FONTES[x]}</span>${botaoExecucao(modo, x, null, true)}</li>`)
-    : ids.map((u) => `<li><span class="exec-nome">${esc(u)}</span>${botaoExecucao(modo, f, u)}</li>`)).join("");
+  const [um, varios] = SUBSTANTIVO[f];
+  const linhas = (modo) => ids.map((u) => `<li><span class="exec-nome">${esc(u)}</span>${botaoExecucao(modo, f, u)}</li>`).join("");
   const grupo = (modo) => {
     const real = modo === "real", lista = `<ul class="exec-lista">${linhas(modo)}</ul>`;
-    return `<div class="exec-grupo ${modo}" role="group" aria-label="Execução na conta ${real ? "real" : "demo"}">
+    return `<div class="exec-grupo ${modo}" role="group" aria-label="Execução do ${FONTES[f]} na conta ${real ? "real" : "demo"}">
       <h3 class="exec-tit">${real ? `Conta real <span class="badge venda">${ico("alert")}dinheiro de verdade</span>` : "Conta demo"}</h3>
-      <p class="meta">${real ? `Quem estiver ligado aqui abre ordens com dinheiro real na ${esc(corretoraExec())}. Cada ligação pede confirmação.`
-        : `Quem estiver ligado aqui abre ordens na conta demo da ${esc(corretoraExec())} a cada sinal novo.`} As ordens já abertas não mudam: seguem até o stop ou o alvo.</p>
-      ${consol ? "" : `<div class="exec-toda">${botaoExecucao(modo, f)}<span class="meta">Liga todos os ${varios} de uma vez; quem foi desligado um a um continua desligado.</span></div>`}
-      ${consol ? lista : !ids.length ? `<p class="meta">Cada ${um} aparece aqui depois do primeiro sinal resolvido.</p>`
+      <div class="exec-toda">${botaoExecucao(modo, f)}<span class="meta">Liga todos os ${varios} de uma vez; quem foi desligado um a um continua desligado.</span></div>
+      ${!ids.length ? `<p class="meta">Cada ${um} aparece aqui depois do primeiro sinal resolvido.</p>`
         : real ? `<details class="exec-um-a-um"><summary>${ico("chevron")}Escolher ${varios} da conta real um a um</summary>${lista}</details>` : lista}
     </div>`;
   };
-  return `<section class="painel exec-painel" id="painel-exec" aria-labelledby="h-exec">
-      <h2 id="h-exec">${ico("power")} Execução automática <span class="resumo-saude">${resumoExecucao("demo", f, ids)}${resumoExecucao("real", f, ids)}</span></h2>
-      <p class="meta">Quem abre ordem na ${esc(corretoraExec())} quando sai um sinal novo. As tabelas acima só mostram o estado; a mudança é feita aqui.</p>
-      <details class="exec-editar"><summary>${ico("chevron")}Alterar quem executa</summary>${grupo("demo")}${grupo("real")}</details>
-    </section>`;
+  return `<div class="cmd-fonte" data-fonte="${f}">
+      <div class="cmd-fonte-topo"><b>${FONTES[f]}</b><span class="resumo-saude">${resumoExecucao("demo", f, ids)}${resumoExecucao("real", f, ids)}</span>
+        <a class="meta" href="${hrefCtx(ctxLente, f)}">ver resultado</a></div>
+      <details class="exec-editar"><summary>${ico("chevron")}Alterar quem executa no ${FONTES[f]}</summary>${grupo("demo")}${grupo("real")}</details>
+    </div>`;
+}
+
+// Comandos do monitor (22/11/2026, pedido do Diogo: "está confuso, tem coisas no painel e coisas no consolidado"): uma
+// página só para tudo que GRAVA no banco. Painel, Consolidado e páginas de análise passam a mostrar só o estado, com o
+// link para cá. Ficam fora daqui, de propósito: "Pausar todos" (topo, emergência) e Day trade/Swing de cada sinal.
+function htmlEstadoComandos(e) {
+  const fx = ctxLente === "forex", pri = (PRIORIDADES.find(([k]) => k === (e.prioridade ?? "normal")) ?? PRIORIDADES[1])[1];
+  const leitura = { todos: "tudo", robo: "só robôs", trader: "só traders" }[e.leituraYoutube ?? "todos"];
+  const partes = [`Lives: <b>${pri}</b>`];
+  if (fx) partes.push(`YouTube lê: <b>${leitura}</b>`, `Consenso <b>${e.consensoLigado ? "ligado" : "desligado"}</b>`,
+    `Sala do Zoom <b>${e.zoomLigado === true ? "ligada" : "desligada"}</b>`, `Ordens novas: <b>${esc(NOME_CORRETORA_FX[e.execucao?.corretora ?? "capitalcom"])}</b>`);
+  return `<p class="meta estado-comandos" aria-label="Estado dos comandos do monitor">${partes.map((x) => `<span>${x}</span>`).join("")}
+    <a class="btn pequeno" href="${hrefCtx(ctxLente, "comandos")}">${ico("power")} Comandos</a></p>`;
+}
+function botaoFonte(f, e) {
+  const { querLigado } = saudeFonte(f, e);
+  return `<button class="btn pequeno ${querLigado ? "" : "primario"}" data-acao="monitor" data-fontes="${f}" data-ligar="${!querLigado}" aria-label="${querLigado ? "Desligar" : "Ligar"} ${esc(FONTES[f])}">${ico(querLigado ? "power" : "play")}${querLigado ? "Desligar" : "Ligar"}</button>`;
+}
+function vistaComandos(foco) {
+  const e = estado, fx = ctxLente === "forex", temExec = CONTEXTOS[ctxLente]?.execucao ?? true;
+  if (!fx && !(e.monitorFontes ?? []).length) return vistaContextoVazio(`Comandos · ${CONTEXTOS[ctxLente].nome}`);
+  const cmd = (nome, oque, controle) => `<div class="cmd"><dt>${nome}<small>${oque}</small></dt><dd>${controle}</dd></div>`;
+  const fontes = fontesDoCtx(), algum = fontes.some((f) => e.monitorComando?.[f] !== false);
+  const selo = (f) => { const s = saudeFonte(f, e).status; return htmlBadge(s.c, s.t, NIVEL_SAUDE[s.nivel][2]); };
+  const troca = htmlTrocaMaquina(e);
+  const blocoFontes = `<section class="painel" aria-labelledby="h-cmd-fontes"><h2 id="h-cmd-fontes">${ico("radio")} Fontes</h2>
+    <dl class="cmd-lista">${fontes.map((f) => cmd(FONTES[f], "Liga ou desliga a leitura desta fonte.",
+      `${selo(f)}${botaoFonte(f, e)}${htmlBotaoAudio(f, e).replace(/^<div class="meta">|<\/div>$/g, "")}${f === "youtube" ? htmlLoginYoutube(e) : ""}`)).join("")}
+      ${cmd("Todas as fontes", "Para tudo de uma vez; os sinais já abertos continuam sendo conferidos.",
+        `<button class="btn pequeno" data-acao="monitor" data-fontes="${fontes.join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todas" : "Ligar todas"}</button>`)}
+    </dl></section>`;
+  const blocoLeitura = `<section class="painel" aria-labelledby="h-cmd-leitura"><h2 id="h-cmd-leitura">${ico("target")} Leitura</h2>
+    <dl class="cmd-lista">
+      ${cmd("Prioridade das lives", "Quem fica com a máquina quando não dá para abrir tudo. Troca sozinha nos dias de pregão: Bovespa às 08:45 e Forex às 18:30 de Brasília.", htmlPrioridade(e))}
+      ${fx ? cmd("Canais do YouTube", "Quais categorias da lista abrem live: todas, só os robôs ou só os traders ao vivo.", htmlLeituraYoutube(e)) : ""}
+      ${fx ? cmd("Consenso", "Ligado: só sai sinal quando vários canais concordam. Desligado: cada canal gera o seu sinal.",
+        `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>`) : ""}
+      ${fx ? cmd("Sala do Zoom", "Sala de análise em teste: seg a sex 09:15–11:15 e seg a qui a partir das 20:00 (Brasília). Ligada, o monitor entra e guarda prints.", htmlBotaoZoom(e)) : ""}
+    </dl></section>`;
+  const blocoExec = !temExec ? "" : `<section class="painel" aria-labelledby="h-cmd-exec"><h2 id="h-cmd-exec">${ico("power")} Execução</h2>
+    <p class="meta">Quem abre ordem na ${esc(corretoraExec())} quando sai um sinal novo. As ordens já abertas não mudam: seguem até o stop ou o alvo.</p>
+    ${fx ? `<dl class="cmd-lista">${cmd("Corretora das ordens novas", "Só a marcada abre ordens novas; a outra continua vigiando as que já abriu.", htmlSeletorCorretora(e))}</dl>` : ""}
+    ${fontes.map((f) => htmlPainelExecucao(f, unidadesDeExecucao(f, painelDaModalidade(f, e, "todos")))).join("")}
+  </section>`;
+  const blocoAgentes = !fx ? "" : `<section class="painel" aria-labelledby="h-cmd-ag"><h2 id="h-cmd-ag">${ico("bulb")} Agentes</h2>
+    <dl class="cmd-lista">${cmd("Self-learning", "Ajuste automático dos parâmetros das variantes -auto. Pausado, as rodadas continuam.", controleSelfLearning(e.agentesPainel))}</dl></section>`;
+  const blocoMaquina = !fx || !troca ? "" : `<section class="painel" aria-labelledby="h-cmd-maq"><h2 id="h-cmd-maq">${ico("radio")} Máquina</h2>
+    <dl class="cmd-lista">${cmd("Onde o monitor roda", "Passa TikTok, YouTube, Sites, Agentes, TradingView e Telegram para a outra máquina. O MT5 e o YouTube da Bovespa ficam no VPS.", `${htmlOperacao(e)}${troca}`)}</dl></section>`;
+  return `<main class="uma">
+    ${avisoErro()}
+    <div class="cabecalho-proj compacto" style="--cor:${cor("monitor")}">
+      <div class="bloco">
+        <a class="voltar" href="${hrefCtx(ctxLente)}">${ico("back")} Painel</a>
+        <h1><i class="ponto" aria-hidden="true"></i>Comandos do monitor · ${esc(CONTEXTOS[ctxLente].nome)}</h1>
+        <div class="meta"><span>O único lugar que liga, desliga e escolhe. Painel, Consolidado e as páginas das fontes só mostram o estado.</span></div>
+      </div>
+    </div>
+    ${blocoFontes}${blocoLeitura}${blocoExec}${blocoAgentes}${blocoMaquina}
+  </main>`;
 }
 
 const rDaOrdem = (o) => {
@@ -3279,7 +3332,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
   const corr = corretoraDoModo(modo), din = dinheiro(p ?? {}), comOrdens = !!corr, consol = f === CONSOLIDADO;
   const temExec = CONTEXTOS[ctxLente]?.execucao ?? true;
   const idsExec = !temExec || consol ? [] : unidadesDeExecucao(f, modo === "todos" ? p : painelDaModalidade(f, estado, "todos"));
-  const painelExec = htmlPainelExecucao(f, idsExec);
+  const painelExec = "";  // os botões de execução vivem em Comandos (22/11/2026); aqui ficam o resumo e o link
   const descricao = corr ? `Ordens executadas na ${corr[1]} (conta ${conta}): preço executado, swap e comissão reais, na moeda da conta${p?.moeda ? ` (${p.moeda})` : ""}. Nunca se mistura com outra corretora nem com o teórico.` : null;
   const cab = resumoRecolhido(`<div class="cabecalho-proj" style="--cor:${cor("monitor")}">
       <div class="bloco">
@@ -3290,8 +3343,8 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
         ${ehAgentes && p ? `<div class="meta"><span>atualizado ${quando(p.atualizado_em)}</span>${(p.agentes ?? []).length ? `<span>self-learning em: ${p.agentes.filter((a) => a.self_learning).map((a) => esc(a.id)).join(", ") || "nenhum"}; fixos: ${p.agentes.filter((a) => !a.self_learning && a.tipo !== "todos").map((a) => esc(a.id)).join(", ") || "nenhum"}</span>` : ""}</div>` : ""}
       </div>
       ${!consol && (CONTEXTOS[ctxLente]?.execucao ?? true) ? `<div class="exec-fonte" aria-label="Execução automática do ${FONTES[f]}">${resumoExecucao("demo", f, idsExec)}${resumoExecucao("real", f, idsExec)}</div>` : ""}
-      ${consol ? `<div class="exec-fonte">${htmlPrioridade(estado)}</div>` : ""}
-      ${ehAgentes ? controleSelfLearning(p) : ""}
+      ${consol ? `<div class="exec-fonte">${htmlEstadoComandos(estado)}</div>` : ""}
+      ${ehAgentes ? `<div class="exec-fonte"><span class="badge ${estado.selfLearning ? "auto" : "muted"}">${ico("bulb")}self-learning ${estado.selfLearning ? "ligado" : "pausado"}</span></div>` : ""}
     </div>`);
   const temFaixa = corretorasDoCtx().length > 0;  // com a faixa de totais, ela é o seletor de modalidade
   const navMostrar = temFaixa ? "" : `<nav class="segmentado modalidades" aria-label="Resultado"><span class="seg-rot">Mostrar</span>${modalidadesDoCtx()
@@ -3302,7 +3355,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
   const aviso = erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : "";
   if (!p?.agentes?.length) {
     const vazio = ehAgentes ? "O resumo dos agentes ainda não chegou. Ele é publicado pelo executor (launchd <code>com.vinculo.agentes</code>) a cada 5 min; confira o log em <code>05-monitor-lives/dados-agentes/logs/</code>."
-      : comOrdens ? `Nenhuma ordem ${conta === "demo" ? "demo" : "real"} ${consol ? `do ${CONTEXTOS[ctxLente].nome}` : `do ${FONTES[f]}`} na ${corr[1]} nos últimos 30 dias. A execução se liga no painel Execução automática, logo abaixo: ${conta === "demo" ? "conta demo" : "conta real"}, por ${um} ou na fonte inteira.`
+      : comOrdens ? `Nenhuma ordem ${conta === "demo" ? "demo" : "real"} ${consol ? `do ${CONTEXTOS[ctxLente].nome}` : `do ${FONTES[f]}`} na ${corr[1]} nos últimos 30 dias. A execução se liga em <a href="${hrefCtx(ctxLente, "comandos")}${consol ? "" : `?f=${f}`}">Comandos</a>: ${conta === "demo" ? "conta demo" : "conta real"}, por ${um} ou na fonte inteira.`
       : modo === "sem" ? `Todos os sinais resolvidos do ${FONTES[f]} nos últimos 30 dias viraram ordem.` : `Nenhum sinal do ${FONTES[f]} foi resolvido nos últimos 30 dias. A página se monta sozinha quando o placar resolver o primeiro.`;
     return `<main class="uma">${aviso}${cab}${modalidades}${htmlFaixaTotais(f, id ?? TODOS, modo, conta)}${estadoConta}<div class="aviso neutro">${ico("radio")}<span>${vazio}</span></div>${painelExec}</main>`;
   }
@@ -3312,7 +3365,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
   const rotSaldoTab = p.agentes.find((a) => a.rotulo_saldo)?.rotulo_saldo ?? rotuloSaldo;
   const comparacao =`<section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Comparação <span class="count">${unidades.length} ${unidades.length === 1 ? um : varios}</span><span class="meta dica-comp">clique num nome para abrir</span>${temExec
-        ? `<span class="direita"><button class="btn pequeno" data-acao="ir-exec" title="Abre o painel Execução automática, no fim da página">${ico("power")} Alterar execução</button></span>` : ""}</h2>
+        ? `<span class="direita"><a class="btn pequeno" href="${hrefCtx(ctxLente, "comandos")}${consol ? "" : `?f=${f}`}" title="Abre a página Comandos, no bloco de execução${consol ? "" : ` do ${FONTES[f]}`}">${ico("power")} Alterar execução</a></span>` : ""}</h2>
       <div class="rolagem rolavel-y" data-rolavel="comparacao-${f}"><table class="tabela comparacao vira-lista">
         <thead><tr><th scope="col">${um[0].toUpperCase() + um.slice(1)}</th>${ehAgentes ? `<th scope="col">Modo</th>` : ""}<th scope="col">Operações</th><th scope="col">Acerto</th><th scope="col" class="col-zero">${comOrdens ? "Resultado" : rotSaldoTab}</th><th scope="col">Fator de lucro</th><th scope="col">Queda máxima</th><th scope="col">Execução</th></tr></thead>
         <tbody>${p.agentes.map((a) => `<tr ${a.id === atual.id ? 'aria-current="true"' : ""}>
@@ -3430,14 +3483,14 @@ function render(forcar = true) {
   rotaRenderizada = chaveRota(rota);
   if (nova) { histFiltro = "padrao"; histLimite = HIST_PASSO; histOrdem = { col: null, dir: -1 }; histAtivo = ""; histLado = ""; listasAbertas.clear(); }  // cada página abre o histórico do início
   // contexto da tela (lente) e do menu: nas telas do monitor os dois coincidem; nas outras o menu segue o último contexto escolhido
-  const doMonitor = ["monitor", "analise", "termometro", "comparar"].includes(rota.tipo);
+  const doMonitor = ["monitor", "analise", "termometro", "comparar", "comandos"].includes(rota.tipo);
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
   ctxAtual = doMonitor ? (rota.tipo === "comparar" ? "todos" : rota.ctx) : ctxLembrado;
   estado = ctxLente === "todos" ? estadoBruto : lente(estadoBruto, ctxLente);
   const vp = calcularVersaoPaineis(estadoBruto);
   if (vp !== versaoPaineis) { versaoPaineis = vp; memoPaineis = new Map(); }
   const corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar(rota.visao)
-    : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
+    : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
   const focoMenu = focoNoMenu();
@@ -3449,7 +3502,7 @@ function render(forcar = true) {
   prepararRolagens(app);
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
-  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
+  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comandos" ? "Comandos · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
     main.classList.add("entrada");
@@ -3457,6 +3510,10 @@ function render(forcar = true) {
     const atual = app.querySelector(".nav .aba[aria-current]");
     atual?.scrollIntoView({ block: "nearest", inline: "center" });
     if (rota.tipo !== "geral") scrollTo({ top: 0, behavior: reduzMovimento() ? "auto" : "smooth" });
+    if (rota.tipo === "comandos" && rota.fonte) {  // veio de "Alterar execução" de uma fonte: abre o bloco dela
+      const bloco = app.querySelector(`.cmd-fonte[data-fonte="${CSS.escape(rota.fonte)}"]`), det = bloco?.querySelector("details");
+      if (det) { det.open = true; bloco.scrollIntoView({ block: "start", behavior: "auto" }); }
+    }
   }
 }
 
