@@ -438,7 +438,8 @@ details.fila > summary { margin-top: 0; }
 .grade-cartoes.fontes .cartao[data-saude="inativa"] .nome-fonte { color: var(--ink-2); }
 .resumo-saude { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 /* celular (22/11/2026, crítica Impeccable): o selo "vps: TikTok, YouTube, …" não quebrava e estourava a página em 27 px;
-   listas com altura máxima viravam rolagem dentro de rolagem; alvos de toque abaixo de 44 px */
+   alvos de toque abaixo de 44 px. As listas mantêm a altura máxima no celular: sem ela o Painel foi de 8.479 para
+   24.154 px (medido com dados reais), pior que a rolagem dentro da lista */
 .resumo-saude { min-width: 0; max-width: 100%; }
 .resumo-saude .badge { white-space: normal; line-height: 1.3; padding-block: 3px; overflow-wrap: anywhere; }
 .cabecalho-proj.compacto { padding: 12px 18px; }
@@ -700,7 +701,6 @@ div.grafico.saldo .area.pos { fill: var(--good); opacity: .10; } div.grafico.sal
   .entrada .grafico .linha-real, .entrada .grafico .linha-saldo { stroke-dasharray: none; }
 }
 /* no fim da folha para valer sobre as regras de cada componente (22/11/2026) */
-@media (max-width: 560px) { .rolagem.rolavel-y, details.historico .rolagem.rolavel-y { max-height: none; overflow-y: visible; } }
 @media (pointer: coarse) { .btn, .filtros .btn, .voltar, details > summary, .fora-execucao > summary, details.como > summary { min-height: 44px; } }
 </style>
 </head>
@@ -749,6 +749,6 @@ div.grafico.saldo .area.pos { fill: var(--good); opacity: .10; } div.grafico.sal
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=112"></script>
+<script src="app.js?v=113"></script>
 </body>
 </html>
