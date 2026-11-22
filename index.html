@@ -761,6 +761,8 @@ a.btn.primario { color: var(--accent-ink); }
 /* Sinais ativos em tabela: teórico e ordem lado a lado, numa linha cada (a linha tinha 101 px de altura) */
 .sinais-tab td.exec-sinal > .exec-sinal { display: flex; flex-wrap: wrap; gap: 2px 18px; align-items: baseline; }
 .sinais-tab .exec-ordem { flex-wrap: nowrap; white-space: nowrap; }
+/* na tabela, o stop e o alvo de cada ordem já estão nas colunas: a linha da ordem fica só com o estado e o lucro */
+.sinais-tab .exec-ordem:not(.st-teorico) > .meta { display: none; }
 .sinais-tab td { white-space: nowrap; }
 .sinais-tab td:nth-child(2), .sinais-tab td.exec-sinal { white-space: normal; }
 .sinais-tab td:nth-child(2) { max-width: 26ch; overflow-wrap: anywhere; }
@@ -811,6 +813,6 @@ a.btn.primario { color: var(--accent-ink); }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=123"></script>
+<script src="app.js?v=124"></script>
 </body>
 </html>

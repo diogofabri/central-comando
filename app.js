@@ -1741,7 +1741,7 @@ function htmlAoVivo(e) {
 // (antes só cartões por fonte: 3.000 px no celular e difícil de comparar); os cartões continuam como alternativa e são o
 // padrão no celular. Com o mercado fechado, a seção diz isso: os sinais do último pregão não estão valendo agora.
 let visaoSinais = (() => { try { return localStorage.getItem("visaoSinais") || ""; } catch (e) { return ""; } })();
-const visaoSinaisAtual = () => (visaoSinais === "tabela" || visaoSinais === "cartoes" ? visaoSinais : innerWidth >= 900 ? "tabela" : "cartoes");
+const visaoSinaisAtual = () => (innerWidth < 560 ? "cartoes" : visaoSinais === "tabela" || visaoSinais === "cartoes" ? visaoSinais : innerWidth >= 900 ? "tabela" : "cartoes");
 function tabelaSinais(lista, chave) {
   const linha = (s) => {
     const venda = s.direcao === "venda", ate = s.ate ? new Date(s.ate).toLocaleTimeString("pt-PT", { timeStyle: "short" }) : "—";
@@ -1779,7 +1779,7 @@ function htmlSinaisAtivos(e) {
     `<button type="button" data-acao="visao-sinais" data-visao="${k}" aria-pressed="${k === visao}">${rot}</button>`).join("")}</span></span>`;
   const fechado = mercado && !mercado.aberto ? `<p class="meta nota mercado-fechado">${htmlBadge("muted", "mercado fechado", "pause")}<span>Os sinais abaixo ficaram do último pregão e só voltam a valer na abertura, em ${textoPrazoLongo(mercado.ate)}.${ctxLente === "forex" ? " Cripto segue aberta no fim de semana." : ""}</span></p>` : "";
   return `<section class="painel" aria-labelledby="h-sinais">
-    <h2 id="h-sinais">${ico("zap")} Sinais ativos <span class="count">${total}</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}${todos.length ? alterna : ""}</h2>
+    <h2 id="h-sinais">${ico("zap")} Sinais ativos <span class="count">${total}</span>${filtroAtivo ? `<span class="count">${iconeAtivo(filtroAtivo)} ${esc(filtroAtivo)}</span>` : ""}${todos.length && innerWidth >= 560 ? alterna : ""}</h2>
     ${fechado}
     ${htmlFiltroAtivo(e)}
     ${!todos.length ? `<p class="vazio">Nenhum sinal ativo${filtroAtivo ? ` em ${esc(filtroAtivo)}` : ""}.</p>` : visao === "tabela" ? tabela : `<div class="grade-cartoes larga sinais">${cartoes.join("")}</div>`}
