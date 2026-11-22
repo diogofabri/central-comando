@@ -300,7 +300,9 @@ function fonteSupabase(cfg) {
                // switcher de prioridade dos navegadores (17/11/2026): "normal" | "bovespa" | "forex"
                prioridade: ["bovespa", "forex"].includes(ctl["prioridade:navegadores"]) ? ctl["prioridade:navegadores"] : "normal",
                // categoria de canal que o YouTube do Forex lê (22/11/2026): controle.leitura:youtube = todos | robo | trader
-               leituraYoutube: ["robo", "trader"].includes(ctl["leitura:youtube"]) ? ctl["leitura:youtube"] : "todos" };
+               leituraYoutube: ["robo", "trader"].includes(ctl["leitura:youtube"]) ? ctl["leitura:youtube"] : "todos",
+               // sala de análise pelo Zoom (22/11/2026): só `true` liga; o monitor publica o que fez por último
+               zoomLigado: ctl["zoom:ligado"] === true, zoomEstado: ctl["zoom:estado"] ?? null };
     },
     decidir: (id, status, resposta) =>
       sb.rpc("decidir", { p_id: id, p_status: status, p_resposta: resposta || null, p_canal: "dashboard" }).then(ok),
@@ -323,6 +325,7 @@ function fonteSupabase(cfg) {
     // prioridade dos navegadores entre Forex e Bovespa (lida pelas fontes de vídeo a cada ~10 s)
     comandarPrioridade: (modo) => sb.from("controle").upsert({ chave: "prioridade:navegadores", valor: modo }).then(ok),
     comandarLeituraYoutube: (modo) => sb.from("controle").upsert({ chave: "leitura:youtube", valor: modo }).then(ok),
+    comandarZoom: (ligar) => sb.from("controle").upsert({ chave: "zoom:ligado", valor: ligar }).then(ok),
     // corretora das ordens novas do Forex (18/11/2026): lida pelas pontes a cada ciclo (~15 s)
     comandarCorretora: (id) => sb.from("controle").upsert({ chave: "execucao:corretora", valor: id }).then(ok),
     // seleção do que a ponte do MT5 executa (lida a cada ciclo de ~15 s): {fontes: {tiktok: true}, unidades: {tiktok: {"@canal": false}}}
@@ -516,6 +519,7 @@ function fonteDemo() {
     async pedirTroca(maquina) { s.maquinasPedido = { operar: maquina, em: new Date().toISOString() }; },
     async comandarPrioridade(modo) { s.prioridade = modo; },
     async comandarLeituraYoutube(modo) { s.leituraYoutube = modo; },
+    async comandarZoom(ligar) { s.zoomLigado = ligar; },
     async comandarCorretora(id) { s.execucao.corretora = id; },
     aoMudar() {},
   };
@@ -1904,6 +1908,14 @@ function htmlLeituraYoutube(e) {
     `<button type="button" data-acao="leitura-youtube" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(`${dica} Vale em segundos para as próximas lives; as já abertas saem ao fim da passagem.`)}">${rot}</button>`).join("")}</span>`;
 }
 
+// Sala de análise pelo Zoom (22/11/2026, pedido do Diogo): liga e desliga o monitor que entra na sala e guarda os
+// prints (05-monitor-lives/monitor_lives/sala_zoom.py). Desligado por padrão; só `controle.zoom:ligado = true` liga.
+function htmlBotaoZoom(e) {
+  const on = e.zoomLigado === true, z = e.zoomEstado;
+  const ultimo = z?.em ? ` Último: ${z.estado ?? "?"}${z.prints != null ? `, ${z.prints} prints` : ""} (${quando(z.em)}).` : " Ainda não rodou.";
+  return `<button class="btn pequeno" data-acao="zoom" data-ligar="${!on}" aria-pressed="${on}" title="${esc(`Sala de análise pelo Zoom: seg a sex 09:15–11:15 e seg a qui a partir das 20:00 (Brasília). Ligado, o monitor entra na sala nesses horários e guarda um print a cada 30 s, só no VPS.${ultimo}`)}">${ico("radio")} Sala do Zoom: ${on ? "ligada" : "desligada"}</button>`;
+}
+
 function htmlResumoSaude(e) {
   const n = { ok: 0, atencao: 0, parada: 0, inativa: 0 };
   fontesDoCtx().forEach((f) => n[saudeFonte(f, e).status.nivel]++);
@@ -1952,12 +1964,12 @@ function htmlMonitor(e) {
   const troca = htmlTrocaMaquina(e), trocando = troca.startsWith("<span");
   const fx = ctxLente === "forex";
   const leitura = e.leituraYoutube ?? "todos";
-  const estadoCmd = fx ? `${NOME_CORRETORA_FX[e.execucao?.corretora ?? "capitalcom"]} · consenso ${e.consensoLigado ? "ligado" : "desligado"}${leitura !== "todos" ? ` · YouTube: ${leitura === "robo" ? "só robôs" : "só traders"}` : ""}` : "";
+  const estadoCmd = fx ? `${NOME_CORRETORA_FX[e.execucao?.corretora ?? "capitalcom"]} · consenso ${e.consensoLigado ? "ligado" : "desligado"}${leitura !== "todos" ? ` · YouTube: ${leitura === "robo" ? "só robôs" : "só traders"}` : ""}${e.zoomLigado === true ? " · Zoom ligado" : ""}` : "";
   return `<section class="painel" aria-labelledby="h-monitor">
     <h2 id="h-monitor">${ico("radio")} Saúde das fontes <span class="resumo-saude">${htmlResumoSaude(e)}${htmlOperacao(e)}</span></h2>
     <div class="comandos-monitor">${htmlPrioridade(e)}${trocando ? troca : ""}
       <details class="mais-comandos"><summary>${ico("chevron")}<span class="rot-cmd">Comandos do monitor</span>${estadoCmd ? ` <span class="estado-cmd">${estadoCmd}</span>` : ""}</summary>
-        <div class="comandos-lista">${fx ? htmlSeletorCorretora(e) : ""}${fx ? htmlLeituraYoutube(e) : ""}${trocando ? "" : troca}${fx ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
+        <div class="comandos-lista">${fx ? htmlSeletorCorretora(e) : ""}${fx ? htmlLeituraYoutube(e) : ""}${fx ? htmlBotaoZoom(e) : ""}${trocando ? "" : troca}${fx ? `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}" title="${e.consensoLigado ? "Consenso ligado: só sai sinal quando vários canais do TikTok e do YouTube concordam." : "Consenso desligado: cada canal com leitura válida gera o seu próprio sinal ativo."}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>` : ""}
         <button class="btn pequeno" data-acao="monitor" data-fontes="${fontesDoCtx().join(",")}" data-ligar="${!algum}">${ico(algum ? "power" : "play")} ${algum ? "Desligar todos" : "Ligar todos"}</button></div>
       </details></div>
     <div class="grade-cartoes fontes">${fontes.join("")}</div>
@@ -3580,6 +3592,13 @@ document.addEventListener("click", (ev) => {
     if (modo === (estado.prioridade ?? "normal")) return;
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarPrioridade(modo));
+  }
+  if (acao === "zoom") {
+    const ligar = b.dataset.ligar === "true";
+    if (ctxLente !== "forex") return;
+    if (ligar && !confirm("Ligar o monitor da sala do Zoom? Nos horários da sala (seg a sex 09:15–11:15 e seg a qui a partir das 20:00, Brasília) o Chrome do monitor entra com a sua conta e guarda um print a cada 30 s, só no VPS. O seu nome aparece na lista de participantes, e você pode não conseguir entrar ao mesmo tempo com o mesmo link.")) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarZoom(ligar));
   }
   if (acao === "leitura-youtube") {
     const modo = b.dataset.modo;
