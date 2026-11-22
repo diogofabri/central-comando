@@ -957,18 +957,19 @@ function htmlTopo(rota) {
   const e = estado;
   const semana = estado.painel ? Math.max(1, semanaDe(new Date(), new Date(estado.painel.data_inicio + "T00:00:00"))) : null;
   const aba = (href, atual, conteudo, corCss) => `<a class="aba" href="${href}" ${atual ? 'aria-current="page"' : ""} style="--cor:${corCss}">${conteudo}</a>`;
+  // Monitor é o 2.º item (22/11/2026, crítica Impeccable): por último, ficava fora da tela no celular (x = 525 em 380 px)
   const abas = [aba("#/", rota.tipo === "geral", `${ico("compass")} Visão geral`, "var(--ink)")]
+    .concat(htmlGrupoMonitor(rota, e))
     .concat(RENDA.map((id) => {
       const p = e.projetos.find((x) => x.id === id);
       const pend = p?.decisoes_pendentes ?? 0;
       return aba(`#/p/${id}`, rota.tipo === "projeto" && rota.id === id, `<i class="ponto"></i>${esc(PROJETOS[id].nome)}${pend ? `<span class="count alerta">${pend}</span>` : ""}`, cor(id));
-    }))
-    .concat(htmlGrupoMonitor(rota, e));
+    }));
   return `<header class="topo">
     <div class="topo-linha">
       <div class="marca"><span class="logo">${ico("zap")}</span><div><p class="marca-nome">Central de comando</p><small>${semana ? `Semana ${semana} do roteiro · ` : ""}${fonte.demo ? "modo demonstração" : "banco único"}</small></div></div>
       <span class="estado-agentes" title="${e.pausado ? "Agentes pausados" : "Agentes ativos"}"><i class="ponto ${e.pausado ? "parado" : "vivo"}"></i><span class="rotulo-topo">${e.pausado ? "Agentes pausados" : "Agentes ativos"}</span></span>
-      <button class="btn ${e.pausado ? "primario" : ""}" data-acao="pausa">${ico(e.pausado ? "play" : "pause")} <span class="rotulo-topo">${e.pausado ? "Retomar agentes" : "Pausar todos"}</span><span class="oculto">${e.pausado ? "" : " os agentes"}</span></button>
+      <button class="btn ${e.pausado ? "primario" : ""}" data-acao="pausa" aria-label="${e.pausado ? "Retomar agentes" : "Pausar todos os agentes"}" title="${e.pausado ? "Retomar agentes" : "Pausar todos os agentes"}">${ico(e.pausado ? "play" : "pause")} <span class="rotulo-topo">${e.pausado ? "Retomar agentes" : "Pausar todos"}</span></button>
       <span class="sync" id="sync"><i class="ponto"></i>atualizado ${new Date().toLocaleTimeString("pt-PT", { timeStyle: "short" })}</span>
     </div>
     <nav class="nav" aria-label="Projetos">${abas.join("")}</nav>
