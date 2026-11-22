@@ -437,6 +437,10 @@ details.fila > summary { margin-top: 0; }
 .grade-cartoes.fontes .cartao[data-saude="parada"] { background: linear-gradient(var(--critical) 0 3px, color-mix(in srgb, var(--critical-soft) 70%, var(--surface)) 3px, var(--surface) 220px); }
 .grade-cartoes.fontes .cartao[data-saude="inativa"] .nome-fonte { color: var(--ink-2); }
 .resumo-saude { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+/* celular (22/11/2026, crítica Impeccable): o selo "vps: TikTok, YouTube, …" não quebrava e estourava a página em 27 px;
+   listas com altura máxima viravam rolagem dentro de rolagem; alvos de toque abaixo de 44 px */
+.resumo-saude { min-width: 0; max-width: 100%; }
+.resumo-saude .badge { white-space: normal; line-height: 1.3; padding-block: 3px; overflow-wrap: anywhere; }
 .cabecalho-proj.compacto { padding: 12px 18px; }
 .cabecalho-proj.compacto .bloco { gap: 4px; }
 p.nota { margin-top: 8px; max-width: 75ch; text-wrap: pretty; }
@@ -695,6 +699,9 @@ div.grafico.saldo .area.pos { fill: var(--good); opacity: .10; } div.grafico.sal
   .ponto.vivo { box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 30%, transparent); }
   .entrada .grafico .linha-real, .entrada .grafico .linha-saldo { stroke-dasharray: none; }
 }
+/* no fim da folha para valer sobre as regras de cada componente (22/11/2026) */
+@media (max-width: 560px) { .rolagem.rolavel-y, details.historico .rolagem.rolavel-y { max-height: none; overflow-y: visible; } }
+@media (pointer: coarse) { .btn, .filtros .btn, .voltar, details > summary, .fora-execucao > summary, details.como > summary { min-height: 44px; } }
 </style>
 </head>
 <body>
@@ -742,6 +749,6 @@ div.grafico.saldo .area.pos { fill: var(--good); opacity: .10; } div.grafico.sal
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=111"></script>
+<script src="app.js?v=112"></script>
 </body>
 </html>
