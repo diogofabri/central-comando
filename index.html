@@ -813,6 +813,9 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
   .lista li.sinal { padding: 8px 0; }
 }
 @media (pointer: coarse) { a.canal { min-height: 44px; } }
+/* v128: indicador da conta em três tempos (aberto agora, fechado hoje, fechado em 30 dias) */
+.resumo-painel .rp-sub { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.resumo-painel .total-corretora .meta a { color: inherit; }
 </style>
 </head>
 <body>
@@ -860,6 +863,6 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=127"></script>
+<script src="app.js?v=128"></script>
 </body>
 </html>

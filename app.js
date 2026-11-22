@@ -2208,13 +2208,25 @@ function htmlResumoPainel(e) {
     const vivo = s.conectado && Date.now() - new Date(s.atualizado_em).getTime() < 120e3;
     if (!vivo && modo === "real") return "";  // conta real nunca ligada: fora do resumo (o aviso fica na página da corretora)
     if (!vivo) return item(nome, `${htmlBadge("warning", "ponte sem conexão", "alert")}<span class="meta">última notícia ${quando(s.atualizado_em)}</span>`);
-    const din = dinheiro({ moeda: s.moeda }), flut = Object.values(s.flutuante ?? {}).reduce((a, x) => a + (Number(x?.lucro) || 0), 0), dia = Number(s.resultado_dia) || 0;
+    // Três tempos, cada um com o seu nome (22/11/2026, pedido do Diogo: o indicador misturava o que está aberto com o
+    // "resultado do dia", que na ponte soma as fechadas de hoje COM as abertas). Agora: aberto agora (o número grande),
+    // fechado hoje e acumulado das fechadas nos 30 dias; os dois últimos saem das ordens, não da soma da ponte.
+    const din = dinheiro({ moeda: s.moeda }), flut = Object.values(s.flutuante ?? {}).reduce((a, x) => a + (Number(x?.lucro) || 0), 0);
     const cor = (v) => (v < 0 ? "neg" : v > 0 ? "pos" : "");
-    // posição aberta sem lucro publicado (mercado fechado, sem cotação): nunca mostrar como zero (22/11/2026)
+    // posição aberta sem lucro publicado (mercado fechado, sem cotação): nunca mostrar como zero
     const comLucro = Object.keys(s.flutuante ?? {}).length, semCot = Math.max(0, (s.abertas ?? 0) - comLucro);
     const ultimo = Object.values(s.flutuante ?? {}).some((x) => x?.referencia);
-    return item(nome, `<b class="num ${comLucro ? cor(flut) : ""}">${comLucro || !s.abertas ? din(flut) : "—"}</b><span>lucro aberto${ultimo ? " (pelo último negócio)" : ""}${semCot ? ` · sem cotação para ${semCot === s.abertas ? "a posição aberta agora" : `${semCot} das abertas`}` : ""} · ${s.abertas ?? 0} ${s.abertas === 1 ? "aberta" : "abertas"} · ${s.pendentes ?? 0} ${s.pendentes === 1 ? "pendente" : "pendentes"}</span>
-      <span class="meta">resultado do dia <b class="num ${cor(dia)}">${din(dia)}</b></span>`);
+    const fechadas = (e.monitorOrdens ?? []).filter((o) => o.modo === modo && o.status === "fechada" && o.resultado != null && (!s.corretora || o.corretora === s.corretora));
+    const meiaNoite = new Date().setHours(0, 0, 0, 0), soma = (l) => l.reduce((a, o) => a + (Number(o.resultado) || 0), 0);
+    const deHoje = fechadas.filter((o) => o.fechado_em && new Date(o.fechado_em).getTime() >= meiaNoite);
+    const kCorr = corretorasDoCtx().find(([, nomeC]) => nomeC === s.corretora)?.[0];
+    const hrefConta = `${hrefCtx(ctxLente, CONSOLIDADO)}${kCorr ? `?m=${kCorr}${modo === "real" ? "&c=real" : ""}` : ""}`;
+    return item(nome, `<span class="rp-sub">em aberto agora</span>
+      <b class="num ${comLucro ? cor(flut) : ""}">${comLucro || !s.abertas ? din(flut) : "—"}</b>
+      <span>${s.abertas ?? 0} ${s.abertas === 1 ? "posição aberta" : "posições abertas"} · ${s.pendentes ?? 0} ${s.pendentes === 1 ? "ordem pendente" : "ordens pendentes"}${ultimo ? " · pelo último negócio" : ""}${semCot ? ` · sem cotação para ${semCot === s.abertas ? "a posição aberta" : `${semCot} das abertas`}` : ""}</span>
+      <span class="meta">fechado hoje <b class="num ${cor(soma(deHoje))}">${din(soma(deHoje))}</b> em ${deHoje.length} ${deHoje.length === 1 ? "operação" : "operações"}</span>
+      <span class="meta">fechado em 30 dias <b class="num ${cor(soma(fechadas))}">${din(soma(fechadas))}</b> em ${fechadas.length} ${fechadas.length === 1 ? "operação" : "operações"}</span>
+      <span class="meta"><a href="${hrefConta}">ver o resultado desta conta</a></span>`);
   }).join("");
   return `<section class="faixa-totais resumo-painel" aria-label="Resumo do ${esc(CONTEXTOS[ctxLente].nome)} agora">
     ${PREGOES[ctxLente] ? item("Mercado", `<div class="pregao-b3" data-pregao="${ctxLente}">${htmlPregao(ctxLente)}</div>`, "rp-mercado") : ""}
