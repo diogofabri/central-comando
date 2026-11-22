@@ -1675,7 +1675,7 @@ function htmlTermometroCompacto(e) {
     const velho = a.idade_min != null && a.idade_min > 45;
     return `<li><a href="#/termometro">${iconeAtivo(a.id)}<b>${esc(a.nome)}</b></a>
       ${a.preco != null ? `<span class="num">${esc(preco2(a.preco))}</span><span class="num ${a.variacao_dia_pct > 0 ? "alta" : a.variacao_dia_pct < 0 ? "baixa" : ""}">${pctSinal(a.variacao_dia_pct)}</span>` : `<span class="meta">sem cotação</span>`}
-      <span class="selos">${htmlBadge(cls, rot + (a.forca ? " forte" : ""), a.direcao === "alta" ? "alta" : a.direcao === "baixa" ? "baixa" : undefined)}${a.divergencia ? htmlBadge("warning", "Divergência", "alert") : ""}${a.corretora?.spread_alto ? htmlBadge("warning", `Spread ${Number(a.corretora.spread_x).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}×`, "alert") : ""}${velho ? htmlBadge("muted", `velas de há ${duracaoMin(a.idade_min)}`, "clock") : ""}</span></li>`;
+      <span class="selos">${htmlBadge(cls, rot + (a.forca ? " forte" : ""), a.direcao === "alta" ? "alta" : a.direcao === "baixa" ? "baixa" : undefined)}${a.divergencia ? htmlBadge("warning", "Divergência", "alert") : ""}${a.corretora?.spread_alto ? htmlBadge("warning", `Spread ${Number(a.corretora.spread_x).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}×`, "alert") : ""}${velho ? htmlBadge("muted", mercadoFechadoAgora() ? `mercado fechado · última vela há ${duracaoMin(a.idade_min)}` : `velas de há ${duracaoMin(a.idade_min)}`, mercadoFechadoAgora() ? "pause" : "clock") : ""}</span></li>`;
   };
   return `<section class="painel" aria-labelledby="h-termo">
     ${titulo(`<span class="meta">atualizado <b class="num" data-desde="${esc(t.atualizado_em)}">${textoDesde(t.atualizado_em)}</b></span>${fechado ? htmlBadge("muted", "mercado fechado", "clock") : ""}`)}
@@ -2126,7 +2126,9 @@ function htmlTermometroAtivo(a, estadoGeral) {
     ${htmlFaixaDia(a)}
     ${htmlCorretora(a)}
     ${htmlSentimentoTermo(a, estadoGeral)}
-    ${velho ? `<div class="meta"><span class="atraso">${ico("clock")}velas de há ${esc(duracaoMin(a.idade_min))}</span></div>` : ""}
+    ${velho ? (mercadoFechadoAgora()
+      ? `<div class="meta"><span>${ico("pause")}mercado fechado: a última vela é do fecho, há ${esc(duracaoMin(a.idade_min))}. Volta a atualizar na abertura.</span></div>`
+      : `<div class="meta"><span class="atraso">${ico("clock")}velas de há ${esc(duracaoMin(a.idade_min))}</span></div>`) : ""}
   </div>`;
 }
 
@@ -3439,6 +3441,39 @@ function htmlFaixaTotais(f, id, modo, conta) {
 // corretoras (Forex: Capital.com + ActivTrades; Bovespa: CLEAR), conta demo e real, em R. R não depende de moeda, então
 // a soma de Capital.com (€) e ActivTrades (US$) é válida; dinheiro não se soma entre as duas sem câmbio.
 const CORRETORAS_EFETIVA = { forex: ["Capital.com", "ActivTrades"], bovespa: ["CLEAR"] };
+// o termômetro é do Forex (CFDs): de sexta 17:00 a domingo 18:00 de Nova York não há vela nova, e "velas de há 47 h"
+// parecia defeito (22/11/2026, pergunta do Diogo). Fora desse intervalo, vela com mais de 45 min continua sendo atraso.
+const mercadoFechadoAgora = () => PREGOES.forex?.calc()?.aberto === false;
+
+// Curva dos dois mercados na página Comparar (22/11/2026, pedido do Diogo): R acumulado de cada um ao longo dos 30 dias,
+// na mesma escala (R não depende de moeda nem de lote). Cada linha tem o nome escrito na ponta, além da cor e do traço.
+function svgComparar(series) {
+  const validas = series.filter((s) => s.pts.length > 1);
+  if (!validas.length) return `<p class="vazio">A curva aparece quando houver pelo menos 2 operações decididas num dos mercados.</p>`;
+  const estreito = innerWidth < 560, W = estreito ? 360 : Math.max(640, Math.min(1200, innerWidth - 100)), H = estreito ? 200 : 260, L = 46, R = estreito ? 86 : 120, T = 14, B = 26, w = W - L - R, h = H - T - B;
+  const todos = validas.flatMap((s) => s.pts), t0 = Math.min(...todos.map((q) => q[0])), t1 = Math.max(...todos.map((q) => q[0])) || t0 + 1;
+  let yMin = Math.min(0, ...todos.map((q) => q[1])), yMax = Math.max(0, ...todos.map((q) => q[1]));
+  const folga = (yMax - yMin || 1) * 0.1; yMin -= yMin < 0 ? folga : 0; yMax += folga;
+  const x = (tp) => L + (w * (tp - t0)) / Math.max(1, t1 - t0), y = (v) => T + h - (h * (v - yMin)) / (yMax - yMin);
+  const ticks = ticksRedondos(yMin, yMax, estreito ? 3 : 5).filter((v) => v >= yMin && v <= yMax);
+  const DIA = 864e5, passoDia = Math.max(1, Math.ceil((t1 - t0) / DIA / (estreito ? 4 : 7))), dias = [];
+  for (let d = new Date(new Date(t0).setHours(24, 0, 0, 0)); d.getTime() < t1; d.setDate(d.getDate() + passoDia)) dias.push(d.getTime());
+  // rótulos das pontas não se sobrepõem: o de baixo desce se estiver a menos de 14 px do de cima
+  const pontas = validas.map((s) => ({ s, yv: y(s.pts[s.pts.length - 1][1]) })).sort((p, q) => p.yv - q.yv);
+  pontas.forEach((pt, k) => { if (k && pt.yv - pontas[k - 1].yv < 14) pt.yv = pontas[k - 1].yv + 14; });
+  const desc = validas.map((s) => `${s.nome}: ${fmtR(s.pts[s.pts.length - 1][1])} em ${s.pts.length - 1} operações`).join("; ");
+  return `<div class="grafico comparar"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="R acumulado por mercado. ${esc(desc)}">
+      ${ticks.map((v) => `<line class="grade" x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="${L - 6}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end">${String(v).replace(".", ",")}</text>`).join("")}
+      ${dias.map((d) => `<line class="grade dia" x1="${x(d).toFixed(1)}" x2="${x(d).toFixed(1)}" y1="${T}" y2="${T + h}"/><text x="${x(d).toFixed(1)}" y="${H - 6}" text-anchor="middle">${dataCurta(d)}</text>`).join("")}
+      <line class="eixo zero-linha" x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>
+      ${validas.map((s) => `<path class="serie ${s.cls}" d="${s.pts.map(([tp, v], k) => `${k ? "L" : "M"}${x(tp).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}"/>`).join("")}
+      ${pontas.map(({ s, yv }) => `<circle class="ponta ${s.cls}" cx="${x(s.pts[s.pts.length - 1][0]).toFixed(1)}" cy="${y(s.pts[s.pts.length - 1][1]).toFixed(1)}" r="3.5"/>
+        <text class="rot-serie ${s.cls}" x="${(x(s.pts[s.pts.length - 1][0]) + 8).toFixed(1)}" y="${(yv + 4).toFixed(1)}">${esc(s.nome)} ${esc(fmtR(s.pts[s.pts.length - 1][1]))}</text>`).join("")}
+    </svg>
+    <div class="legenda">${validas.map((s) => `<span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="serie ${s.cls}"/></svg>${esc(s.nome)}: ${s.pts.length - 1} operações decididas</span>`).join("")}<span>eixo em R (múltiplos do risco), acumulado</span></div>
+  </div>`;
+}
+
 function vistaComparar(visao = "teorica") {
   const ctxs = ["forex", "bovespa"], efetiva = visao === "efetiva";
   const pct = (w, l) => (w + l ? `${Math.round((100 * w) / (w + l))}%` : "—");
@@ -3446,6 +3481,19 @@ function vistaComparar(visao = "teorica") {
   const celulas = (abertos, w, perd, rs) => `<td class="num">${abertos}</td><td class="num">${w}</td><td class="num">${perd}</td>
         <td class="num">${pct(w, perd)}${w + perd && w + perd < 10 ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td>
         <td class="num">${rs.length ? fmtR(rs.reduce((a, b) => a + b, 0)) : "—"}</td><td class="num">${rs.length ? fmtR(rs.reduce((a, b) => a + b, 0) / rs.length) : "—"}</td>`;
+  // série de cada mercado: R de cada operação decidida, na ordem em que fechou, acumulado a partir do zero
+  const series = ctxs.map((ctx) => {
+    const l = lente(estadoBruto, ctx);
+    const eventos = (efetiva
+      ? (l.monitorOrdens ?? []).filter((o) => CORRETORAS_EFETIVA[ctx].includes(o.corretora) && o.status === "fechada" && o.resultado != null && o.fechado_em)
+        .map((o) => [new Date(o.fechado_em).getTime(), Number(rDaOrdem(o))])
+      : (l.monitorResultados ?? []).filter((r) => CONTEXTOS[ctx].fontes.includes(r.fonte) && r.resultado_r != null && r.resolvido_em)
+        .map((r) => [new Date(r.resolvido_em).getTime(), Number(r.resultado_r)]))
+      .filter(([tp, v]) => Number.isFinite(tp) && Number.isFinite(v)).sort((p, q) => p[0] - q[0]);
+    let soma = 0;
+    const pts = eventos.map(([tp, v]) => [tp, Math.round((soma += v) * 100) / 100]);
+    return { nome: NOME_CTX[ctx], cls: `serie-${ctx}`, pts: pts.length ? [[pts[0][0] - 60e3, 0], ...pts] : [] };
+  });
   const linhas = ctxs.map((ctx) => {
     const l = lente(estadoBruto, ctx);
     const tot = { abertos: 0, w: 0, perd: 0, rs: [] };
@@ -3482,6 +3530,10 @@ function vistaComparar(visao = "teorica") {
     </div>
     <nav class="segmentado modalidades" aria-label="Visão"><span class="seg-rot">Visão</span>${[["teorica", "Teórica"], ["efetiva", "Efetiva"]]
       .map(([k, rot]) => `<a href="#/todos/comparar${k === "efetiva" ? "?v=efetiva" : ""}" ${k === visao ? 'aria-current="page"' : ""}>${rot}</a>`).join("")}</nav>
+    <section class="painel" aria-labelledby="h-comp-curva">
+      <h2 id="h-comp-curva">${ico("activity")} R acumulado por mercado <span class="count">${efetiva ? "ordens executadas" : "placar teórico"} · últimos 30 dias</span></h2>
+      ${svgComparar(series)}
+    </section>
     <section class="painel" aria-labelledby="h-comp">
       <h2 id="h-comp">${ico("target")} Placar por mercado <span class="count">últimos 30 dias</span></h2>
       <div class="rolagem"><table class="tabela placar vira-lista">

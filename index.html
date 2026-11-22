@@ -816,6 +816,15 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* v128: indicador da conta em três tempos (aberto agora, fechado hoje, fechado em 30 dias) */
 .resumo-painel .rp-sub { font-size: 12px; color: var(--ink-2); font-weight: 500; }
 .resumo-painel .total-corretora .meta a { color: inherit; }
+/* v129: curva dos dois mercados em Comparar (cor + traço + nome na ponta) */
+.grafico.comparar .serie { fill: none; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
+.grafico .serie-forex { stroke: var(--accent); }
+.grafico .serie-bovespa { stroke: var(--warning); stroke-dasharray: 6 4; }
+.grafico.comparar .ponta { fill: var(--surface); stroke-width: 2; stroke-dasharray: none; }
+.grafico.comparar .rot-serie { font-weight: 600; stroke: none; }
+.grafico.comparar .rot-serie.serie-forex { fill: var(--accent); }
+.grafico.comparar .rot-serie.serie-bovespa { fill: var(--warning); }
+.grafico.comparar .legenda svg .serie { stroke-width: 2.25; } .grafico.comparar > svg { max-width: 1200px; } .grafico.comparar .legenda svg { width: 22px; height: 10px; vertical-align: middle; margin-right: 6px; }
 </style>
 </head>
 <body>
@@ -863,6 +872,6 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=128"></script>
+<script src="app.js?v=129"></script>
 </body>
 </html>
