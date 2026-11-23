@@ -59,6 +59,16 @@ const MODOS_VALIDOS = new Set(["todos", "sem", "demo", "real", "capitalcom", "ac
 const corretorasDoCtx = () => CORRETORAS_CTX[ctxLente] ?? [];
 const corretoraDoModo = (m) => corretorasDoCtx().find(([k]) => k === m);
 const modalidadesDoCtx = () => [...corretorasDoCtx(), ["todos", "Teórico"], ["sem", "Sem disparo"]];
+// rota sem ?m= (23/11/2026, pedido do Diogo: o resultado de hoje da CLEAR não aparecia porque a página abria no
+// Teórico): a corretora em uso quando a página tem ordens executadas nela; senão, o Teórico
+function modoPadrao(rota) {
+  if (!corretorasDoCtx().length) return "todos";
+  const k = modoNoCtx("padrao"), nomeC = corretoraDoModo(k)?.[1];
+  const fontes = rota.tipo === "analise" && rota.fonte !== CONSOLIDADO ? [rota.fonte] : fontesDoCtx();
+  const tem = (estado?.monitorOrdens ?? []).some((o) => o.corretora === nomeC && fontes.includes(o.pagina)
+    && o.preco_execucao != null && (!rota.id || rota.id === TODOS || o.unidade === rota.id));
+  return tem ? k : "todos";
+}
 // modo da rota → modo válido no contexto (demo/real antigos e corretora de outro mercado viram a corretora em uso)
 function modoNoCtx(modo) {
   if (modo === "todos" || modo === "sem" || corretoraDoModo(modo)) return modo;
@@ -702,13 +712,13 @@ function rotaAtual() {
   if (h.startsWith("#/saude")) return { tipo: "saude", ctx: "forex" };  // saúde das integrações (saude.js)
   if (h.startsWith("#/historico")) {
     const q = new URLSearchParams(h.split("?")[1] ?? ""), m = q.get("m");
-    return doMonitor({ tipo: "historico", modo: MODOS_VALIDOS.has(m) ? m : "todos", conta: q.get("c") === "real" ? "real" : "demo" });
+    return doMonitor({ tipo: "historico", modo: MODOS_VALIDOS.has(m) ? m : "padrao", conta: q.get("c") === "real" ? "real" : "demo" });
   }
   if (h.startsWith("#/comandos")) return doMonitor({ tipo: "comandos", fonte: new URLSearchParams(h.split("?")[1] ?? "").get("f") ?? undefined });
   const an = h.match(/^#\/(consolidado|agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
   if (an) {
     const q = new URLSearchParams(h.split("?")[1] ?? ""), m = q.get("m");
-    return doMonitor({ tipo: "analise", fonte: an[1], id: an[2] ? decodeURIComponent(an[2]) : undefined, modo: MODOS_VALIDOS.has(m) ? m : "todos",
+    return doMonitor({ tipo: "analise", fonte: an[1], id: an[2] ? decodeURIComponent(an[2]) : undefined, modo: MODOS_VALIDOS.has(m) ? m : "padrao",
       conta: q.get("c") === "real" || m === "real" ? "real" : "demo" });
   }
   return { tipo: "geral", ctx: "forex" };
@@ -1806,50 +1816,77 @@ function htmlAoVivo(e) {
 
 // Melhor e pior canal de cada fonte (23/11/2026, pedido do Diogo): no Agora, por fonte (YouTube, TikTok, Sites,
 // Agentes…), o canal, site ou agente com o maior e o menor saldo em R no período e na categoria escolhidos (os mesmos
-// filtros de Resultado e Histórico: periodoDias e categoriaFiltro). Conta só os sinais decididos do placar (alvo, stop,
-// expirado), teóricos; o R decide a ordem porque é a única unidade igual entre ativos. Canal com menos de
+// filtros de Resultado e Histórico: periodoDias e categoriaFiltro). Três bases (pedido do Diogo, padrão Real):
+// - Real: as ordens executadas na corretora (demo e real), uma linha por ordem (cada parcial conta), resultado com custos;
+// - Teórico: os sinais decididos do placar (alvo, stop, expirado), executados ou não;
+// - Todos: o sinal executado vale pelas ordens dele; o que não virou ordem vale pelo teórico.
+// O R decide a ordem porque é a única unidade igual entre ativos e entre moedas. Dinheiro só aparece quando a base
+// inteira está numa moeda só (no Forex a conta da Capital.com é em € e o teórico em US$). Canal com menos de
 // MIN_OPS_DESTAQUE operações fica de fora (um só alvo não faz "melhor canal").
 const MIN_OPS_DESTAQUE = 3;
+let destaqueBase = "real";
+const BASES_DESTAQUE = [["real", "Real"], ["teorico", "Teórico"], ["todos", "Todos"]];
+const htmlBaseDestaque = () => `<span class="segmentado" role="group" aria-label="Base" title="Real: ordens executadas na corretora. Teórico: placar dos sinais. Todos: o executado vale pela ordem e o resto pelo teórico."><span class="seg-rot">Base</span>${BASES_DESTAQUE.map(([k, rot]) =>
+  `<button type="button" data-acao="destaque-base" data-base="${k}" aria-pressed="${k === destaqueBase}">${rot}</button>`).join("")}</span>`;
 function htmlDestaquesCanais(e) {
-  const corte = inicioDoPeriodo(), cat = categoriaFiltro;
-  const din = ctxLente === "bovespa" ? moedaConta("BRL") : usd2;
+  const corte = inicioDoPeriodo(), cat = categoriaFiltro, base = destaqueBase;
+  const moedaTeorica = ctxLente === "bovespa" ? "BRL" : "USD";
+  const corretoras = new Set(corretorasDoCtx().map(([, n]) => n));
+  const daCat = (f, nome) => !cat || categoriaDoCanal("youtube", e, nome) === cat;
   const fontes = fontesDoCtx().filter((f) => !cat || f === "youtube");
   const blocos = fontes.map((f) => {
-    const linhas = resultadosDaFonte(f, e).filter((r) => STATUS_COM_R.has(r.status) && r.resolvido_em
-      && new Date(r.resolvido_em).getTime() >= corte
-      && (!cat || categoriaDoCanal("youtube", e, nomeDaUnidade(f, r.origem)) === cat));
+    // ordens fechadas da fonte no período (corretoras deste mercado)
+    const ordens = (e.monitorOrdens ?? []).filter((o) => o.pagina === f && o.status === "fechada" && o.resultado != null && o.fechado_em
+      && (!corretoras.size || corretoras.has(o.corretora)) && new Date(o.fechado_em).getTime() >= corte && daCat(f, o.unidade));
+    const opsReais = ordens.map((o) => ({ nome: o.unidade, r: rDaOrdem(o), v: Number(o.resultado), moeda: o.moeda ?? null, lado: Number(o.resultado) }));
+    const teoricas = base === "real" ? [] : resultadosDaFonte(f, e).filter((r) => STATUS_COM_R.has(r.status) && r.resolvido_em
+      && new Date(r.resolvido_em).getTime() >= corte && daCat(f, nomeDaUnidade(f, r.origem)));
+    let ops;
+    if (base === "real") ops = opsReais;
+    else {
+      const executados = new Set(base === "todos" ? ordens.map((o) => `${o.fonte}|${Number(o.sinal_id)}`) : []);
+      const teo = teoricas.filter((r) => !executados.has(`${r.fonte}|${Number(r.sinal_id)}`))
+        .map((r) => ({ nome: nomeDaUnidade(f, r.origem), r: rDoResultado(r) ?? 0, v: dinheiroDoResultado(r), moeda: moedaTeorica, lado: rDoResultado(r) ?? 0 }));
+      ops = base === "todos" ? [...opsReais, ...teo] : teo;
+    }
+    const moedas = new Set(ops.map((o) => o.moeda).filter(Boolean));
+    const din = moedas.size === 1 ? moedaConta([...moedas][0]) : null;
     const por = new Map();
-    linhas.forEach((r) => {
-      const nome = nomeDaUnidade(f, r.origem), x = por.get(nome) ?? { nome, ops: 0, ganhos: 0, perdas: 0, r: 0, v: 0 };
-      const rr = rDoResultado(r), v = dinheiroDoResultado(r);
-      x.ops++; x.r += rr ?? 0; x.v += v ?? 0;
-      if ((rr ?? v ?? 0) > 0) x.ganhos++; else if ((rr ?? v ?? 0) < 0) x.perdas++;
-      por.set(nome, x);
+    ops.forEach((o) => {
+      const x = por.get(o.nome) ?? { nome: o.nome, ops: 0, ganhos: 0, perdas: 0, r: 0, v: 0 };
+      const sinal = o.lado;  // ganho/perda: real pelo resultado da corretora; teórico pelo R (alvo/stop)
+      x.ops++; x.r += o.r ?? 0; x.v += o.v ?? 0;
+      if (sinal > 0) x.ganhos++; else if (sinal < 0) x.perdas++;
+      por.set(o.nome, x);
     });
     const lista = [...por.values()].filter((x) => x.ops >= MIN_OPS_DESTAQUE)
-      .sort((a, b) => b.r - a.r || b.ganhos - a.ganhos || b.ops - a.ops);
+      .map((x) => ({ ...x, r: Math.round(x.r * 100) / 100, v: Math.round(x.v * 100) / 100 }))  // sem "−US$ 0,00"
+      .sort((a, b) => b.r - a.r || b.v - a.v || b.ganhos - a.ganhos || b.ops - a.ops);
     if (!lista.length) return "";
+    const modoLink = base === "teorico" ? "todos" : base === "real" ? modoNoCtx("padrao") : "padrao";
     const card = (x, tipo) => {
-      const acerto = Math.round((100 * x.ganhos) / x.ops), href = hrefCtx(ctxLente, `${f}/${encodeURIComponent(x.nome)}`);
+      const acerto = Math.round((100 * x.ganhos) / x.ops);
       return `<div class="destaque-canal ${tipo}">
         <span class="badge ${tipo === "melhor" ? "good" : "critical"}">${ico(tipo === "melhor" ? "alta" : "baixa")}${tipo === "melhor" ? "Melhor" : "Pior"}</span>
-        <a class="nome" href="${href}" title="Resultado e histórico de ${esc(x.nome)}">${esc(x.nome)}</a>
+        <a class="nome" href="${hrefCtx(ctxLente, "")}${hrefAnalise(f, x.nome, modoLink).slice(2)}" title="Resultado e histórico de ${esc(x.nome)}">${esc(x.nome)}</a>
         <div class="meta"><span><b class="num">${x.ops}</b> ${x.ops === 1 ? "operação" : "operações"}</span><span><b class="num pos">${x.ganhos}</b> ${x.ganhos === 1 ? "ganho" : "ganhos"}</span><span><b class="num neg">${x.perdas}</b> ${x.perdas === 1 ? "perda" : "perdas"}</span><span>acerto <b class="num">${acerto}%</b></span></div>
-        <div class="meta"><b class="num ${corV(x.r)}">${r2(x.r)}</b><b class="num ${corV(x.v)}">${din(x.v)}</b></div>
+        <div class="meta"><b class="num ${corV(x.r)}">${r2(x.r)}</b>${din ? `<b class="num ${corV(x.v)}">${din(x.v)}</b>` : ""}</div>
       </div>`;
     };
-    lista.forEach((x) => { x.r = Math.round(x.r * 100) / 100; x.v = Math.round(x.v * 100) / 100; });  // sem "−US$ 0,00"
+    const total = ops.reduce((s, o) => s + (o.v ?? 0), 0);
     const melhor = lista[0], pior = lista[lista.length - 1];
     return `<div class="cartao"><div class="titulo"><a class="nome-fonte" href="${hrefCtx(ctxLente, f)}">${FONTES[f]}</a> <span class="count">${lista.length}</span></div>
-      <div class="meta"><span>${lista.length} ${lista.length === 1 ? "unidade" : "unidades"} com ${MIN_OPS_DESTAQUE}+ operações decididas</span></div>
+      <div class="meta"><span><b class="num">${ops.length}</b> ${ops.length === 1 ? "operação" : "operações"}${din ? ` · <b class="num ${corV(total)}">${din(Math.round(total * 100) / 100)}</b>` : ""}</span><span>${lista.length} ${lista.length === 1 ? "unidade" : "unidades"} com ${MIN_OPS_DESTAQUE}+</span></div>
       ${card(melhor, "melhor")}${lista.length > 1 ? card(pior, "pior") : ""}</div>`;
   }).filter(Boolean);
-  const filtros = `<div class="linha-modalidades">${htmlPeriodo()}${fontesDoCtx().includes("youtube") ? htmlCategoriaFiltro() : ""}</div>`;
+  const filtros = `<div class="linha-modalidades">${htmlBaseDestaque()}${htmlPeriodo()}${fontesDoCtx().includes("youtube") ? htmlCategoriaFiltro() : ""}</div>`;
+  const textoBase = { real: "nas ordens executadas na corretora (demo e real, com custos)", teorico: "no placar teórico (alvo, stop e expirado)",
+    todos: "no executado quando houve ordem e no teórico quando não houve" }[base];
   return `<section class="painel" aria-labelledby="h-destaques">
     <h2 id="h-destaques">${ico("activity")} Melhor e pior canal</h2>
-    <p class="nota">Por fonte, no placar teórico (alvo, stop e expirado) de ${esc(textoPeriodo())}${cat ? `, só os canais ${cat === "trader" ? "de live traders" : "de robôs"} do YouTube` : ""}; ordem pelo saldo em R.</p>
+    <p class="nota">Por fonte, ${textoBase}, ${esc(textoPeriodo())}${cat ? `, só os canais ${cat === "trader" ? "de live traders" : "de robôs"} do YouTube` : ""}; ordem pelo saldo em R.</p>
     ${filtros}
-    ${blocos.length ? `<div class="grade-cartoes">${blocos.join("")}</div>` : `<p class="vazio">Nenhum canal com ${MIN_OPS_DESTAQUE} ou mais operações decididas neste filtro.</p>`}
+    ${blocos.length ? `<div class="grade-cartoes">${blocos.join("")}</div>` : `<p class="vazio">Nenhum canal com ${MIN_OPS_DESTAQUE} ou mais operações neste filtro.</p>`}
   </section>`;
 }
 
@@ -2818,7 +2855,7 @@ const linkDaUnidade = (a) => { const u = urlDaUnidade(a); const o = a.tipo === "
 // indicadores, curva e pontos fracos), depois a Comparação, que é também o seletor de canal (a tira de abas saiu), e por
 // fim o histórico e os recortes. A faixa de totais é o seletor de modalidade (a pílula "Mostrar" e a tabela "por
 // modalidade" saíram: repetiam os mesmos números).
-const hrefHistorico = (modo = "todos", conta = "demo") => `${hrefCtx(ctxLente, "historico")}${modo && modo !== "todos" ? `?m=${modo}${corretoraDoModo(modo) && conta === "real" ? "&c=real" : ""}` : ""}`;
+const hrefHistorico = (modo = "padrao", conta = "demo") => `${hrefCtx(ctxLente, "historico")}${modo && modo !== "padrao" ? `?m=${modo}${corretoraDoModo(modo) && conta === "real" ? "&c=real" : ""}` : ""}`;
 // `paraHistorico`: no Resultado do mercado as operações uma a uma ficam na página Histórico (22/11/2026: o mesmo
 // histórico aparecia aqui e ocuparia as duas páginas); nas páginas de fonte e de canal o histórico continua no lugar
 // Resultado do mercado: as fontes comparadas por dinheiro (Comparação) ou por alvo × stop (o placar), no mesmo lugar
@@ -3573,8 +3610,8 @@ function htmlOutrasCorretoras(modo) {
   }).join("");
 }
 
-const hrefAnalise = (f, id, modo = rotaAtual().modo ?? "todos", conta = rotaAtual().conta ?? "demo") =>
-  `#/${f}/${encodeURIComponent(id)}${modo && modo !== "todos" ? `?m=${modo}${corretoraDoModo(modo) && conta === "real" ? "&c=real" : ""}` : ""}`;
+const hrefAnalise = (f, id, modo = rotaAtual().modo ?? "padrao", conta = rotaAtual().conta ?? "demo") =>
+  `#/${f}/${encodeURIComponent(id)}${modo && modo !== "padrao" ? `?m=${modo}${corretoraDoModo(modo) && conta === "real" ? "&c=real" : ""}` : ""}`;
 
 // Totais lado a lado (18/11/2026, pedido do Diogo): cada corretora (executado, na moeda da conta) e o Teórico, da unidade aberta
 function htmlFaixaTotais(f, id, modo, conta) {
@@ -3910,6 +3947,12 @@ function render(forcar = true) {
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
   ctxAtual = doMonitor ? (rota.tipo === "comparar" ? "todos" : rota.ctx) : ctxLembrado;
   estado = ctxLente === "todos" ? estadoBruto : lente(estadoBruto, ctxLente);
+  // sem ?m= na rota (23/11/2026, pedido do Diogo): abre no resultado real da corretora quando a página tem ordens
+  // executadas nela; sem ordens, no Teórico. O Teórico continua a um clique (?m=todos).
+  if ((rota.tipo === "analise" || rota.tipo === "historico") && rota.modo === "padrao") {
+    rota.modo = modoPadrao(rota);
+    rotuloSaldo = rota.tipo === "analise" && corretoraDoModo(rota.modo) ? "Saldo real" : rotuloSaldo;
+  }
   // período menor que 30 dias: corta resultados e ordens das páginas de resultado e de histórico (ordens vivas ficam)
   const comPeriodo = periodoDias < 30 && (rota.tipo === "analise" || rota.tipo === "historico");
   if (comPeriodo && estado) {
@@ -4054,6 +4097,7 @@ document.addEventListener("click", (ev) => {
   if (acao === "hist-filtro") { histFiltro = b.dataset.filtro; histLimite = HIST_PASSO; return render(); }
   if (acao === "lista-toda") { listasAbertas.add(b.dataset.lista); return render(); }
   if (acao === "categoria-filtro") { categoriaFiltro = CATEGORIAS_FILTRO.some(([k]) => k === b.dataset.categoria) ? b.dataset.categoria : ""; histLimite = HIST_PASSO; return render(); }
+  if (acao === "destaque-base") { destaqueBase = BASES_DESTAQUE.some(([k]) => k === b.dataset.base) ? b.dataset.base : "real"; return render(); }
   if (acao === "periodo") { periodoDias = PERIODOS.some(([d]) => d === Number(b.dataset.dias)) ? Number(b.dataset.dias) : 30; histLimite = HIST_PASSO; return render(); }
   if (acao === "comp-ordem") {
     const col = b.dataset.col;
