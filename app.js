@@ -1739,14 +1739,25 @@ const situacaoDe = (i) => SITUACAO_LIVE[i.analisando && (i.estado === "fila" || 
   ?? { cls: "muted", t: ROTULO_ESTADO[i.estado] ?? i.estado, ordem: 9 };
 function categoriaDoItem(f, e, i) {
   const nomeCanal = String(i.detalhe ?? "").split(/[;·]/)[0];  // YouTube: "Nome do canal; N espectadores"
-  return categoriaDoCanal(f, e, i.item) ?? categoriaDoCanal(f, e, nomeCanal);
+  // "canal~2" é a 2.ª live do mesmo canal: a categoria é a do canal
+  return categoriaDoCanal(f, e, String(i.item ?? "").replace(/~\d+$/, "")) ?? categoriaDoCanal(f, e, nomeCanal);
 }
 function htmlAoVivo(e) {
-  const fontes = fontesDoCtx().filter((f) => f === "tiktok" || f === "youtube");
+  // só o que está sendo monitorado (23/11/2026, pedido do Diogo): fonte desligada em Comandos sai do painel, e no
+  // YouTube do Forex a chave Tudo | Só robôs | Só traders tira as lives da categoria que não é lida
+  const fontes = fontesDoCtx().filter((f) => (f === "tiktok" || f === "youtube") && e.monitorComando?.[f] !== false);
   if (!fontes.length) return "";
+  const leitura = ctxLente === "forex" ? e.leituraYoutube ?? "todos" : "todos";
+  const ROT_LEITURA = { robo: "só robôs", trader: "só traders" };
   const blocos = fontes.map((f) => {
-    const itens = (e.monitorItens ?? []).filter((i) => i.fonte === f);
+    let itens = (e.monitorItens ?? []).filter((i) => i.fonte === f);
     if (!itens.length) return "";
+    let foraDaLeitura = 0;
+    if (f === "youtube" && leitura !== "todos") {
+      const antes = itens.filter((i) => NO_AR.has(i.estado) || i.analisando).length;
+      itens = itens.filter((i) => categoriaDoItem(f, e, i) === leitura);
+      foraDaLeitura = antes - itens.filter((i) => NO_AR.has(i.estado) || i.analisando).length;
+    }
     // ordem: o que está sendo lido agora, depois o que espera (a mais próxima da vez primeiro), depois o resto;
     // dentro de cada situação, quem tem mais espectadores
     const vivos = itens.filter((i) => NO_AR.has(i.estado) || i.analisando).map((i) => ({ i, s: situacaoDe(i) }))
@@ -1767,9 +1778,11 @@ function htmlAoVivo(e) {
     const situacoes = [...porSit.values()].sort((a, b) => a.s.ordem - b.s.ordem)
       .map(({ s, n }) => `<span class="badge ${s.cls}">${s.vivo ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}<b class="num">${n}</b> ${esc(s.t)}</span>`).join("");
     const avisos = [login ? htmlBadge("critical", `${login} pede${login > 1 ? "m" : ""} login`, "alert") : "",
-                    desc ? `<span title="o detector não conseguiu dizer se está no ar">${desc} sem resposta</span>` : ""].join("");
+                    desc ? `<span title="o detector não conseguiu dizer se está no ar">${desc} sem resposta</span>` : "",
+                    foraDaLeitura ? `<span title="a chave de leitura do YouTube está em ${ROT_LEITURA[leitura]} (página Comandos)">lendo ${ROT_LEITURA[leitura]}: ${foraDaLeitura} outra${foraDaLeitura > 1 ? "s" : ""} no ar fora da leitura</span>` : ""].join("");
     return `<div class="cartao"><div class="titulo"><span class="nome-fonte">${FONTES[f]}</span> <span class="count">${vivos.length}</span></div>
-      <div class="meta"><span>${vivos.length ? `${vivos.length} de ${itens.length} canais no ar` : `nenhum dos ${itens.length} canais no ar`}</span>${avisos}</div>
+      <div class="meta"><span>${(() => { const qual = foraDaLeitura || (f === "youtube" && leitura !== "todos") ? (leitura === "trader" ? " de traders" : " de robôs") : "";
+        return vivos.length ? `${vivos.length} de ${itens.length} canais${qual} no ar` : `nenhum dos ${itens.length} canais${qual} no ar`; })()}</span>${avisos}</div>
       ${situacoes ? `<div class="situacoes" aria-label="situação das lives no ar">${situacoes}</div>` : ""}
       ${vivos.length ? `<ul class="lista rolavel" data-rolavel="aovivo-${f}">${linhas}</ul>` : ""}</div>`;
   }).filter(Boolean);
