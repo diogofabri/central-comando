@@ -1322,9 +1322,10 @@ const ABERTO = { t: "Sinal aberto", d: "listados em Sinais ativos", f: (i) => i.
 const LOOP_LIVES = {
   titulo: "Loop de leitura", vazio: "Nada ao vivo agora.", resto: "Fora do ar",
   grupos: [
-    { t: "Analisando agora", d: "live aberta, prints sendo lidos", f: (i) => ["lendo", "conferindo", "gravando", "analisando"].includes(i.estado) || (i.analisando && i.estado !== "espera") },
-    { t: "Já analisados", d: "leitura feita; aguardam a próxima rodada", f: (i) => i.estado === "lido" },
-    { t: "Aguardando a vez", d: "aba aberta ou na fila, ainda sem leitura nesta volta", f: (i) => ["fila", "espera", "sem_aba"].includes(i.estado) },
+    // grupos pela mesma situação do Ao vivo agora (situacaoDe), igual no Forex e na Bovespa
+    { t: "Analisando agora", d: "print sendo lido ou sinal sendo conferido", f: (i) => SITUACAO_LIVE[i.estado] && situacaoDe(i).ordem <= 1 },
+    { t: "Aguardando a vez", d: "aba aberta esperando a vez, ou no ar sem aba", f: (i) => SITUACAO_LIVE[i.estado] && [2, 3, 4].includes(situacaoDe(i).ordem) },
+    { t: "Já analisados", d: "leitura feita; aguardam a próxima volta", f: (i) => i.estado === "lido" },
   ],
 };
 const GRUPOS_FONTE = {
@@ -1388,7 +1389,7 @@ function htmlStatusFonte(f, itens) {
 }
 
 function htmlItemMonitor(i) {
-  const sl = SITUACAO_LIVE[i.estado];
+  const sl = SITUACAO_LIVE[i.estado] ? situacaoDe(i) : null;  // lives: a mesma situação (cor e texto) do Ao vivo agora
   const cls = sl ? sl.cls : i.ativo || i.estado === "lido" ? "good" : i.analisando || i.estado === "fila" ? "warning" : "muted";
   const auto = i.fonte === "agentes" ? RE_AUTO.exec(i.detalhe ?? "") : null;
   const detalhe = auto ? i.detalhe.slice(auto[0].length) : i.detalhe;
@@ -1403,7 +1404,7 @@ function htmlItemMonitor(i) {
   const selo = auto ? ` ${seloAuto(`self-learning v${auto[1]} · ${auto[2].trim()}`)}` : "";
   const icone = COMO_SITES.has(i.fonte) ? (i.item.split(":").pop() ? `${iconeAtivo(i.item.split(":").pop())} ` : "") : FONTES_PERIODICAS.has(i.fonte) ? `${iconeAtivo(i.nome.split("·").pop().trim())} ` : "";
   const vivo = (sl ? sl.vivo : i.ativo) ? `<i class="ponto vivo" aria-hidden="true"></i>` : "";
-  return `<li><span class="badge ${cls}">${vivo}${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${linkCanal(i.fonte, i.item, i.nome)}${selo}
+  return `<li><span class="badge ${cls}">${vivo}${esc(sl ? sl.t : ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${linkCanal(i.fonte, i.item, i.nome)}${selo}
     <div class="meta">${extras}${detalhe ? `<span>${esc(detalhe)}</span>` : ""}</div></li>`;
 }
 
@@ -1733,10 +1734,19 @@ function foraDaExecucao(s) {
 // Ao vivo agora (17/11/2026, pedido do Diogo): o que o DETECTOR achou no ar, separado do que a análise já leu e dos
 // sinais. Vem de monitor_itens (um item por canal, estado da última checagem). TikTok e YouTube; os outros não têm live.
 const NO_AR = new Set(Object.keys(SITUACAO_LIVE));
-// a situação de uma live: "analisando" ligado numa live em captura comum vira o selo azul; na leitura contínua o
-// supervisor já manda o estado certo (lendo, conferindo, espera, sem_aba)
-const situacaoDe = (i) => SITUACAO_LIVE[i.analisando && (i.estado === "fila" || i.estado === "lido" || i.estado === "ao_vivo") ? "analisando" : i.estado]
-  ?? { cls: "muted", t: ROTULO_ESTADO[i.estado] ?? i.estado, ordem: 9 };
+// a situação de uma live, igual nos dois mercados (23/11/2026, pedido do Diogo). Na leitura contínua (Bovespa) o
+// supervisor já manda lendo, conferindo, espera ou sem_aba; no modo varredura/foco (Forex) os estados antigos são
+// traduzidos para os mesmos: leitura do print pendente ("analisando") = lendo agora (verde; ali a leitura e a
+// conferência do Opus vêm juntas); "gravando" com a próxima leitura ainda por vir = aba aberta esperando a vez
+// (âmbar, com a contagem); "fila" = no ar sem aba (vermelho; a varredura ainda não chegou ou não há vaga pela
+// prioridade ou pela guarda); "lido" = já lido nesta volta (cinza).
+function situacaoDe(i) {
+  let k = i.estado;
+  if ((i.analisando && ["fila", "lido", "ao_vivo", "gravando"].includes(k)) || k === "analisando") k = "lendo";
+  else if (k === "gravando" && i.proxima_analise && new Date(i.proxima_analise) - Date.now() > 5000) k = "espera";
+  else if (k === "fila") k = "sem_aba";
+  return SITUACAO_LIVE[k] ?? { cls: "muted", t: ROTULO_ESTADO[i.estado] ?? i.estado, ordem: 9 };
+}
 function categoriaDoItem(f, e, i) {
   const nomeCanal = String(i.detalhe ?? "").split(/[;·]/)[0];  // YouTube: "Nome do canal; N espectadores"
   // "canal~2" é a 2.ª live do mesmo canal: a categoria é a do canal
