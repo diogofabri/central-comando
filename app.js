@@ -2389,6 +2389,9 @@ function svgSaldo(a) {
   const area = `${d} L${x(pts[pts.length - 1][0]).toFixed(1)},${y(0).toFixed(1)} L${x(t0).toFixed(1)},${y(0).toFixed(1)} Z`;
   // o zero sempre rotulado (é a linha de referência do saldo); rótulo a menos de 14 px de outro sai
   const ticks = ticksRedondos(yMin, yMax, estreito ? 3 : 5).filter((t) => t >= yMin && t <= yMax);
+  // saldo de centavos (período "Hoje", 23/11/2026): com passo abaixo de 1 o rótulo inteiro virava "−0, −0"
+  const passoY = ticks.length > 1 ? Math.abs(ticks[1] - ticks[0]) : 1, casas = passoY >= 1 ? 0 : passoY >= 0.1 ? 1 : 2;
+  const rotY = (t) => (casas && a.unidade !== "r" ? (Object.is(Math.round(t * 100) / 100, -0) ? 0 : t).toFixed(casas).replace(".", ",").replace("-", "−") : curto(t));
   // grade por dia: no máximo 6 datas, sempre à meia-noite local; com menos de 2 dias ficam só as datas das pontas
   const DIA = 864e5, nDias = (t1 - t0) / DIA, passoDia = Math.max(1, Math.ceil(nDias / (estreito ? 4 : 6)));
   const dias = [];
@@ -2456,7 +2459,7 @@ function svgSaldo(a) {
   return `<div class="grafico saldo ${ult[1] < 0 ? "negativo" : ""}">
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(desc)}" data-topo="${T}" data-base="${T + h}" data-marcos="${esc(JSON.stringify(marcos))}" data-hover="${esc(JSON.stringify(pts.filter((_, k) => k % passoH === 0 || k === pts.length - 1)
       .map(([tp, v]) => [Math.round(x(tp) * 10) / 10, Math.round(y(v) * 10) / 10, `${new Date(tp).toLocaleString("pt-BR", dataHora)} · ${din(v)}`])))}">
-      ${ticks.map((t) => `<line class="grade" x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text x="${L - 6}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end">${curto(t)}</text>`).join("")}
+      ${ticks.map((t) => `<line class="grade" x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text x="${L - 6}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end">${rotY(t)}</text>`).join("")}
       <defs><clipPath id="cp-pos-${id}"><rect x="${L - 3}" y="${T - 3}" width="${w + 6}" height="${(y0 - T + 3).toFixed(1)}"/></clipPath>
         <clipPath id="cp-neg-${id}"><rect x="${L - 3}" y="${y0.toFixed(1)}" width="${w + 6}" height="${(T + h - y0 + 3).toFixed(1)}"/></clipPath></defs>
       ${dias.map((t) => `<line class="grade dia" x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${T}" y2="${T + h}"/><text x="${x(t).toFixed(1)}" y="${H - 6}" text-anchor="middle">${dataCurta(t)}</text>`).join("")}
@@ -2560,7 +2563,28 @@ function htmlCiclos(a) {
 // página. Agora a tabela mostra 50 linhas por vez, com filtro por situação, ordenação pelo cabeçalho e, nas ordens, as
 // recusadas e canceladas fora da lista padrão, resumidas por motivo. As métricas do topo continuam com todas as linhas.
 const HIST_PASSO = 50;
-let histFiltro = "padrao", histLimite = HIST_PASSO, histOrdem = { col: null, dir: -1 }, histAtivo = "", histLado = "";
+let histFiltro = "padrao", histLimite = HIST_PASSO, histOrdem = { col: null, dir: -1 }, histAtivo = "", histLado = "", histOrigem = "";
+// Origem do histórico do mercado (23/11/2026, pedido do Diogo): fonte, categoria do canal (só YouTube) ou um canal.
+// Valor: "f:<fonte>", "c:<fonte>:<categoria>" ou "u:<fonte>:<unidade>". Só aparece com mais de uma origem na lista.
+const ROTULO_CATEGORIA_PLURAL = { trader: "Live traders", robo: "Robôs", outro: "Outros" };
+function origensDoHistorico(h) {
+  const conta = new Map(), soma = (k, rot, grupo) => { const x = conta.get(k) ?? { rot, grupo, n: 0 }; x.n++; conta.set(k, x); };
+  for (const x of h) {
+    if (!x.fonte) continue;
+    const nomeF = FONTES[x.fonte] ?? x.fonte;
+    soma(`f:${x.fonte}`, `${nomeF}: todos`, nomeF);
+    const cat = categoriaDoCanal(x.fonte, estado, x.unidade);
+    if (cat) soma(`c:${x.fonte}:${cat}`, `${nomeF}: ${ROTULO_CATEGORIA_PLURAL[cat] ?? cat}`, nomeF);
+    if (x.unidade) soma(`u:${x.fonte}:${x.unidade}`, String(x.unidade).replace(/^[▶️📱🌐\s]+/u, ""), nomeF);
+  }
+  return conta;
+}
+function passaOrigem(x, sel) {
+  if (!sel) return true;
+  const [t, f, ...resto] = sel.split(":"), v = resto.join(":");
+  if (x.fonte !== f) return false;
+  return t === "f" || (t === "c" ? categoriaDoCanal(f, estado, x.unidade) === v : x.unidade === v);
+}
 const HIST_COLUNAS = { abertura: (x) => new Date(x.abertura ?? 0).getTime(), fechamento: (x) => new Date(x.fechamento ?? x.abertura ?? 0).getTime(),
   ativo: (x) => String(x.ativo ?? ""), r: (x) => x.r, v: (x) => x.v };
 // situação da linha: placar (execucao) ou ordem (sem o campo: fechada tem saída ou resultado; viva = aberta ou pendente)
@@ -2607,7 +2631,24 @@ function htmlHistorico(a) {
   const passa = (s) => (filtro === "todas" || (filtro === "padrao" && !ordens) ? true : filtro === "padrao" ? s !== "nao" : s === filtro);
   const ativos = Object.entries(h.reduce((m, x) => { if (x.ativo) m[x.ativo] = (m[x.ativo] ?? 0) + 1; return m; }, {})).sort((p, q) => q[1] - p[1] || p[0].localeCompare(q[0]));
   const ativoSel = ativos.some(([k]) => k === histAtivo) ? histAtivo : "";
-  let vis = h.filter((x, i) => passa(sit[i]) && (!ativoSel || x.ativo === ativoSel) && (!histLado || x.lado === histLado));
+  const origens = todos ? origensDoHistorico(h) : new Map();
+  const origemSel = origens.has(histOrigem) ? histOrigem : "";
+  let vis = h.filter((x, i) => passa(sit[i]) && (!ativoSel || x.ativo === ativoSel) && (!histLado || x.lado === histLado) && passaOrigem(x, origemSel));
+  // resumo do recorte: com qualquer filtro, o topo continua com todas as linhas e esta linha diz o que o filtro soma
+  const resumoFiltro = (() => {
+    if (vis.length === h.length) return "";
+    const dec = vis.filter((x) => x.r != null), ganhos = dec.filter((x) => x.r > 0).length, somaR = dec.reduce((s, x) => s + x.r, 0);
+    const ex = vis.filter((x) => x.execucao === "executada");
+    return `<p class="meta resumo-filtro" role="status">Neste filtro: <b class="num">${vis.length}</b> ${vis.length === 1 ? "linha" : "linhas"} · <b class="num">${dec.length}</b> com resultado${dec.length
+      ? ` · acerto <b class="num">${Math.round((ganhos / dec.length) * 100)}%</b> · <b class="num ${somaR < 0 ? "neg" : somaR > 0 ? "pos" : ""}">${r2(somaR)}</b>${ordens ? "" : " teórico"}` : ""}${ordens ? ""
+      : ` · executadas na corretora <b class="num">${ex.length}</b>`}</p>`;
+  })();
+  const grupos = [...new Set([...origens.values()].map((o) => o.grupo))];
+  const selectOrigem = [...origens.keys()].filter((k) => k.startsWith("u:")).length > 1 ? `<label class="hist-ativo"><span>Origem</span><select data-acao="hist-origem" aria-label="Filtrar o histórico por origem"><option value="">Todas (${h.length})</option>${grupos.map((g) => {
+    const ent = [...origens.entries()].filter(([, o]) => o.grupo === g), ordem = (k) => (k.startsWith("f:") ? 0 : k.startsWith("c:") ? 1 : 2);
+    ent.sort(([k1, o1], [k2, o2]) => ordem(k1) - ordem(k2) || o2.n - o1.n || o1.rot.localeCompare(o2.rot));
+    return `<optgroup label="${esc(g)}">${ent.map(([k, o]) => `<option value="${esc(k)}"${k === origemSel ? " selected" : ""}>${esc(o.rot)} (${o.n})</option>`).join("")}</optgroup>`;
+  }).join("")}</select></label>` : "";
   const chaveOrd = HIST_COLUNAS[histOrdem.col];
   if (chaveOrd) vis = [...vis].sort((p, q) => { const x = chaveOrd(p), y = chaveOrd(q);
     if (x == null || y == null) return (x == null) - (y == null);  // sem valor vai para o fim, nos dois sentidos
@@ -2623,7 +2664,8 @@ function htmlHistorico(a) {
       <span class="segmentado" role="group" aria-label="Filtrar por lado"><span class="seg-rot">Lado</span>${[["", "Todos"], ["compra", "Compra"], ["venda", "Venda"]].map(([k, rot]) =>
         `<button type="button" data-acao="hist-lado" data-lado="${k}" aria-pressed="${k === histLado}">${rot}</button>`).join("")}</span>
       ${ativos.length > 1 ? `<label class="hist-ativo"><span>Ativo</span><select data-acao="hist-ativo" aria-label="Filtrar o histórico por ativo"><option value="">Todos (${h.length})</option>${ativos.map(([k, n]) =>
-        `<option value="${esc(k)}"${k === ativoSel ? " selected" : ""}>${esc(k)} (${n})</option>`).join("")}</select></label>` : ""}</div>
+        `<option value="${esc(k)}"${k === ativoSel ? " selected" : ""}>${esc(k)} (${n})</option>`).join("")}</select></label>` : ""}${selectOrigem}</div>
+    ${resumoFiltro}
     ${ordens && nNao ? htmlMotivos(h.filter((_, i) => sit[i] === "nao")) : ""}` : ""}
     ${!h.length ? `<p class="vazio">Nenhuma operação ainda.</p>` : !vis.length ? `<p class="vazio">Nenhuma linha neste filtro.</p>` : `<div class="rolagem rolavel-y" data-rolavel="historico-${esc(a.id)}"><table class="tabela vira-lista historico-ops">
       <thead><tr>${th("abertura", "Abertura")}${th("fechamento", "Fechamento")}${todos ? `<th scope="col">Origem</th>` : ""}
@@ -2681,9 +2723,14 @@ const thComp = (col, rot, cls = "") => { const ativa = compOrdem.col === col;
 // Período das páginas de resultado e de histórico (22/11/2026): 7, 15 ou 30 dias. O banco guarda 30; o corte é feito
 // na tela, sobre os resultados e as ordens (as ordens ainda abertas ficam sempre). O painel dos agentes do Forex vem
 // pronto do executor para 30 dias e não muda com o período.
+// "Hoje" (23/11/2026, pedido do Diogo: ver as operações do dia de uma categoria): periodoDias = 0 corta na meia-noite
+// local deste aparelho; vale o fechamento (resultado resolvido ou ordem fechada), como nos outros períodos.
 let periodoDias = 30;
-const htmlPeriodo = () => `<span class="segmentado" role="group" aria-label="Período"><span class="seg-rot">Período</span>${[7, 15, 30].map((d) =>
-  `<button type="button" data-acao="periodo" data-dias="${d}" aria-pressed="${d === periodoDias}">${d} dias</button>`).join("")}</span>`;
+const PERIODOS = [[0, "Hoje"], [7, "7 dias"], [15, "15 dias"], [30, "30 dias"]];
+const inicioDoPeriodo = () => { if (periodoDias) return Date.now() - periodoDias * 864e5; const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const textoPeriodo = () => (periodoDias ? `últimos ${periodoDias} dias` : "hoje (desde 00:00)");
+const htmlPeriodo = () => `<span class="segmentado" role="group" aria-label="Período"><span class="seg-rot">Período</span>${PERIODOS.map(([d, rot]) =>
+  `<button type="button" data-acao="periodo" data-dias="${d}" aria-pressed="${d === periodoDias}"${d ? "" : ` title="Operações fechadas desde 00:00 (hora deste aparelho); as abertas continuam"`}>${rot}</button>`).join("")}</span>`;
 function htmlAgenteDetalhe(a, paraHistorico = null) {
   return `<section class="painel agente detalhe" aria-label="Histórico e recortes de ${esc(a.id)}">
     ${paraHistorico ? `<p class="meta"><a class="btn pequeno" href="${paraHistorico}">${ico("clock")} Ver as ${a.historico?.length ?? 0} operações no Histórico</a><span>com filtro por situação, lado e ativo</span></p>` : htmlHistorico(a)}
@@ -2946,7 +2993,7 @@ function linhaDeResultado(r) {
   const base = { abertura: r.desde ?? null, fechamento: r.resolvido_em ?? null, ativo: r.instrumento, lado: r.direcao,
     entrada: ent.length > 1 ? `${ent[0]}–${ent[1]}` : ent[0] ?? null, stop: Number.isFinite(st) ? st : null, alvo: alvo ?? null,
     saida: saida ?? null, desfecho: DESFECHO_SINAL[r.status] ?? r.status ?? "—", r: STATUS_COM_R.has(r.status) ? rDoResultado(r) : null,
-    v: STATUS_COM_R.has(r.status) ? dinheiroDoResultado(r) : null, unidade: nomeDaUnidade(r.fonte, r.origem) };
+    v: STATUS_COM_R.has(r.status) ? dinheiroDoResultado(r) : null, unidade: nomeDaUnidade(r.fonte, r.origem), fonte: r.fonte };
   const o = ordemDoSinal(r);
   if (o && ORDEM_FECHADA.has(o.status)) {  // executada: preços e resultado reais da corretora
     const real = linhaDeOrdem(o);
@@ -2969,7 +3016,7 @@ function linhaDeOrdem(o) {
   return { abertura: o.aberto_em ?? o.criado_em ?? o.sinal_desde ?? null, fechamento: o.fechado_em ?? null, ativo: o.instrumento, lado: o.direcao,
     entrada: o.preco_execucao ?? o.preco_pedido ?? null, stop: o.stop ?? null, alvo: o.alvo ?? null, saida: fechada ? o.preco_saida : null,
     desfecho: (fechada ? (DESFECHO_ORDEM[o.desfecho] ?? o.desfecho ?? "fechada") : o.status === "aberta" ? "aberta" : o.status === "pendente" ? "pendente" : `${o.status}${o.motivo ? `: ${o.motivo}` : ""}`) + rotuloParcial(o),
-    r: fechada ? rDaOrdem(o) : null, v: fechada && o.resultado != null ? Number(o.resultado) : null, moeda: o.moeda, unidade: o.unidade };
+    r: fechada ? rDaOrdem(o) : null, v: fechada && o.resultado != null ? Number(o.resultado) : null, moeda: o.moeda, unidade: o.unidade, fonte: o.fonte };
 }
 const ordenarHistorico = (l) => l.sort((a, b) => new Date(b.fechamento ?? b.abertura ?? 0) - new Date(a.fechamento ?? a.abertura ?? 0));
 
@@ -3731,7 +3778,7 @@ function render(forcar = true) {
   ultimoRender = { chave, hash, em: Date.now() };
   const nova = chaveRota(rota) !== rotaRenderizada;
   rotaRenderizada = chaveRota(rota);
-  if (nova) { histFiltro = "padrao"; histLimite = HIST_PASSO; histOrdem = { col: null, dir: -1 }; histAtivo = ""; histLado = ""; listasAbertas.clear(); }  // cada página abre o histórico do início
+  if (nova) { histFiltro = "padrao"; histLimite = HIST_PASSO; histOrdem = { col: null, dir: -1 }; histAtivo = ""; histLado = ""; histOrigem = ""; listasAbertas.clear(); }  // cada página abre o histórico do início
   // contexto da tela (lente) e do menu: nas telas do monitor os dois coincidem; nas outras o menu segue o último contexto escolhido
   const doMonitor = ["monitor", "analise", "termometro", "comparar", "comandos", "historico"].includes(rota.tipo);
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
@@ -3740,7 +3787,7 @@ function render(forcar = true) {
   // período menor que 30 dias: corta resultados e ordens das páginas de resultado e de histórico (ordens vivas ficam)
   const comPeriodo = periodoDias < 30 && (rota.tipo === "analise" || rota.tipo === "historico");
   if (comPeriodo && estado) {
-    const corte = Date.now() - periodoDias * 864e5, dentro = (iso) => !!iso && new Date(iso).getTime() >= corte;
+    const corte = inicioDoPeriodo(), dentro = (iso) => !!iso && new Date(iso).getTime() >= corte;
     estado = { ...estado, monitorResultados: (estado.monitorResultados ?? []).filter((r) => dentro(r.resolvido_em)),
       monitorOrdens: (estado.monitorOrdens ?? []).filter((o) => o.status === "aberta" || o.status === "pendente" || dentro(o.fechado_em ?? o.criado_em)) };
   }
@@ -3748,7 +3795,7 @@ function render(forcar = true) {
   if (vp !== versaoPaineis) { versaoPaineis = vp; memoPaineis = new Map(); }
   let corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar(rota.visao)
     : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "historico" ? vistaHistorico(rota.modo, rota.conta) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
-  if (comPeriodo) corpo = corpo.replaceAll("últimos 30 dias", `últimos ${periodoDias} dias`).replaceAll("· 30 dias<", `· ${periodoDias} dias<`);
+  if (comPeriodo) corpo = corpo.replaceAll("nos últimos 30 dias", periodoDias ? `nos últimos ${periodoDias} dias` : "hoje (desde 00:00)").replaceAll("últimos 30 dias", textoPeriodo()).replaceAll("· 30 dias<", `· ${periodoDias ? `${periodoDias} dias` : "hoje"}<`);
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
   const focoMenu = focoNoMenu();
@@ -3872,7 +3919,7 @@ document.addEventListener("click", (ev) => {
   // histórico: filtro, ordenação e "mostrar mais" só mexem na tela (nada é gravado)
   if (acao === "hist-filtro") { histFiltro = b.dataset.filtro; histLimite = HIST_PASSO; return render(); }
   if (acao === "lista-toda") { listasAbertas.add(b.dataset.lista); return render(); }
-  if (acao === "periodo") { periodoDias = [7, 15, 30].includes(Number(b.dataset.dias)) ? Number(b.dataset.dias) : 30; histLimite = HIST_PASSO; return render(); }
+  if (acao === "periodo") { periodoDias = PERIODOS.some(([d]) => d === Number(b.dataset.dias)) ? Number(b.dataset.dias) : 30; histLimite = HIST_PASSO; return render(); }
   if (acao === "comp-ordem") {
     const col = b.dataset.col;
     compOrdem = compOrdem.col !== col ? { col, dir: -1 } : compOrdem.dir < 0 ? { col, dir: 1 } : { col: null, dir: -1 };
@@ -4019,6 +4066,11 @@ document.addEventListener("change", (ev) => {
     histAtivo = ev.target.value; histLimite = HIST_PASSO;
     render();
     document.querySelector("select[data-acao='hist-ativo']")?.focus({ preventScroll: true });
+  }
+  if (ev.target.matches("select[data-acao='hist-origem']")) {
+    histOrigem = ev.target.value; histLimite = HIST_PASSO;
+    render();
+    document.querySelector("select[data-acao='hist-origem']")?.focus({ preventScroll: true });
   }
 });
 
