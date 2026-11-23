@@ -1804,6 +1804,55 @@ function htmlAoVivo(e) {
   </section>`;
 }
 
+// Melhor e pior canal de cada fonte (23/11/2026, pedido do Diogo): no Agora, por fonte (YouTube, TikTok, Sites,
+// Agentes…), o canal, site ou agente com o maior e o menor saldo em R no período e na categoria escolhidos (os mesmos
+// filtros de Resultado e Histórico: periodoDias e categoriaFiltro). Conta só os sinais decididos do placar (alvo, stop,
+// expirado), teóricos; o R decide a ordem porque é a única unidade igual entre ativos. Canal com menos de
+// MIN_OPS_DESTAQUE operações fica de fora (um só alvo não faz "melhor canal").
+const MIN_OPS_DESTAQUE = 3;
+function htmlDestaquesCanais(e) {
+  const corte = inicioDoPeriodo(), cat = categoriaFiltro;
+  const din = ctxLente === "bovespa" ? moedaConta("BRL") : usd2;
+  const fontes = fontesDoCtx().filter((f) => !cat || f === "youtube");
+  const blocos = fontes.map((f) => {
+    const linhas = resultadosDaFonte(f, e).filter((r) => STATUS_COM_R.has(r.status) && r.resolvido_em
+      && new Date(r.resolvido_em).getTime() >= corte
+      && (!cat || categoriaDoCanal("youtube", e, nomeDaUnidade(f, r.origem)) === cat));
+    const por = new Map();
+    linhas.forEach((r) => {
+      const nome = nomeDaUnidade(f, r.origem), x = por.get(nome) ?? { nome, ops: 0, ganhos: 0, perdas: 0, r: 0, v: 0 };
+      const rr = rDoResultado(r), v = dinheiroDoResultado(r);
+      x.ops++; x.r += rr ?? 0; x.v += v ?? 0;
+      if ((rr ?? v ?? 0) > 0) x.ganhos++; else if ((rr ?? v ?? 0) < 0) x.perdas++;
+      por.set(nome, x);
+    });
+    const lista = [...por.values()].filter((x) => x.ops >= MIN_OPS_DESTAQUE)
+      .sort((a, b) => b.r - a.r || b.ganhos - a.ganhos || b.ops - a.ops);
+    if (!lista.length) return "";
+    const card = (x, tipo) => {
+      const acerto = Math.round((100 * x.ganhos) / x.ops), href = hrefCtx(ctxLente, `${f}/${encodeURIComponent(x.nome)}`);
+      return `<div class="destaque-canal ${tipo}">
+        <span class="badge ${tipo === "melhor" ? "good" : "critical"}">${ico(tipo === "melhor" ? "alta" : "baixa")}${tipo === "melhor" ? "Melhor" : "Pior"}</span>
+        <a class="nome" href="${href}" title="Resultado e histórico de ${esc(x.nome)}">${esc(x.nome)}</a>
+        <div class="meta"><span><b class="num">${x.ops}</b> ${x.ops === 1 ? "operação" : "operações"}</span><span><b class="num pos">${x.ganhos}</b> ${x.ganhos === 1 ? "ganho" : "ganhos"}</span><span><b class="num neg">${x.perdas}</b> ${x.perdas === 1 ? "perda" : "perdas"}</span><span>acerto <b class="num">${acerto}%</b></span></div>
+        <div class="meta"><b class="num ${corV(x.r)}">${r2(x.r)}</b><b class="num ${corV(x.v)}">${din(x.v)}</b></div>
+      </div>`;
+    };
+    lista.forEach((x) => { x.r = Math.round(x.r * 100) / 100; x.v = Math.round(x.v * 100) / 100; });  // sem "−US$ 0,00"
+    const melhor = lista[0], pior = lista[lista.length - 1];
+    return `<div class="cartao"><div class="titulo"><a class="nome-fonte" href="${hrefCtx(ctxLente, f)}">${FONTES[f]}</a> <span class="count">${lista.length}</span></div>
+      <div class="meta"><span>${lista.length} ${lista.length === 1 ? "unidade" : "unidades"} com ${MIN_OPS_DESTAQUE}+ operações decididas</span></div>
+      ${card(melhor, "melhor")}${lista.length > 1 ? card(pior, "pior") : ""}</div>`;
+  }).filter(Boolean);
+  const filtros = `<div class="linha-modalidades">${htmlPeriodo()}${fontesDoCtx().includes("youtube") ? htmlCategoriaFiltro() : ""}</div>`;
+  return `<section class="painel" aria-labelledby="h-destaques">
+    <h2 id="h-destaques">${ico("activity")} Melhor e pior canal</h2>
+    <p class="nota">Por fonte, no placar teórico (alvo, stop e expirado) de ${esc(textoPeriodo())}${cat ? `, só os canais ${cat === "trader" ? "de live traders" : "de robôs"} do YouTube` : ""}; ordem pelo saldo em R.</p>
+    ${filtros}
+    ${blocos.length ? `<div class="grade-cartoes">${blocos.join("")}</div>` : `<p class="vazio">Nenhum canal com ${MIN_OPS_DESTAQUE} ou mais operações decididas neste filtro.</p>`}
+  </section>`;
+}
+
 // Sinais ativos (22/11/2026, crítica Impeccable): no computador a lista vem como TABELA densa, uma linha por sinal
 // (antes só cartões por fonte: 3.000 px no celular e difícil de comparar); os cartões continuam como alternativa e são o
 // padrão no celular. Com o mercado fechado, a seção diz isso: os sinais do último pregão não estão valendo agora.
@@ -2317,6 +2366,7 @@ function vistaMonitor() {
     ${htmlResumoPainel(e)}
     ${htmlSinaisAtivos(e)}
     ${htmlAoVivo(e)}
+    ${htmlDestaquesCanais(e)}
     ${htmlMonitor(e)}
     ${htmlTermometroCompacto(e)}
     <p class="meta nota">O resultado de cada fonte, o placar (alvo × stop) e o atraso das leituras estão em <a href="${hrefCtx(ctxLente, CONSOLIDADO)}">Resultado</a>; as operações uma a uma, em <a href="${hrefCtx(ctxLente, "historico")}">Histórico</a>.</p>

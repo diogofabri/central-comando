@@ -597,6 +597,12 @@ main.uma > p.nota { margin-top: 0; }
 /* Resultado por corretora (18/11/2026): Mostrar + Conta numa linha e os totais lado a lado, na mesma faixa (sem cartão em cartão) */
 .linha-modalidades { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 4px; }
 .linha-modalidades .modalidades { margin-top: 0; }
+/* Melhor e pior canal por fonte (Agora, 23/11/2026) */
+.destaque-canal { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid var(--linha, rgba(127,127,127,.25)); }
+.destaque-canal:first-of-type { border-top: 0; }
+.destaque-canal .nome { font-weight: 600; overflow-wrap: anywhere; }
+.destaque-canal .badge { justify-self: start; }
+.destaque-canal .meta b + b { margin-left: 10px; }
 .faixa-totais { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--raio); overflow: hidden; box-shadow: var(--sombra); }
 .total-corretora { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; color: var(--ink); text-decoration: none; border-right: 1px solid var(--line); min-width: 0; transition: background var(--t-rapido); }
 .total-corretora:last-child { border-right: 0; }
@@ -912,6 +918,6 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
 <script src="saude.js?v=1"></script>
-<script src="app.js?v=134"></script>
+<script src="app.js?v=135"></script>
 </body>
 </html>
