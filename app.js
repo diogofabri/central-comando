@@ -69,11 +69,27 @@ function modoNoCtx(modo) {
 // fontes que não são contêiner: rodam na sessão do Claude Code a cada N min (monitor_fontes.proxima_execucao)
 const FONTES_PERIODICAS = new Set(["agentes", "tradingview", "telegram"]);  // rodadas pelo executor (sem live): contador até a próxima rodada
 // ordem na lista: o que está acontecendo agora primeiro
-const ORDEM_ESTADO = { gravando: 0, aberto: 0, analisando: 1, proximo: 1, fila: 2, lido: 2, bloqueado: 3, executado: 4, sem_sinal: 5, sem_dados: 6, erro: 6 };
-const ROTULO_ESTADO = { gravando: "capturando", analisando: "IA analisando", fila: "aguardando a vez", lido: "já analisado", offline: "offline",
+const ORDEM_ESTADO = { lendo: 0, conferindo: 0, espera: 1, sem_aba: 2, gravando: 0, aberto: 0, analisando: 1, proximo: 1, fila: 2, lido: 2, bloqueado: 3, executado: 4, sem_sinal: 5, sem_dados: 6, erro: 6 };
+const ROTULO_ESTADO = { lendo: "lendo agora", conferindo: "IA conferindo o sinal", espera: "aguardando a vez",
+  sem_aba: "na fila, sem aba", gravando: "capturando", analisando: "IA analisando", fila: "aguardando a vez", lido: "já analisado", offline: "offline",
   desconhecido: "desconhecido", aberto: "sinal aberto", executado: "encerrado", bloqueado: "bloqueado",
   ao_vivo: "ao vivo", login_necessario: "pede login", proximo: "próximo", sem_sinal: "sem sinal", sem_dados: "sem dados",
   erro: "erro", expirado: "vencido" };
+// Situação de cada live (23/11/2026, pedido do Diogo: saber o que está sendo processado agora e o que está na fila).
+// A cor acompanha o rótulo, nunca o substitui: verde = lendo o print agora; azul = a IA confere o sinal (o Opus, fora
+// da vez); âmbar = aba aberta esperando a vez, com a contagem; vermelho = no ar mas sem aba (a guarda de CPU/RAM barrou)
+// ou na fila da varredura; cinza = já lido nesta volta. `ordem` arruma a lista do que roda para o que espera.
+const SITUACAO_LIVE = {
+  lendo: { cls: "good", t: "lendo agora", vivo: true, ordem: 0 },
+  gravando: { cls: "good", t: "lendo agora", vivo: true, ordem: 0 },
+  conferindo: { cls: "info", t: "IA conferindo o sinal", vivo: true, ordem: 1 },
+  analisando: { cls: "info", t: "IA analisando", vivo: true, ordem: 1 },
+  espera: { cls: "warning", t: "aguardando a vez", ordem: 2 },
+  fila: { cls: "warning", t: "aguardando a vez", ordem: 3 },
+  sem_aba: { cls: "critical", t: "na fila, sem aba", ordem: 4 },
+  lido: { cls: "muted", t: "já lido nesta volta", ordem: 5 },
+  ao_vivo: { cls: "muted", t: "detectado", ordem: 6 },
+};
 const RESULTADO = { aprovada: "Aprovada", ajustada: "Ajustada", descartada: "Descartada", expirada: "Expirou" };
 const TIPO_EVENTO = { acao: "ação", aprendizado: "aprendizado", alerta: "alerta", resumo: "resumo", erro: "erro" };
 const MARCOS_PADRAO = { M1: 4, M3: 13, M6: 26, M12: 52 };
@@ -437,7 +453,11 @@ function fonteDemo() {
       { fonte: "agentes", ligado: true, vagas: "5 ativos · cruzamento-medias", resumo: "1 sinal(is) aberto(s) · próxima rodada 10:30", atualizado_em: new Date(agora - 0.1 * h).toISOString(), ultima_execucao: new Date(agora - 0.1 * h).toISOString(), proxima_execucao: new Date(agora + 0.4 * h).toISOString(), intervalo_min: 30 },
     ],
     monitorItens: [
-      { fonte: "youtube@bovespa", item: "canal.win", nome: "@canal.win", estado: "gravando", ativo: true, analisando: true, espectadores: 2882, desde: new Date(agora - 0.3 * h).toISOString(), chamadas_hoje: 1, detalhe: "WIN ao vivo", ultima_analise: new Date(agora - 0.05 * h).toISOString(), proxima_analise: new Date(agora + 0.05 * h).toISOString(), ciclo_fim: new Date(agora + 0.2 * h).toISOString() },
+      { fonte: "youtube@bovespa", item: "canal.ind", nome: "@canal.ind", estado: "conferindo", ativo: true, analisando: true, espectadores: 940, desde: new Date(agora - 0.5 * h).toISOString(), chamadas_hoje: 3, detalhe: "WIN ao vivo", ultima_analise: new Date(agora - 0.01 * h).toISOString() },
+      { fonte: "youtube@bovespa", item: "canal.acoes", nome: "@canal.acoes", estado: "espera", ativo: true, analisando: false, espectadores: 610, desde: new Date(agora - 0.6 * h).toISOString(), chamadas_hoje: 4, detalhe: "ações ao vivo", ultima_analise: new Date(agora - 0.02 * h).toISOString(), proxima_analise: new Date(agora + 40e3).toISOString() },
+      { fonte: "youtube@bovespa", item: "canal.dol", nome: "@canal.dol", estado: "espera", ativo: true, analisando: false, espectadores: 1200, desde: new Date(agora - 0.7 * h).toISOString(), chamadas_hoje: 5, detalhe: "WDO ao vivo", ultima_analise: new Date(agora - 0.015 * h).toISOString(), proxima_analise: new Date(agora + 20e3).toISOString() },
+      { fonte: "youtube@bovespa", item: "canal.mini", nome: "@canal.mini", estado: "sem_aba", ativo: false, analisando: false, espectadores: 330, chamadas_hoje: 0, detalhe: "WIN ao vivo" },
+      { fonte: "youtube@bovespa", item: "canal.win", nome: "@canal.win", estado: "lendo", ativo: true, analisando: true, espectadores: 2882, desde: new Date(agora - 0.3 * h).toISOString(), chamadas_hoje: 1, detalhe: "WIN ao vivo", ultima_analise: new Date(agora - 0.05 * h).toISOString(), proxima_analise: new Date(agora + 0.05 * h).toISOString(), ciclo_fim: new Date(agora + 0.2 * h).toISOString() },
       { fonte: "youtube@bovespa", item: "canal.wdo", nome: "@canal.wdo", estado: "lido", ativo: false, analisando: false, espectadores: 2517, chamadas_hoje: 0, detalhe: "leitura 11:20: sem marcação legível", ultima_analise: new Date(agora - 0.1 * h).toISOString(), proxima_analise: new Date(agora + 0.2 * h).toISOString() },
       { fonte: "tiktok", item: "canal.fx", nome: "@canal.fx", estado: "gravando", ativo: true, analisando: true, espectadores: 87, desde: new Date(agora - 0.4 * h).toISOString(), chamadas_hoje: 2, detalhe: "XAUUSD ao vivo", ultima_analise: new Date(agora - 0.07 * h).toISOString(), proxima_analise: new Date(agora + 0.03 * h).toISOString(), ciclo_fim: new Date(agora + 0.2 * h).toISOString() },
       { fonte: "tiktok", item: "outro", nome: "@outro", estado: "offline", ativo: false, analisando: false, chamadas_hoje: 0 },
@@ -1302,9 +1322,9 @@ const ABERTO = { t: "Sinal aberto", d: "listados em Sinais ativos", f: (i) => i.
 const LOOP_LIVES = {
   titulo: "Loop de leitura", vazio: "Nada ao vivo agora.", resto: "Fora do ar",
   grupos: [
-    { t: "Analisando agora", d: "live aberta, prints sendo lidos", f: (i) => i.estado === "gravando" || i.estado === "analisando" || i.analisando },
+    { t: "Analisando agora", d: "live aberta, prints sendo lidos", f: (i) => ["lendo", "conferindo", "gravando", "analisando"].includes(i.estado) || (i.analisando && i.estado !== "espera") },
     { t: "Já analisados", d: "leitura feita; aguardam a próxima rodada", f: (i) => i.estado === "lido" },
-    { t: "Aguardando a vez", d: "ainda sem análise nesta rodada", f: (i) => i.estado === "fila" },
+    { t: "Aguardando a vez", d: "aba aberta ou na fila, ainda sem leitura nesta volta", f: (i) => ["fila", "espera", "sem_aba"].includes(i.estado) },
   ],
 };
 const GRUPOS_FONTE = {
@@ -1368,11 +1388,12 @@ function htmlStatusFonte(f, itens) {
 }
 
 function htmlItemMonitor(i) {
-  const cls = i.ativo || i.estado === "lido" ? "good" : i.analisando || i.estado === "fila" ? "warning" : "muted";
+  const sl = SITUACAO_LIVE[i.estado];
+  const cls = sl ? sl.cls : i.ativo || i.estado === "lido" ? "good" : i.analisando || i.estado === "fila" ? "warning" : "muted";
   const auto = i.fonte === "agentes" ? RE_AUTO.exec(i.detalhe ?? "") : null;
   const detalhe = auto ? i.detalhe.slice(auto[0].length) : i.detalhe;
   const extras = [
-    i.analisando && i.estado !== "analisando" ? `<span class="badge warning">analisando</span>` : "",
+    i.analisando && !SITUACAO_LIVE[i.estado] && i.estado !== "analisando" ? `<span class="badge warning">analisando</span>` : "",
     i.espectadores != null ? `<span>${Number(i.espectadores).toLocaleString("pt-BR")} espectadores</span>` : "",
     i.ativo && i.desde ? `<span>há ${duracao(i.desde)}</span>` : "",
     i.chamadas_hoje ? `<span>${i.chamadas_hoje} chamada(s) hoje</span>` : "",
@@ -1381,7 +1402,7 @@ function htmlItemMonitor(i) {
   // só o self-learning ganha selo no item; o "fixo" fica na lista "Modo de cada agente" (dito uma vez)
   const selo = auto ? ` ${seloAuto(`self-learning v${auto[1]} · ${auto[2].trim()}`)}` : "";
   const icone = COMO_SITES.has(i.fonte) ? (i.item.split(":").pop() ? `${iconeAtivo(i.item.split(":").pop())} ` : "") : FONTES_PERIODICAS.has(i.fonte) ? `${iconeAtivo(i.nome.split("·").pop().trim())} ` : "";
-  const vivo = i.ativo ? `<i class="ponto vivo" aria-hidden="true"></i>` : "";
+  const vivo = (sl ? sl.vivo : i.ativo) ? `<i class="ponto vivo" aria-hidden="true"></i>` : "";
   return `<li><span class="badge ${cls}">${vivo}${esc(ROTULO_ESTADO[i.estado] ?? i.estado)}</span> ${icone}${linkCanal(i.fonte, i.item, i.nome)}${selo}
     <div class="meta">${extras}${detalhe ? `<span>${esc(detalhe)}</span>` : ""}</div></li>`;
 }
@@ -1711,8 +1732,11 @@ function foraDaExecucao(s) {
 
 // Ao vivo agora (17/11/2026, pedido do Diogo): o que o DETECTOR achou no ar, separado do que a análise já leu e dos
 // sinais. Vem de monitor_itens (um item por canal, estado da última checagem). TikTok e YouTube; os outros não têm live.
-const NO_AR = new Set(["ao_vivo", "gravando", "analisando", "fila", "lido"]);
-const SITUACAO_ANALISE = { gravando: "lendo agora", analisando: "IA analisando", fila: "aguardando a vez", lido: "já lido nesta rodada", ao_vivo: "detectado" };
+const NO_AR = new Set(Object.keys(SITUACAO_LIVE));
+// a situação de uma live: "analisando" ligado numa live em captura comum vira o selo azul; na leitura contínua o
+// supervisor já manda o estado certo (lendo, conferindo, espera, sem_aba)
+const situacaoDe = (i) => SITUACAO_LIVE[i.analisando && (i.estado === "fila" || i.estado === "lido" || i.estado === "ao_vivo") ? "analisando" : i.estado]
+  ?? { cls: "muted", t: ROTULO_ESTADO[i.estado] ?? i.estado, ordem: 9 };
 function categoriaDoItem(f, e, i) {
   const nomeCanal = String(i.detalhe ?? "").split(/[;·]/)[0];  // YouTube: "Nome do canal; N espectadores"
   return categoriaDoCanal(f, e, i.item) ?? categoriaDoCanal(f, e, nomeCanal);
@@ -1723,20 +1747,30 @@ function htmlAoVivo(e) {
   const blocos = fontes.map((f) => {
     const itens = (e.monitorItens ?? []).filter((i) => i.fonte === f);
     if (!itens.length) return "";
-    const vivos = itens.filter((i) => NO_AR.has(i.estado) || i.analisando)
-      .sort((a, b) => (b.espectadores ?? -1) - (a.espectadores ?? -1));
+    // ordem: o que está sendo lido agora, depois o que espera (a mais próxima da vez primeiro), depois o resto;
+    // dentro de cada situação, quem tem mais espectadores
+    const vivos = itens.filter((i) => NO_AR.has(i.estado) || i.analisando).map((i) => ({ i, s: situacaoDe(i) }))
+      .sort((a, b) => a.s.ordem - b.s.ordem || (a.s.ordem === 2 ? String(a.i.proxima_analise ?? "~").localeCompare(String(b.i.proxima_analise ?? "~")) : 0)
+        || (b.i.espectadores ?? -1) - (a.i.espectadores ?? -1));
     const login = itens.filter((i) => i.estado === "login_necessario").length;
     const desc = itens.filter((i) => i.estado === "desconhecido").length;
-    const linhas = vivos.map((i) => {
+    const linhas = vivos.map(({ i, s }) => {
       const cat = f === "youtube" ? categoriaDoItem(f, e, i) : null;
-      const sit = SITUACAO_ANALISE[i.analisando && i.estado !== "gravando" ? "analisando" : i.estado] ?? i.estado;
-      return `<li>${i.estado === "gravando" || i.analisando ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${linkCanal(i.fonte, i.item, i.nome)}
-        <div class="meta">${i.espectadores != null ? `<span><b class="num">${inteiro(i.espectadores)}</b> espectadores</span>` : ""}${cat ? `<span class="badge muted">${esc(ROTULO_CATEGORIA[cat])}</span>` : ""}<span>${esc(sit)}</span>${i.ultima_analise ? `<span>última leitura <b class="num" data-desde="${esc(i.ultima_analise)}">${textoDesde(i.ultima_analise)}</b></span>` : ""}</div></li>`;
+      const vez = s.ordem === 2 && i.proxima_analise
+        ? `<span>próxima vez <b class="num" data-ate="${esc(i.proxima_analise)}">${textoContador(i.proxima_analise)}</b></span>` : "";
+      return `<li><span class="badge ${s.cls}">${s.vivo ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}${esc(s.t)}</span> ${linkCanal(i.fonte, i.item, i.nome)}
+        <div class="meta">${vez}${i.espectadores != null ? `<span><b class="num">${inteiro(i.espectadores)}</b> espectadores</span>` : ""}${cat ? `<span class="badge muted">${esc(ROTULO_CATEGORIA[cat])}</span>` : ""}${i.ultima_analise ? `<span>última leitura <b class="num" data-desde="${esc(i.ultima_analise)}">${textoDesde(i.ultima_analise)}</b></span>` : ""}</div></li>`;
     }).join("");
+    // contagem por situação, no topo do cartão: quantas lendo, conferindo, esperando e sem aba
+    const porSit = new Map();
+    vivos.forEach(({ s }) => { const k = `${s.cls}|${s.t}|${s.vivo ? 1 : 0}`; porSit.set(k, (porSit.get(k) ?? { s, n: 0 })); porSit.get(k).n++; });
+    const situacoes = [...porSit.values()].sort((a, b) => a.s.ordem - b.s.ordem)
+      .map(({ s, n }) => `<span class="badge ${s.cls}">${s.vivo ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}<b class="num">${n}</b> ${esc(s.t)}</span>`).join("");
     const avisos = [login ? htmlBadge("critical", `${login} pede${login > 1 ? "m" : ""} login`, "alert") : "",
                     desc ? `<span title="o detector não conseguiu dizer se está no ar">${desc} sem resposta</span>` : ""].join("");
     return `<div class="cartao"><div class="titulo"><span class="nome-fonte">${FONTES[f]}</span> <span class="count">${vivos.length}</span></div>
       <div class="meta"><span>${vivos.length ? `${vivos.length} de ${itens.length} canais no ar` : `nenhum dos ${itens.length} canais no ar`}</span>${avisos}</div>
+      ${situacoes ? `<div class="situacoes" aria-label="situação das lives no ar">${situacoes}</div>` : ""}
       ${vivos.length ? `<ul class="lista rolavel" data-rolavel="aovivo-${f}">${linhas}</ul>` : ""}</div>`;
   }).filter(Boolean);
   if (!blocos.length) return "";
@@ -2296,9 +2330,14 @@ const ESTADO_AUTO = { satisfeito: "good", "em ajuste": "warning", aprendendo: "m
 const STATUS_AGORA = { ATIVO: "good", "PRÓXIMO": "warning", "SEM SINAL": "muted", "SEM DADOS": "critical", ERRO: "critical" };
 const NOME_DESFECHO = { alvo: "alvo", stop: "stop", expirado: "expirou" };
 
+// classe de cor de um resultado (23/11/2026, pedido do Diogo): positivo em verde, negativo em vermelho, zero neutro
+const corV = (v) => (v == null || !Number.isFinite(Number(v)) || Number(v) === 0 ? "" : Number(v) > 0 ? "pos" : "neg");
+const somaL = (l) => l.reduce((s, x) => s + x, 0);
+
 function barraZero(v, max, rotulo = usd2(v)) {
   const n = Number(v) || 0, w = max > 0 ? Math.min(50, (50 * Math.abs(n)) / max) : 0;
-  const lado = n > 0 ? "ganho" : n < 0 ? "perda" : "zero";
+  // "nulo", não "zero": a barra já tem a classe .zero, e `.zero.zero b` casava com toda barra e apagava o verde e o vermelho
+  const lado = n > 0 ? "ganho" : n < 0 ? "perda" : "nulo";
   return `<span class="zero ${lado}"><span class="trilho" aria-hidden="true"><i style="width:${w.toFixed(1)}%"></i></span><b class="num">${esc(rotulo)}</b></span>`;
 }
 
@@ -2449,7 +2488,7 @@ function svgSaldo(a) {
     if (g && tm - g.tm < HORA) g.textos.push(texto); else grupos.push({ tm, textos: [texto] });
   }
   const linhaJanela = (rot, j, dur) => `<tr><th scope="row">${rot}</th><td class="num">${j.n}</td><td class="num">${j.acerto == null ? "—" : pct(j.acerto)}</td>
-      <td class="num"><span class="${j.soma < 0 ? "neg" : j.soma > 0 ? "pos" : ""}">${din(j.soma)}</span></td><td class="num">${dur >= DIA ? din(j.soma / (dur / DIA)) : "—"}</td></tr>`;
+      <td class="num"><span class="${j.soma < 0 ? "neg" : j.soma > 0 ? "pos" : ""}">${din(j.soma)}</span></td><td class="num">${dur >= DIA ? `<span class="${corV(j.soma)}">${din(j.soma / (dur / DIA))}</span>` : "—"}</td></tr>`;
   const antesDepois = grupos.length ? `<details class="marcos-lista antes-depois"><summary>${ico("chevron")}Antes × depois de cada mudança <span class="count">${grupos.length}</span></summary>
       ${[...grupos].reverse().slice(0, 8).map((g) => {
         const dur = Math.max(agoraMs - g.tm, 6e4), de = Math.max(g.tm - dur, pts[0][0]), antes = janela(de, g.tm), depois = janela(g.tm, agoraMs + 1);
@@ -2662,8 +2701,8 @@ function htmlHistorico(a) {
   const th = (col, rot, cls = "") => { const ativa = histOrdem.col === col;
     return `<th scope="col"${cls ? ` class="${cls}"` : ""}${ativa ? ` aria-sort="${histOrdem.dir > 0 ? "ascending" : "descending"}"` : ""}><button type="button" class="th-ordem" data-acao="hist-ordem" data-col="${col}" title="Ordenar por ${rot.toLowerCase()}">${rot}${ativa ? ico("chevron") : ""}</button></th>`; };
   return `<details class="historico" ${h.length ? "open" : ""}><summary>${ico("chevron")}${titulo} <span class="count">${h.length}</span></summary>
-    ${!ordens ? `<p class="meta">Executadas na corretora (${exe.length}): fator de lucro <b class="num">${fator(rsE)}</b> em R (${r2(rsE.reduce((s, x) => s + x, 0))}) · <b class="num">${fator(vsE)}</b> em dinheiro (${din(vsE.reduce((s, x) => s + x, 0))})</p>` : ""}
-    <p class="meta">${ordens ? "" : "Teórico de todos os sinais: "}Fator de lucro: <b class="num">${fator(rs)}</b> em R (${r2(rs.reduce((s, x) => s + x, 0))}) · <b class="num">${fator(vs)}</b> em dinheiro (${din(vs.reduce((s, x) => s + x, 0))})</p>
+    ${!ordens ? `<p class="meta">Executadas na corretora (${exe.length}): fator de lucro <b class="num">${fator(rsE)}</b> em R (<span class="${corV(somaL(rsE))}">${r2(somaL(rsE))}</span>) · <b class="num">${fator(vsE)}</b> em dinheiro (<span class="${corV(somaL(vsE))}">${din(somaL(vsE))}</span>)</p>` : ""}
+    <p class="meta">${ordens ? "" : "Teórico de todos os sinais: "}Fator de lucro: <b class="num">${fator(rs)}</b> em R (<span class="${corV(somaL(rs))}">${r2(somaL(rs))}</span>) · <b class="num">${fator(vs)}</b> em dinheiro (<span class="${corV(somaL(vs))}">${din(somaL(vs))}</span>)</p>
     ${h.length ? `<div class="hist-filtros"><span class="segmentado" role="group" aria-label="Filtrar o histórico"><span class="seg-rot">Linhas</span>${pilulas.map(([k, rot, n]) =>
       `<button type="button" data-acao="hist-filtro" data-filtro="${k}" aria-pressed="${k === filtro}">${rot} <span class="num">${n}</span></button>`).join("")}</span>
       <span class="segmentado" role="group" aria-label="Filtrar por lado"><span class="seg-rot">Lado</span>${[["", "Todos"], ["compra", "Compra"], ["venda", "Venda"]].map(([k, rot]) =>
@@ -2764,7 +2803,7 @@ function htmlAgente(a) {
         a.nota_saldo ? `${m.ops} operações · ${esc(a.nota_saldo.replace(/ \(\d+\)$/, ""))}` : `${m.ops} operações resolvidas`)}
       ${cel("Acerto", pct(m.acerto_pct), m.ops < 10 ? "amostra pequena" : "")}
       ${cel("Fator de lucro", m.fator_lucro == null ? "—" : fatorTxt(m.fator_lucro), "ganhos ÷ perdas")}
-      ${cel("Queda máxima", din(-m.drawdown_usd), a.unidade === "r" ? "do pico ao fundo" : `R total ${String(m.r_total).replace(".", ",")}`)}
+      ${cel("Queda máxima", `<span class="${corV(-m.drawdown_usd)}">${din(-m.drawdown_usd)}</span>`,a.unidade === "r" ? "do pico ao fundo" : `R total ${String(m.r_total).replace(".", ",")}`)}
     </div>
     <div class="agente-grade">
       <div><h3>Evolução do saldo</h3>${svgSaldo(a)}</div>
@@ -3436,7 +3475,7 @@ function htmlEstadoExecucao(modo, corretora = null) {
   if (!s.conectado || parada) return `<div class="aviso erro">${ico("alert")}<span>${conta}: ${!s.conectado ? `desconectada (${esc(s.aviso ?? "sem motivo")})` : "sem notícia da ponte"} · atualizado ${quando(s.atualizado_em)}</span></div>`;
   const din = dinheiro({ moeda: s.moeda });
   const partes = [`<span class="badge good"><i class="ponto vivo" aria-hidden="true"></i>${conta} conectada${s.corretora ? ` · ${esc(s.corretora)}` : ""}</span>`, `<span>${esc(s.servidor ?? "")}</span>`,
-    `<span>${s.abertas} abertas · ${s.pendentes} pendentes</span>`, `<span>resultado do dia <b class="num">${din(s.resultado_dia)}</b></span>`];
+    `<span>${s.abertas} abertas · ${s.pendentes} pendentes</span>`, `<span>resultado do dia <b class="num ${corV(s.resultado_dia)}">${din(s.resultado_dia)}</b></span>`];
   if (s.lote != null) partes.push(`<span>lote ${String(s.lote).replace(".", ",")}</span>`);
   if (s.volumes) partes.push(`<span>${Object.entries(s.volumes).map(([k, v]) => `${k === "acoes" ? "ações" : k} ${v}`).join(" · ")}</span>`);
   if (s.day_trade) partes.push(`<span>${esc((s.day_trade.ativos ?? []).join("/"))} day trade: sem entrada após ${esc(s.day_trade.ultima_entrada)}, zera às ${esc(s.day_trade.zerar_as)}</span>`);
@@ -3541,7 +3580,7 @@ function vistaComparar(visao = "teorica") {
   // agrupado por mercado, com uma linha de subtotal (auditoria de 17/11/2026: o mercado se repetia em toda linha)
   const celulas = (abertos, w, perd, rs) => `<td class="num">${abertos}</td><td class="num">${w}</td><td class="num">${perd}</td>
         <td class="num">${pct(w, perd)}${w + perd && w + perd < 10 ? ` <small class="amostra" title="menos de 10 sinais decididos: não conclua nada ainda">amostra pequena</small>` : ""}</td>
-        <td class="num">${rs.length ? fmtR(rs.reduce((a, b) => a + b, 0)) : "—"}</td><td class="num">${rs.length ? fmtR(rs.reduce((a, b) => a + b, 0) / rs.length) : "—"}</td>`;
+        <td class="num">${rs.length ? `<span class="${corV(somaL(rs))}">${fmtR(somaL(rs))}</span>` : "—"}</td><td class="num">${rs.length ? `<span class="${corV(somaL(rs))}">${fmtR(somaL(rs) / rs.length)}</span>` : "—"}</td>`;
   // série de cada mercado: R de cada operação decidida, na ordem em que fechou, acumulado a partir do zero
   const series = ctxs.map((ctx) => {
     const l = lente(estadoBruto, ctx);
@@ -3676,7 +3715,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
           <td class="num" data-rot="Operações">${a.metricas.ops}</td><td class="num" data-rot="Acerto ${esc(rotAqui)}">${pct(a.metricas.acerto_pct)}</td>${outroModo && rotOutro ? `<td class="num" data-rot="Acerto ${esc(rotOutro)}">${acertoOutro(a.id)}</td>` : ""}
           <td class="col-zero" data-rot="${comOrdens ? "Resultado" : rotSaldoTab}">${barraZero(a.metricas.lucro_usd, max, din(a.metricas.lucro_usd))}</td>
           <td class="num" data-rot="Fator de lucro">${a.metricas.fator_lucro == null ? "—" : fatorTxt(a.metricas.fator_lucro)}</td>
-          <td class="num" data-rot="Queda máxima">${din(-a.metricas.drawdown_usd)}</td>
+          <td class="num" data-rot="Queda máxima"><span class="${corV(-a.metricas.drawdown_usd)}">${din(-a.metricas.drawdown_usd)}</span></td>
           <td class="exec-cel">${!temExec || a.tipo === "todos" ? "" : consol ? (a.fonte ? seloExecucao(a.fonte) : "") : seloExecucao(f, a.id)}</td></tr>`).join("")}</tbody></table></div>
     </section>`;
   return `<main class="uma">

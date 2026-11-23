@@ -185,8 +185,11 @@ details.motivos[open] > summary .ico { transform: rotate(90deg); }
 details.motivos .lista li { justify-content: space-between; gap: 12px; }
 @media (pointer: coarse) { .th-ordem { min-height: 44px; } }
 .historico-ops .desfecho { text-align: left; white-space: normal; min-width: 10ch; max-width: 28ch; }
-/* sinal não executado (18/11/2026): R e dinheiro só teóricos, em cinza; o texto do desfecho diz o motivo */
-.historico-ops tr.teorico td, .historico-ops tr.teorico .pos, .historico-ops tr.teorico .neg { color: var(--ink-2); }@media (max-width: 560px) { .barras.horas.rolavel-movel { max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; } }
+/* sinal não executado (18/11/2026): texto em cinza e o desfecho diz o motivo; R e dinheiro seguem em verde ou vermelho
+   (pedido do Diogo, 23/11/2026), com peso normal para não competirem com os executados */
+.historico-ops tr.teorico td { color: var(--ink-2); }
+.historico-ops tr.teorico .pos, .historico-ops tr.teorico .neg { font-weight: 400; }
+@media (max-width: 560px) { .barras.horas.rolavel-movel { max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; } }
 [data-rolavel]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* aviso de "tem mais": degradê na borda de baixo e selo clicável; somem quando a lista chega ao fim */
 .rola-caixa { position: relative; }
@@ -242,7 +245,14 @@ label { font-size: 14px; color: var(--ink-2); display: block; margin-bottom: 4px
 .badge.warning { border-color: transparent; background: var(--warning-soft); color: var(--warning); }
 .badge.critical { border-color: transparent; background: var(--critical-soft); color: var(--critical); }
 .badge.muted { color: var(--ink-2); }
-.badge.auto { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
+.badge.auto, .badge.info { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
+.badge .ponto { width: 6px; height: 6px; }
+.badge.info .ponto.vivo { background: var(--accent); }
+/* situação das lives (23/11/2026): uma contagem por situação, cada uma com o selo da cor dela */
+.situacoes { display: flex; flex-wrap: wrap; gap: 6px; }
+/* resultado em dinheiro ou R: positivo em verde, negativo em vermelho, sempre com o sinal escrito */
+.pos { color: var(--good); }
+.neg { color: var(--critical); }
 .badge.compra { background: var(--good); border-color: var(--good); color: var(--estado-ink); font-weight: 600; }
 .badge.venda { background: var(--critical); border-color: var(--critical); color: var(--estado-ink); font-weight: 600; }
 .grade-cartoes { display: grid; gap: 0; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
@@ -533,7 +543,7 @@ main.uma > p.nota { margin-top: 0; }
 .zero.ganho .trilho i { left: 50%; background: var(--good); border-radius: 0 3px 3px 0; transform-origin: left; }
 .zero.perda .trilho i { right: 50%; background: var(--critical); border-radius: 3px 0 0 3px; transform-origin: right; }
 .zero b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.zero.ganho b { color: var(--good); } .zero.perda b { color: var(--critical); } .zero.zero b { color: var(--ink-2); }
+.zero.ganho b { color: var(--good); } .zero.perda b { color: var(--critical); } .zero.nulo b { color: var(--ink-2); }
 .entrada .zero .trilho i { animation: cresce .7s var(--saida) both; }
 .rolagem { overflow-x: auto; }
 .tabela th.col-zero, .tabela td.col-zero, .tabela td.agora { text-align: left; }
@@ -902,6 +912,6 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
 <script src="saude.js?v=1"></script>
-<script src="app.js?v=131"></script>
+<script src="app.js?v=132"></script>
 </body>
 </html>
