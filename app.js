@@ -289,6 +289,7 @@ function fonteSupabase(cfg) {
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
+               saude: ctl["saude:painel"] ?? null,
                termometro: ctl["termometro:painel"] ?? null, cotacoes: ctl["cotacoes:sinais"] ?? null,
                audio: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("audio:")).map(([k, v]) => [k.slice(6), v === true])),
                loginFonte: { youtube: ctl["login:youtube"] ?? null, tiktok: ctl["login:tiktok"] ?? null },
@@ -454,6 +455,7 @@ function fonteDemo() {
     monitorComando: { tiktok: true, sites: true, agentes: true, tradingview: true, telegram: true, "youtube@bovespa": true },
     agentesPainel: demoAgentes(agora), selfLearning: true,
     termometro: demoTermometro(agora),
+    saude: typeof demoSaude === "function" ? demoSaude(agora) : null,
     consensoLigado: false,
     monitorOrdens: demoOrdens(agora),
     cotacoes: { atualizado_em: new Date(agora - 90e3).toISOString(), ativos: {
@@ -677,6 +679,7 @@ function rotaAtual() {
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? doMonitor({ tipo: "monitor" }) : { tipo: "projeto", id: m[1], ctx: "forex" };
   if (h.startsWith("#/monitor")) return doMonitor({ tipo: "monitor" });
   if (h.startsWith("#/termometro")) return doMonitor({ tipo: "termometro" });
+  if (h.startsWith("#/saude")) return { tipo: "saude", ctx: "forex" };  // saúde das integrações (saude.js)
   if (h.startsWith("#/historico")) {
     const q = new URLSearchParams(h.split("?")[1] ?? ""), m = q.get("m");
     return doMonitor({ tipo: "historico", modo: MODOS_VALIDOS.has(m) ? m : "todos", conta: q.get("c") === "real" ? "real" : "demo" });
@@ -1024,7 +1027,9 @@ function htmlTopo(rota) {
       const p = e.projetos.find((x) => x.id === id);
       const pend = p?.decisoes_pendentes ?? 0;
       return aba(`#/p/${id}`, rota.tipo === "projeto" && rota.id === id, `<i class="ponto"></i>${esc(PROJETOS[id].nome)}${pend ? `<span class="count alerta">${pend}</span>` : ""}`, cor(id));
-    }));
+    }))
+    // Saúde das integrações e dos limites (23/11/2026, saude.js): a contagem são os itens em atenção ou críticos
+    .concat([aba("#/saude", rota.tipo === "saude", `${ico("activity")} Saúde${typeof saudeProblemas === "function" && saudeProblemas(e.saude) ? `<span class="count alerta">${saudeProblemas(e.saude)}</span>` : ""}`, "var(--global)")]);
   return `<header class="topo">
     <div class="topo-linha">
       <div class="marca"><span class="logo">${ico("zap")}</span><div><p class="marca-nome">Central de comando</p><small>${semana ? `Semana ${semana} do roteiro · ` : ""}${fonte.demo ? "modo demonstração" : "banco único"}</small></div></div>
@@ -2731,6 +2736,13 @@ const inicioDoPeriodo = () => { if (periodoDias) return Date.now() - periodoDias
 const textoPeriodo = () => (periodoDias ? `últimos ${periodoDias} dias` : "hoje (desde 00:00)");
 const htmlPeriodo = () => `<span class="segmentado" role="group" aria-label="Período"><span class="seg-rot">Período</span>${PERIODOS.map(([d, rot]) =>
   `<button type="button" data-acao="periodo" data-dias="${d}" aria-pressed="${d === periodoDias}"${d ? "" : ` title="Operações fechadas desde 00:00 (hora deste aparelho); as abertas continuam"`}>${rot}</button>`).join("")}</span>`;
+// Canais do Consolidado e do Histórico (23/11/2026, pedido do Diogo): Todos | Live traders | Robôs. A categoria vem da
+// lista do YouTube (controle.categorias:youtube); com uma categoria marcada, só ficam os sinais e as ordens dos canais
+// do YouTube dela, e as outras fontes saem do recorte. O estado da conta (abertas, resultado do dia) continua da conta toda.
+let categoriaFiltro = "", categoriaAplicada = "";  // aplicada = a deste redesenho (só Consolidado e Histórico)
+const CATEGORIAS_FILTRO = [["", "Todos"], ["trader", "Live traders"], ["robo", "Robôs"]];
+const htmlCategoriaFiltro = () => `<span class="segmentado" role="group" aria-label="Canais" title="Live traders e Robôs: categoria dos canais na lista do YouTube; as outras fontes saem do recorte"><span class="seg-rot">Canais</span>${CATEGORIAS_FILTRO.map(([k, rot]) =>
+  `<button type="button" data-acao="categoria-filtro" data-categoria="${k}" aria-pressed="${k === categoriaFiltro}">${rot}</button>`).join("")}</span>`;
 function htmlAgenteDetalhe(a, paraHistorico = null) {
   return `<section class="painel agente detalhe" aria-label="Histórico e recortes de ${esc(a.id)}">
     ${paraHistorico ? `<p class="meta"><a class="btn pequeno" href="${paraHistorico}">${ico("clock")} Ver as ${a.historico?.length ?? 0} operações no Histórico</a><span>com filtro por situação, lado e ativo</span></p>` : htmlHistorico(a)}
@@ -3075,7 +3087,9 @@ function painelConsolidado(e, modo = "todos") {
   };
   const agentes = porFonte.map((x) => unidade(FONTES[x.f], x.linhas, x.abertos, `Todos os sinais do ${FONTES[x.f]} (sem consenso)`, x.f))
     .sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
-  if (agentes.length) agentes.unshift(unidade(TODOS, porFonte.flatMap((x) => x.linhas), porFonte.flatMap((x) => x.abertos), `Soma de todas as fontes do ${CONTEXTOS[ctxLente].nome}`));
+  if (agentes.length) agentes.unshift(unidade(TODOS, porFonte.flatMap((x) => x.linhas), porFonte.flatMap((x) => x.abertos), categoriaAplicada
+    ? `Só os canais do YouTube marcados como "${ROTULO_CATEGORIA[categoriaAplicada].toLowerCase()}" (filtro Canais); as outras fontes estão fora do recorte`
+    : `Soma de todas as fontes do ${CONTEXTOS[ctxLente].nome}`));
   return { unidade: "usd", agentes, ...(ctxLente === "bovespa" ? { moeda: "BRL" } : {}) };
 }
 
@@ -3289,7 +3303,7 @@ function vistaHistorico(modo = "todos", conta = "demo") {
       </div>
     </div>
     ${nav}
-    <div class="linha-modalidades">${htmlPeriodo()}</div>
+    <div class="linha-modalidades">${htmlPeriodo()}${htmlCategoriaFiltro()}</div>
     <section class="painel agente" aria-label="Operações do ${esc(CONTEXTOS[ctxLente].nome)}">${todos ? htmlHistorico(todos) : `<p class="vazio">Nenhuma operação nesta modalidade nos últimos 30 dias.</p>`}</section>
     ${htmlHistoricoComandos()}
   </main>`;
@@ -3629,7 +3643,7 @@ function vistaAnalise(f, id, modo = "todos", conta = "demo") {
   const navMostrar = temFaixa ? "" : `<nav class="segmentado modalidades" aria-label="Resultado"><span class="seg-rot">Mostrar</span>${modalidadesDoCtx()
     .map(([k, rotulo]) => `<a href="${hrefAnalise(f, id ?? TODOS, k, conta)}" ${k === modo ? 'aria-current="page"' : ""}>${rotulo}</a>`).join("")}</nav>`;
   const navConta = comOrdens ? `<nav class="segmentado contas" aria-label="Conta"><span class="seg-rot">Conta</span>${[["demo", "Demo"], ["real", "Real"]].map(([k, rot]) => `<a href="${hrefAnalise(f, id ?? TODOS, modo, k)}" ${k === conta ? 'aria-current="page"' : ""}>${rot}</a>`).join("")}</nav>` : "";
-  const navPeriodo = ehAgentes ? "" : htmlPeriodo();
+  const navPeriodo = ehAgentes ? "" : htmlPeriodo() + (consol ? htmlCategoriaFiltro() : "");
   const modalidades = !(navMostrar || navConta || navPeriodo) ? "" : `<div class="linha-modalidades">${temExec ? navMostrar + navConta : ""}${navPeriodo}</div>`;
   const estadoConta = comOrdens ? htmlEstadoExecucao(conta, corr[1]) : "";
   const aviso = erro ? `<div class="aviso erro">${ico("alert")}<span>${esc(erro)}</span></div>` : "";
@@ -3791,10 +3805,18 @@ function render(forcar = true) {
     estado = { ...estado, monitorResultados: (estado.monitorResultados ?? []).filter((r) => dentro(r.resolvido_em)),
       monitorOrdens: (estado.monitorOrdens ?? []).filter((o) => o.status === "aberta" || o.status === "pendente" || dentro(o.fechado_em ?? o.criado_em)) };
   }
-  const vp = `${calcularVersaoPaineis(estadoBruto)}|${comPeriodo ? periodoDias : 30}`;
+  const comCategoria = !!categoriaFiltro && ((rota.tipo === "analise" && rota.fonte === CONSOLIDADO) || rota.tipo === "historico");
+  categoriaAplicada = comCategoria ? categoriaFiltro : "";
+  if (comCategoria && estado) {
+    const daCat = (fonte, nome) => fonte === "youtube" && categoriaDoCanal("youtube", estado, nome) === categoriaFiltro;
+    estado = { ...estado, monitorResultados: (estado.monitorResultados ?? []).filter((r) => daCat(r.fonte, nomeDaUnidade(r.fonte, r.origem))),
+      monitorOrdens: (estado.monitorOrdens ?? []).filter((o) => daCat(o.fonte, o.unidade)),
+      monitorSinais: (estado.monitorSinais ?? []).filter((x) => daCat(x.fonte, nomeDaUnidade(x.fonte, x.origem))) };
+  }
+  const vp = `${calcularVersaoPaineis(estadoBruto)}|${comPeriodo ? periodoDias : 30}|${comCategoria ? categoriaFiltro : ""}`;
   if (vp !== versaoPaineis) { versaoPaineis = vp; memoPaineis = new Map(); }
   let corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar(rota.visao)
-    : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "historico" ? vistaHistorico(rota.modo, rota.conta) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
+    : rota.tipo === "saude" && typeof vistaSaude === "function" ? vistaSaude() : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "historico" ? vistaHistorico(rota.modo, rota.conta) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
   if (comPeriodo) corpo = corpo.replaceAll("nos últimos 30 dias", periodoDias ? `nos últimos ${periodoDias} dias` : "hoje (desde 00:00)").replaceAll("últimos 30 dias", textoPeriodo()).replaceAll("· 30 dias<", `· ${periodoDias ? `${periodoDias} dias` : "hoje"}<`);
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
@@ -3807,7 +3829,7 @@ function render(forcar = true) {
   prepararRolagens(app);
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
-  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comandos" ? "Comandos · Central de Comando" : rota.tipo === "historico" ? "Histórico · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
+  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "saude" ? "Saúde · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comandos" ? "Comandos · Central de Comando" : rota.tipo === "historico" ? "Histórico · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
     main.classList.add("entrada");
@@ -3919,6 +3941,7 @@ document.addEventListener("click", (ev) => {
   // histórico: filtro, ordenação e "mostrar mais" só mexem na tela (nada é gravado)
   if (acao === "hist-filtro") { histFiltro = b.dataset.filtro; histLimite = HIST_PASSO; return render(); }
   if (acao === "lista-toda") { listasAbertas.add(b.dataset.lista); return render(); }
+  if (acao === "categoria-filtro") { categoriaFiltro = CATEGORIAS_FILTRO.some(([k]) => k === b.dataset.categoria) ? b.dataset.categoria : ""; histLimite = HIST_PASSO; return render(); }
   if (acao === "periodo") { periodoDias = PERIODOS.some(([d]) => d === Number(b.dataset.dias)) ? Number(b.dataset.dias) : 30; histLimite = HIST_PASSO; return render(); }
   if (acao === "comp-ordem") {
     const col = b.dataset.col;

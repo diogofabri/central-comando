@@ -825,6 +825,35 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 .grafico.comparar .rot-serie.serie-forex { fill: var(--accent); }
 .grafico.comparar .rot-serie.serie-bovespa { fill: var(--warning); }
 .grafico.comparar .legenda svg .serie { stroke-width: 2.25; } .grafico.comparar > svg { max-width: 1200px; } .grafico.comparar .legenda svg { width: 22px; height: 10px; vertical-align: middle; margin-right: 6px; }
+
+/* Saúde das integrações (#/saude, saude.js; 23/11/2026) */
+.saude-resumo h2 .badge, .saude-lista-topo .badge { margin-left: 4px; }
+.saude-alerta { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--critical-soft); color: var(--critical); font-size: 14px; }
+.saude-alerta .ico { flex: none; margin-top: 2px; }
+.saude-lista { list-style: none; margin: 0; padding: 0; }
+.saude-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 6px 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.saude-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.saude-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; min-width: 0; }
+.saude-valor { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 2px 10px; font-size: 14px; font-variant-numeric: tabular-nums; text-align: right; }
+.saude-valor > b { font-size: 16px; }
+.saude-valor > span { color: var(--ink-2); white-space: nowrap; }
+.saude-trilho { grid-column: 1; position: relative; overflow: hidden; height: 10px; border-radius: 5px; background: var(--chip); }
+.saude-uso { position: absolute; inset: 0 auto 0 0; border-radius: 5px; background: var(--good); }
+.saude-item[data-nivel="atencao"] .saude-uso { background: var(--warning); }
+.saude-item[data-nivel="critico"] .saude-uso { background: var(--critical); }
+.saude-item[data-nivel="teto"] .saude-uso { background: var(--ink-3); }
+.saude-marca { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink-3); }
+.saude-marca.forte { width: 2px; background: var(--ink-2); }
+.saude-serie { grid-column: 2; width: 132px; height: 30px; justify-self: end; overflow: visible; }
+.saude-serie path { fill: none; stroke: var(--ink-2); stroke-width: 1.5; stroke-linejoin: round; }
+.saude-serie .lim { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.saude-detalhe { grid-column: 1 / -1; font-size: 13px; color: var(--ink-2); max-width: 78ch; text-wrap: pretty; }
+@media (max-width: 560px) {
+  .saude-item { grid-template-columns: minmax(0, 1fr); }
+  .saude-valor { justify-content: flex-start; text-align: left; }
+  .saude-trilho, .saude-serie { grid-column: 1; }
+  .saude-serie { justify-self: start; }
+}
 </style>
 </head>
 <body>
@@ -872,6 +901,7 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="app.js?v=130"></script>
+<script src="saude.js?v=1"></script>
+<script src="app.js?v=131"></script>
 </body>
 </html>
