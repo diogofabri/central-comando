@@ -97,7 +97,8 @@ const FOLGA_NIVEL = { folga: { c: "good", t: "há folga", i: "check" }, justo: {
 const folgaBloq = (p) => Object.values(p.bloqueios ?? {}).reduce((s, b) => s + (b.total ?? 0), 0);
 function svgFolga(pontos) {
   const W = 1200, H = 240, E = 40, D = 10, T = 10, HB = 34, B = H - 22, Y0 = B - HB - 8;
-  const t0 = new Date(pontos[0].em).getTime(), t1 = Math.max(new Date(pontos[pontos.length - 1].em).getTime(), t0 + 36e5);
+  // eixo do tempo terminando na última medição, com pelo menos 6 h (poucas medições ficam à direita, sem se espremer)
+  const t1 = new Date(pontos[pontos.length - 1].em).getTime(), t0 = Math.min(new Date(pontos[0].em).getTime(), t1 - 6 * 36e5);
   const x = (p) => E + ((new Date(p.em).getTime() - t0) / (t1 - t0)) * (W - E - D);
   const y = (v) => Y0 - (Math.min(v, 100) / 100) * (Y0 - T);
   const linha = (campo) => {
@@ -113,11 +114,15 @@ function svgFolga(pontos) {
     return `<rect class="bloq" x="${(x(p) - larg / 2).toFixed(1)}" y="${(B - h).toFixed(1)}" width="${larg.toFixed(1)}" height="${h.toFixed(1)}"><title>${n} abertura(s) barrada(s)</title></rect>`; }).join("");
   const grade = [0, 50, 85, 100].map((v) => `<line class="${v === 85 ? "guarda" : "grade"}" x1="${E}" x2="${W - D}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>
     <text class="eixo" x="${E - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${v}%</text>`).join("");
-  const nTicks = Math.min(6, pontos.length), ticks = [];
-  for (let k = 0; k < nTicks; k++) {
-    const p = pontos[Math.round((k * (pontos.length - 1)) / Math.max(1, nTicks - 1))];
-    const d = new Date(p.em), rot = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}h`;
-    ticks.push(`<text class="eixo" x="${x(p).toFixed(1)}" y="${H - 6}" text-anchor="middle">${rot}</text>`);
+  // rótulos em horas redondas (passo de 1 a 24 h para caber até 7), com a data só no primeiro e quando o dia muda
+  const passo = [1, 2, 3, 6, 12, 24].find((h) => (t1 - t0) / (h * 36e5) <= 7) ?? 24, ticks = [];
+  const ini = new Date(t0); ini.setMinutes(0, 0, 0); ini.setHours(Math.ceil((ini.getHours() + (t0 > ini.getTime() ? 1 : 0)) / passo) * passo);
+  let diaAnt = "";
+  for (let tt = ini.getTime(); tt <= t1; tt += passo * 36e5) {
+    const d = new Date(tt), dia = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const rot = `${dia !== diaAnt ? dia + " " : ""}${String(d.getHours()).padStart(2, "0")}h`; diaAnt = dia;
+    ticks.push(`<line class="grade" x1="${x({ em: tt }).toFixed(1)}" x2="${x({ em: tt }).toFixed(1)}" y1="${B}" y2="${B + 4}"/>
+      <text class="eixo" x="${x({ em: tt }).toFixed(1)}" y="${H - 6}" text-anchor="middle">${rot}</text>`);
   }
   const pontosCpu = pontos.filter((p) => p.cpu != null).map((p) => `<circle class="pt ${p.veredito ?? ""}" cx="${x(p).toFixed(1)}" cy="${y(p.cpu).toFixed(1)}" r="4">
     <title>${quando(p.em)}: CPU ${saudeNum(p.cpu)}%, Claude 5 h ${p.claude_5h == null ? "—" : saudeNum(p.claude_5h) + "%"}, ${folgaBloq(p)} bloqueio(s) · ${FOLGA_NIVEL[p.veredito]?.t ?? ""}</title></circle>`).join("");
