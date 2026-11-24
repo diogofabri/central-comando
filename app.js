@@ -1843,8 +1843,9 @@ function htmlAoVivo(e) {
 // MIN_OPS_DESTAQUE operações fica de fora (um só alvo não faz "melhor canal").
 const MIN_OPS_DESTAQUE = 3;
 let destaqueBase = "real";
-const BASES_DESTAQUE = [["real", "Real"], ["teorico", "Teórico"], ["todos", "Todos"]];
-const htmlBaseDestaque = () => `<span class="segmentado" role="group" aria-label="Base" title="Real: ordens executadas na corretora. Teórico: placar dos sinais. Todos: o executado vale pela ordem e o resto pelo teórico."><span class="seg-rot">Base</span>${BASES_DESTAQUE.map(([k, rot]) =>
+// "Executado" (24/11/2026): antes "Real", que se lia como a conta real; a base soma as ordens das contas demo e real
+const BASES_DESTAQUE = [["real", "Executado"], ["teorico", "Teórico"], ["todos", "Todos"]];
+const htmlBaseDestaque = () => `<span class="segmentado" role="group" aria-label="Base" title="Executado: ordens executadas na corretora (contas demo e real). Teórico: placar dos sinais. Todos: o executado vale pela ordem e o resto pelo teórico."><span class="seg-rot">Base</span>${BASES_DESTAQUE.map(([k, rot]) =>
   `<button type="button" data-acao="destaque-base" data-base="${k}" aria-pressed="${k === destaqueBase}">${rot}</button>`).join("")}</span>`;
 function htmlDestaquesCanais(e) {
   const corte = inicioDoPeriodo(), cat = categoriaFiltro, base = destaqueBase;
@@ -1917,7 +1918,7 @@ function htmlDestaquesCanais(e) {
     todos: "no executado quando houve ordem e no teórico quando não houve" }[base];
   return `<section class="painel" aria-labelledby="h-destaques">
     <h2 id="h-destaques">${ico("activity")} Melhor e pior canal</h2>
-    <p class="nota">Por fonte, ${textoBase}, ${esc(textoPeriodo())}${cat ? `, só os canais ${cat === "trader" ? "de live traders" : "de robôs"} do YouTube` : ""}; ordem pelo saldo em R.</p>
+    <p class="nota">Por fonte, ${textoBase}, ${esc(textoPeriodo())}${cat ? `, só os canais ${cat === "trader" ? "de live traders" : "de robôs"} do YouTube` : ""}; ordem pelo saldo em R. Cada fonte tem o seu total; o da conta, em "Agora", soma todas.</p>
     ${filtros}
     ${blocos.length ? `<div class="grade-cartoes">${blocos.join("")}</div>` : `<p class="vazio">Nenhum canal com ${MIN_OPS_DESTAQUE} ou mais operações neste filtro.</p>`}
   </section>`;
@@ -2402,13 +2403,16 @@ function htmlResumoPainel(e) {
     const fechadas = (e.monitorOrdens ?? []).filter((o) => o.modo === modo && o.status === "fechada" && o.resultado != null && (!s.corretora || o.corretora === s.corretora));
     const meiaNoite = new Date().setHours(0, 0, 0, 0), soma = (l) => l.reduce((a, o) => a + (Number(o.resultado) || 0), 0);
     const deHoje = fechadas.filter((o) => o.fechado_em && new Date(o.fechado_em).getTime() >= meiaNoite);
+    // operação = sinal com as suas parciais (24/11/2026: "em 9 operações" eram 9 ordens de 5 operações)
+    const nOps = (l) => new Set(l.map((o) => `${o.fonte}|${o.sinal_id}`)).size;
+    const contagem = (l) => { const n = nOps(l); return `${n} ${n === 1 ? "operação" : "operações"}${n !== l.length ? ` (${l.length} ordens)` : ""}`; };
     const kCorr = corretorasDoCtx().find(([, nomeC]) => nomeC === s.corretora)?.[0];
     const hrefConta = `${hrefCtx(ctxLente, CONSOLIDADO)}${kCorr ? `?m=${kCorr}${modo === "real" ? "&c=real" : ""}` : ""}`;
     return item(nome, `<span class="rp-sub">em aberto agora</span>
       <b class="num ${comLucro ? cor(flut) : ""}">${comLucro || !s.abertas ? din(flut) : "—"}</b>
       <span>${s.abertas ?? 0} ${s.abertas === 1 ? "posição aberta" : "posições abertas"} · ${s.pendentes ?? 0} ${s.pendentes === 1 ? "ordem pendente" : "ordens pendentes"}${ultimo ? " · pelo último negócio" : ""}${semCot ? ` · sem cotação para ${semCot === s.abertas ? "a posição aberta" : `${semCot} das abertas`}` : ""}</span>
-      <span class="meta">fechado hoje <b class="num ${cor(soma(deHoje))}">${din(soma(deHoje))}</b> em ${deHoje.length} ${deHoje.length === 1 ? "operação" : "operações"}</span>
-      <span class="meta">fechado em 30 dias <b class="num ${cor(soma(fechadas))}">${din(soma(fechadas))}</b> em ${fechadas.length} ${fechadas.length === 1 ? "operação" : "operações"}</span>
+      <span class="meta">fechado hoje <b class="num ${cor(soma(deHoje))}">${din(soma(deHoje))}</b> em ${contagem(deHoje)}</span>
+      <span class="meta">fechado em 30 dias <b class="num ${cor(soma(fechadas))}">${din(soma(fechadas))}</b> em ${contagem(fechadas)}</span>
       <span class="meta"><a href="${hrefConta}">ver o resultado desta conta</a></span>`);
   }).join("");
   return `<section class="faixa-totais resumo-painel" aria-label="Resumo do ${esc(CONTEXTOS[ctxLente].nome)} agora">
