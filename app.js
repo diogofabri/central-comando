@@ -1856,7 +1856,15 @@ function htmlDestaquesCanais(e) {
     // ordens fechadas da fonte no período (corretoras deste mercado)
     const ordens = (e.monitorOrdens ?? []).filter((o) => o.pagina === f && o.status === "fechada" && o.resultado != null && o.fechado_em
       && (!corretoras.size || corretoras.has(o.corretora)) && new Date(o.fechado_em).getTime() >= corte && daCat(f, o.unidade));
-    const opsReais = ordens.map((o) => ({ nome: o.unidade, r: rDaOrdem(o), v: Number(o.resultado), moeda: o.moeda ?? null, lado: Number(o.resultado) }));
+    // uma operação = um sinal com as suas parciais (24/11/2026: a Princesa teve 2 operações de 3 parciais cada e a
+    // tela contava "6 operações, 3 ganhos, 3 perdas"); R e dinheiro somam as parciais, ganho ou perda pelo total
+    const porSinal = new Map();
+    for (const o of ordens) {
+      const k = `${o.fonte}|${Number(o.sinal_id)}`, x = porSinal.get(k) ?? { nome: o.unidade, r: 0, v: 0, moeda: o.moeda ?? null };
+      x.r += rDaOrdem(o) ?? 0; x.v += Number(o.resultado);
+      porSinal.set(k, x);
+    }
+    const opsReais = [...porSinal.values()].map((x) => ({ ...x, lado: x.v }));
     const teoricas = base === "real" ? [] : resultadosDaFonte(f, e).filter((r) => STATUS_COM_R.has(r.status) && r.resolvido_em
       && new Date(r.resolvido_em).getTime() >= corte && daCat(f, nomeDaUnidade(f, r.origem)));
     let ops;
@@ -1877,15 +1885,20 @@ function htmlDestaquesCanais(e) {
       if (sinal > 0) x.ganhos++; else if (sinal < 0) x.perdas++;
       por.set(o.nome, x);
     });
-    const lista = [...por.values()].filter((x) => x.ops >= MIN_OPS_DESTAQUE)
-      .map((x) => ({ ...x, r: Math.round(x.r * 100) / 100, v: Math.round(x.v * 100) / 100 }))  // sem "−US$ 0,00"
-      .sort((a, b) => b.r - a.r || b.v - a.v || b.ganhos - a.ganhos || b.ops - a.ops);
+    const arred = (x) => ({ ...x, r: Math.round(x.r * 100) / 100, v: Math.round(x.v * 100) / 100 });  // sem "−US$ 0,00"
+    const ordem = (a, b) => b.r - a.r || b.v - a.v || b.ganhos - a.ganhos || b.ops - a.ops;
+    // com menos de 2 unidades no mínimo de operações, compara todas e avisa que a amostra é pequena (24/11/2026: só a
+    // Princesa passava do mínimo e saía como "Melhor" com perda, e os dois canais que ganharam sumiam)
+    let lista = [...por.values()].filter((x) => x.ops >= MIN_OPS_DESTAQUE).map(arred).sort(ordem);
+    const pequena = lista.length < 2;
+    if (pequena) lista = [...por.values()].map(arred).sort(ordem);
     if (!lista.length) return "";
     const modoLink = base === "teorico" ? "todos" : base === "real" ? modoNoCtx("padrao") : "padrao";
     const card = (x, tipo) => {
       const acerto = Math.round((100 * x.ganhos) / x.ops);
       return `<div class="destaque-canal ${tipo}">
-        <span class="badge ${tipo === "melhor" ? "good" : "critical"}">${ico(tipo === "melhor" ? "alta" : "baixa")}${tipo === "melhor" ? "Melhor" : "Pior"}</span>
+        ${tipo === "unico" ? `<span class="badge muted">Único com operação</span>`
+          : `<span class="badge ${tipo === "melhor" ? "good" : "critical"}">${ico(tipo === "melhor" ? "alta" : "baixa")}${tipo === "melhor" ? "Melhor" : "Pior"}</span>`}
         <a class="nome" href="${hrefCtx(ctxLente, "")}${hrefAnalise(f, x.nome, modoLink).slice(2)}" title="Resultado e histórico de ${esc(x.nome)}">${esc(x.nome)}</a>
         <div class="meta"><span><b class="num">${x.ops}</b> ${x.ops === 1 ? "operação" : "operações"}</span><span><b class="num pos">${x.ganhos}</b> ${x.ganhos === 1 ? "ganho" : "ganhos"}</span><span><b class="num neg">${x.perdas}</b> ${x.perdas === 1 ? "perda" : "perdas"}</span><span>acerto <b class="num">${acerto}%</b></span></div>
         <div class="meta"><b class="num ${corV(x.r)}">${r2(x.r)}</b>${din ? `<b class="num ${corV(x.v)}">${din(x.v)}</b>` : ""}</div>
@@ -1894,8 +1907,10 @@ function htmlDestaquesCanais(e) {
     const total = ops.reduce((s, o) => s + (o.v ?? 0), 0);
     const melhor = lista[0], pior = lista[lista.length - 1];
     return `<div class="cartao"><div class="titulo"><a class="nome-fonte" href="${hrefCtx(ctxLente, f)}">${FONTES[f]}</a> <span class="count">${lista.length}</span></div>
-      <div class="meta"><span><b class="num">${ops.length}</b> ${ops.length === 1 ? "operação" : "operações"}${din ? ` · <b class="num ${corV(total)}">${din(Math.round(total * 100) / 100)}</b>` : ""}</span><span>${lista.length} ${lista.length === 1 ? "unidade" : "unidades"} com ${MIN_OPS_DESTAQUE}+</span></div>
-      ${card(melhor, "melhor")}${lista.length > 1 ? card(pior, "pior") : ""}</div>`;
+      <div class="meta"><span><b class="num">${ops.length}</b> ${ops.length === 1 ? "operação" : "operações"}${din ? ` · <b class="num ${corV(total)}">${din(Math.round(total * 100) / 100)}</b>` : ""}</span>${pequena
+        ? `<span class="badge warning" title="Menos de 2 unidades com ${MIN_OPS_DESTAQUE} ou mais operações no período: a comparação usa todas e diz pouco">${ico("alert")}amostra pequena</span>`
+        : `<span>${lista.length} ${lista.length === 1 ? "unidade" : "unidades"} com ${MIN_OPS_DESTAQUE}+</span>`}</div>
+      ${lista.length > 1 ? card(melhor, "melhor") + card(pior, "pior") : card(melhor, "unico")}</div>`;
   }).filter(Boolean);
   const filtros = `<div class="linha-modalidades">${htmlBaseDestaque()}${htmlPeriodo()}${fontesDoCtx().includes("youtube") ? htmlCategoriaFiltro() : ""}</div>`;
   const textoBase = { real: "nas ordens executadas na corretora (demo e real, com custos)", teorico: "no placar teórico (alvo, stop e expirado)",
