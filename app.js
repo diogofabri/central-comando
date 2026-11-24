@@ -1852,7 +1852,7 @@ function htmlDestaquesCanais(e) {
   const moedaTeorica = ctxLente === "bovespa" ? "BRL" : "USD";
   const corretoras = new Set(corretorasDoCtx().map(([, n]) => n));
   const daCat = (f, nome) => naCategoria(e, f, nome, cat);
-  const fontes = fontesDoCtx().filter((f) => !cat || f !== "agentes" || cat === "robo");
+  const fontes = fontesDoCtx().filter((f) => !cat || (FILTRO_POR_FONTE.has(cat) ? f === cat : FONTES_DE_LIVE.has(f)));
   const blocos = fontes.map((f) => {
     // ordens fechadas da fonte no período (corretoras deste mercado)
     const ordens = (e.monitorOrdens ?? []).filter((o) => o.pagina === f && o.status === "fechada" && o.resultado != null && o.fechado_em
@@ -2929,15 +2929,20 @@ const inicioDoPeriodo = () => { if (periodoDias) return Date.now() - periodoDias
 const textoPeriodo = () => (periodoDias ? `últimos ${periodoDias} dias` : "hoje (desde 00:00)");
 const htmlPeriodo = () => `<span class="segmentado" role="group" aria-label="Período"><span class="seg-rot">Período</span>${PERIODOS.map(([d, rot]) =>
   `<button type="button" data-acao="periodo" data-dias="${d}" aria-pressed="${d === periodoDias}"${d ? "" : ` title="Operações fechadas desde 00:00 (hora deste aparelho); as abertas continuam"`}>${rot}</button>`).join("")}</span>`;
-// Canais do Consolidado e do Histórico (23/11/2026, pedido do Diogo): Todos | Live traders | Robôs. A categoria vem da
-// lista de cada fonte (controle.categorias:<fonte>). Regras (24/11/2026, pedido do Diogo): Agentes contam como robôs;
-// YouTube pela categoria da lista; TikTok também pela lista, que ainda não tem categoria (até lá sai dos dois recortes);
-// Sites, Telegram e TradingView ficam inteiros. O estado da conta (abertas, resultado do dia) continua da conta toda.
+// Canais do Consolidado e do Histórico (23/11/2026, pedido do Diogo). Desde 24/11/2026: Todos | Live traders | Robôs |
+// Agentes | Sites | Telegram. Live traders e Robôs são categorias das lives (YouTube e TikTok, pela lista de cada fonte em
+// controle.categorias:<fonte>; o TikTok ainda não tem lista e todos os canais dele contam como live traders). Agentes,
+// Sites e Telegram mostram só aquela fonte. O estado da conta (abertas, resultado do dia) continua da conta toda.
 let categoriaFiltro = "", categoriaAplicada = "";  // aplicada = a deste redesenho (só Consolidado e Histórico)
-const CATEGORIAS_FILTRO = [["", "Todos"], ["trader", "Live traders"], ["robo", "Robôs"]];
-const naCategoria = (e, fonte, nome, cat) => !cat || (fonte === "agentes" ? cat === "robo"
-  : fonte === "youtube" || fonte === "tiktok" ? categoriaDoCanal(fonte, e, nome) === cat : true);
-const htmlCategoriaFiltro = () => `<span class="segmentado" role="group" aria-label="Canais" title="Live traders e Robôs: YouTube pela categoria da lista; Agentes contam como robôs; TikTok ainda sem categoria (fica fora); Sites, Telegram e TradingView ficam inteiros"><span class="seg-rot">Canais</span>${CATEGORIAS_FILTRO.map(([k, rot]) =>
+const CATEGORIAS_FILTRO = [["", "Todos"], ["trader", "Live traders"], ["robo", "Robôs"], ["agentes", "Agentes"],
+  ["sites", "Sites"], ["telegram", "Telegram"]];
+const FILTRO_POR_FONTE = new Set(["agentes", "sites", "telegram"]);
+const FONTES_DE_LIVE = new Set(["youtube", "tiktok"]);
+const naCategoria = (e, fonte, nome, cat) => !cat || (FILTRO_POR_FONTE.has(cat) ? fonte === cat
+  : FONTES_DE_LIVE.has(fonte) && categoriaDoCanal(fonte, e, nome) === cat);
+const rotuloFiltroCanais = (k) => (CATEGORIAS_FILTRO.find(([c]) => c === k) ?? [, k])[1];
+const htmlCategoriaFiltro = () => `<span class="segmentado" role="group" aria-label="Canais" title="Live traders e Robôs: categorias das lives do YouTube (pela lista) e do TikTok (todos live traders). Agentes, Sites e Telegram: só aquela fonte"><span class="seg-rot">Canais</span>${CATEGORIAS_FILTRO
+  .filter(([k]) => !FILTRO_POR_FONTE.has(k) || fontesDoCtx().includes(k) || k === categoriaFiltro).map(([k, rot]) =>
   `<button type="button" data-acao="categoria-filtro" data-categoria="${k}" aria-pressed="${k === categoriaFiltro}">${rot}</button>`).join("")}</span>`;
 function htmlAgenteDetalhe(a, paraHistorico = null) {
   return `<section class="painel agente detalhe" aria-label="Histórico e recortes de ${esc(a.id)}">
@@ -3284,7 +3289,8 @@ function painelConsolidado(e, modo = "todos") {
   const agentes = porFonte.map((x) => unidade(FONTES[x.f], x.linhas, x.abertos, `Todos os sinais do ${FONTES[x.f]} (sem consenso)`, x.f))
     .sort((a, b) => b.metricas.ops - a.metricas.ops || a.id.localeCompare(b.id));
   if (agentes.length) agentes.unshift(unidade(TODOS, porFonte.flatMap((x) => x.linhas), porFonte.flatMap((x) => x.abertos), categoriaAplicada
-    ? `Canais do YouTube marcados como "${ROTULO_CATEGORIA[categoriaAplicada].toLowerCase()}"${categoriaAplicada === "robo" ? " e os Agentes" : ", sem os Agentes"} (filtro Canais); TikTok fora até ter categoria; Sites, Telegram e TradingView entram inteiros`
+    ? (FILTRO_POR_FONTE.has(categoriaAplicada) ? `Só a fonte ${rotuloFiltroCanais(categoriaAplicada)} (filtro Canais)`
+      : `Só as lives do YouTube e do TikTok da categoria "${rotuloFiltroCanais(categoriaAplicada).toLowerCase()}" (filtro Canais; o TikTok conta todo como live traders)`)
     : `Soma de todas as fontes do ${CONTEXTOS[ctxLente].nome}`));
   return { unidade: "usd", agentes, ...(ctxLente === "bovespa" ? { moeda: "BRL" } : {}) };
 }
@@ -3304,7 +3310,8 @@ const ROTULO_CATEGORIA = { robo: "Robô", trader: "Live trader", outro: "Outro" 
 function categoriaDoCanal(f, e, nome) {
   const mapa = (e.categorias ?? {})[f + (ctxLente === "bovespa" ? "@bovespa" : "")] ?? {};
   const n = String(nome ?? "").replace(/^[@▶️\s]+/u, "").trim().toLowerCase();
-  return mapa[n] ?? null;
+  // TikTok sem lista de categorias (24/11/2026, pedido do Diogo): todo canal dele conta como live trader
+  return mapa[n] ?? (f === "tiktok" ? "trader" : null);
 }
 
 function painelDeResultados(f, e, modo = "todos") {
