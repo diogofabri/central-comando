@@ -870,6 +870,53 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
   .saude-trilho, .saude-serie { grid-column: 1; }
   .saude-serie { justify-self: start; }
 }
+
+/* Auditor das lives (#/<mercado>/auditoria, auditoria.js; 24/11/2026) */
+.aud-nota { font-size: 14px; color: var(--ink-2); margin: 6px 0 0; max-width: 60ch; text-wrap: pretty; }
+.aud-nota code { font-size: 13px; }
+.aud-detalhe { margin: 6px 0 4px; font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.aud-prog { flex: 1 1 160px; max-width: 280px; }
+.aud-trava { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.aud-trava-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; font-size: 14px; }
+.aud-trilho-linha { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 260px); gap: 6px 14px; align-items: center; padding: 6px 0; font-size: 14px; }
+.aud-trilho-linha .saude-trilho { grid-column: auto; }
+.aud-trilho-linha[data-nivel="atencao"] .saude-uso { background: var(--warning); }
+.aud-trilho-linha[data-nivel="critico"] .saude-uso { background: var(--critical); }
+.aud-trilho-num { font-variant-numeric: tabular-nums; }
+.aud-dia { display: flex; align-items: center; gap: 10px; margin: 4px 0 -4px; }
+.aud-tabela td { vertical-align: top; }
+.aud-tabela td .meta { font-size: 12px; margin-top: 2px; }
+.aud-frase { font-size: 15px; margin: 6px 0 10px; max-width: 78ch; text-wrap: pretty; }
+.aud-cats .aud-peso { width: 32%; }
+.aud-peso i { display: block; height: 8px; border-radius: 4px; background: var(--good); min-width: 2px; }
+.aud-peso i.perda { background: var(--critical); }
+.aud-dialogo { width: min(920px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 18px 20px 22px; border: 1px solid var(--line); border-radius: var(--raio);
+  background: var(--surface); color: var(--ink); box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .35); overscroll-behavior: contain; }
+.aud-dialogo::backdrop { background: rgba(20, 20, 18, .45); }
+.aud-dialogo[open] { animation: aud-abre .22s var(--saida) both; }
+@keyframes aud-abre { from { opacity: 0; transform: translateY(10px) scale(.99); } }
+@media (prefers-reduced-motion: reduce) { .aud-dialogo[open] { animation: none; } }
+.aud-dialogo-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: -18px; background: var(--surface); padding: 2px 0 8px; z-index: 1; }
+.aud-dialogo-topo h2 { margin: 0; font-size: 19px; overflow-wrap: anywhere; }
+.aud-dialogo h3 { margin: 22px 0 6px; font-size: 16px; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.aud-op { padding: 12px 0; border-top: 1px solid var(--line); }
+.aud-op header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; }
+.aud-op header .direita { margin-left: auto; }
+.aud-tempo-caixa { overflow-x: auto; margin: 8px 0 4px; }
+.aud-tempo { display: block; width: 100%; min-width: 480px; max-width: 640px; height: auto; overflow: visible; }
+.aud-tempo .eixo { stroke: var(--line-2); stroke-width: 1.5; }
+.aud-tempo text { font-size: 11px; fill: var(--ink-2); font-variant-numeric: tabular-nums; }
+.aud-tempo .aud-t-canal circle { fill: var(--ink-2); } .aud-tempo .aud-t-canal line { stroke: var(--ink-2); }
+.aud-tempo .aud-t-nos circle { fill: var(--monitor); } .aud-tempo .aud-t-nos line { stroke: var(--monitor); }
+.aud-tempo .aud-t-nos text { fill: var(--monitor); font-weight: 600; }
+.aud-fatos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 6px 18px; margin: 8px 0; font-size: 14px; }
+.aud-fatos dt { color: var(--ink-2); font-size: 12px; } .aud-fatos dd { margin: 0; font-variant-numeric: tabular-nums; }
+.aud-texto { font-size: 14px; max-width: 78ch; margin: 6px 0 0; text-wrap: pretty; }
+.aud-relatorio { white-space: pre-wrap; font-size: 12px; max-height: 50vh; overflow: auto; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--raio-s); padding: 10px; }
+@media (max-width: 560px) {
+  .aud-trilho-linha { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .aud-dialogo { padding: 14px 14px 18px; }
+}
 </style>
 </head>
 <body>
@@ -918,6 +965,7 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
 <script src="saude.js?v=1"></script>
-<script src="app.js?v=136"></script>
+<script src="auditoria.js?v=1"></script>
+<script src="app.js?v=137"></script>
 </body>
 </html>

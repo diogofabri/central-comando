@@ -311,11 +311,23 @@ function fonteSupabase(cfg) {
       const ctl = Object.fromEntries(controle.map((c) => [c.chave, c.valor]));
       // mudanças de comando gravadas pelo gatilho do banco (migração 0020); sem a tabela, só as registradas à mão
       const comandosLog = await sb.from("monitor_comandos").select("*").gte("em", ha30d()).order("em").then(ok).catch(() => []);
+      // auditor das lives (24/11/2026, auditoria.js): tabelas pequenas, uma linha por canal e dia; o relatório em texto e
+      // as operações só são lidos ao abrir o modal de detalhes
+      const [auditorias, auditoriaCanalDia, melhorias, canaisPerfil] = await Promise.all([
+        sb.from("monitor_auditorias").select("id,contexto,dia,canal,fonte,motivo,situacao,etapa,progresso,erro,resultado,moeda,n_ordens,n_operacoes,perda_canal,perda_nossa,por_categoria,prints_video,duracao_s,iniciado_em,terminado_em")
+          .gte("dia", ha30d().slice(0, 10)).order("dia", { ascending: false }).order("id").then(ok).catch(() => []),
+        sb.from("monitor_auditoria_canal_dia").select("*").gte("dia", ha30d().slice(0, 10)).then(ok).catch(() => []),
+        sb.from("monitor_melhorias").select("id,contexto,titulo,escopo,canal,padrao,categoria,ocorrencias,impacto,situacao,contradiz,aplicada_em").order("id", { ascending: false }).then(ok).catch(() => []),
+        sb.from("monitor_canais_perfil").select("*").then(ok).catch(() => []),
+      ]);
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
                saude: ctl["saude:painel"] ?? null,
+               auditorias, auditoriaCanalDia, melhorias, canaisPerfil, auditorTrava: ctl["auditor:trava"] ?? null,
+               auditorEstado: { bovespa: ctl["auditor:bovespa:estado"] ?? null, forex: ctl["auditor:forex:estado"] ?? null },
+               auditorControle: { bovespa: ctl["auditor:bovespa"] ?? null, forex: ctl["auditor:forex"] ?? null },
                termometro: ctl["termometro:painel"] ?? null, cotacoes: ctl["cotacoes:sinais"] ?? null,
                audio: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("audio:")).map(([k, v]) => [k.slice(6), v === true])),
                loginFonte: { youtube: ctl["login:youtube"] ?? null, tiktok: ctl["login:tiktok"] ?? null },
@@ -358,6 +370,8 @@ function fonteSupabase(cfg) {
     comandarPrioridade: (modo) => sb.from("controle").upsert({ chave: "prioridade:navegadores", valor: modo }).then(ok),
     comandarLeituraYoutube: (modo) => sb.from("controle").upsert({ chave: "leitura:youtube", valor: modo }).then(ok),
     comandarZoom: (ligar) => sb.from("controle").upsert({ chave: "zoom:ligado", valor: ligar }).then(ok),
+    // auditor das lives (24/11/2026): o agendador do VPS lê controle.auditor:<mercado> a cada 10 min
+    comandarAuditor: (ctx, ligar) => sb.from("controle").upsert({ chave: `auditor:${ctx}`, valor: { ligado: ligar, em: new Date().toISOString() } }).then(ok),
     // lê a lista do banco na hora de acrescentar: outra aba ou o celular pode ter gravado um comando entre as cargas
     // desde a migração 0020 o gatilho do banco registra toda mudança das chaves de comando: o dashboard não grava mais
     // (gravaria em dobro). `controle.comandos:historico` fica para o que muda fora do banco (yaml, script, reinício).
@@ -486,6 +500,7 @@ function fonteDemo() {
     agentesPainel: demoAgentes(agora), selfLearning: true,
     termometro: demoTermometro(agora),
     saude: typeof demoSaude === "function" ? demoSaude(agora) : null,
+    ...(typeof demoAuditoria === "function" ? demoAuditoria(agora) : {}),
     consensoLigado: false,
     monitorOrdens: demoOrdens(agora),
     cotacoes: { atualizado_em: new Date(agora - 90e3).toISOString(), ativos: {
@@ -561,6 +576,7 @@ function fonteDemo() {
     async comandarPrioridade(modo) { s.prioridade = modo; },
     async comandarLeituraYoutube(modo) { s.leituraYoutube = modo; },
     async comandarZoom(ligar) { s.zoomLigado = ligar; },
+    async comandarAuditor(ctx, ligar) { s.auditorControle = { ...(s.auditorControle ?? {}), [ctx]: { ligado: ligar } }; },
     async acrescentarComando(item) { s.comandosHistorico = [...(s.comandosHistorico ?? []), item]; },
     async comandarCorretora(id) { s.execucao.corretora = id; },
     aoMudar() {},
@@ -714,6 +730,7 @@ function rotaAtual() {
     const q = new URLSearchParams(h.split("?")[1] ?? ""), m = q.get("m");
     return doMonitor({ tipo: "historico", modo: MODOS_VALIDOS.has(m) ? m : "padrao", conta: q.get("c") === "real" ? "real" : "demo" });
   }
+  if (h.startsWith("#/auditoria")) return doMonitor({ tipo: "auditoria" });  // auditor das lives (auditoria.js, 24/11/2026)
   if (h.startsWith("#/comandos")) return doMonitor({ tipo: "comandos", fonte: new URLSearchParams(h.split("?")[1] ?? "").get("f") ?? undefined });
   const an = h.match(/^#\/(consolidado|agentes|tiktok|youtube|sites|tradingview|telegram)(?:\/([^/?]+))?/);
   if (an) {
@@ -922,7 +939,7 @@ function htmlGrupoMonitor(rota, e) {
     ? fontesDoCtx().reduce((soma, f) => soma + sinaisVigentes(estado, f).filter((s) => !foraDaExecucao(s)).length, 0)
     : (estadoBruto?.monitorSinais ?? []).filter((s) => sinalAberto(s) && (ctxAtual === "todos" || ctxDe(s.fonte) === ctxAtual)).length;
   return `<div class="aba-grupo" data-menu="monitor"${menuMonitorAberto ? " data-aberto" : ""}>
-    <a class="aba" href="${hrefCtx(ctxAtual)}" ${["monitor", "analise", "termometro", "comparar", "comandos", "historico"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
+    <a class="aba" href="${hrefCtx(ctxAtual)}" ${["monitor", "analise", "termometro", "comparar", "comandos", "historico", "auditoria"].includes(rota.tipo) ? 'aria-current="page"' : ""} style="--cor:${cor("monitor")}"><i class="ponto"></i>Monitor${total ? `<span class="count">${total}</span>` : ""}</a>
     <button type="button" class="aba-seta" data-menu-seta aria-expanded="${menuMonitorAberto}" aria-controls="menu-monitor" aria-label="Fontes do monitor">${ico("chevron")}</button>
   </div>`;
 }
@@ -941,13 +958,14 @@ function htmlSubmenuMonitor(rota, e) {
     + `<li><a href="${hrefCtx(ctxM, CONSOLIDADO)}" ${rota.tipo === "analise" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Resultado</a></li>`
     + `<li><a href="${hrefCtx(ctxM, "historico")}" ${rota.tipo === "historico" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Histórico</a></li>`
     + (CONTEXTOS[ctxM].termometro ? `<li><a href="${hrefCtx(ctxM, "termometro")}" ${rota.tipo === "termometro" ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Termômetro</a></li>` : "")
+    + (typeof vistaAuditoria === "function" ? `<li><a href="${hrefCtx(ctxM, "auditoria")}" ${rota.tipo === "auditoria" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Auditoria</a></li>` : "")
     + `<li><a href="${hrefCtx(ctxM, "comandos")}" ${rota.tipo === "comandos" && rota.ctx === ctxM ? 'aria-current="page"' : ""}><i class="ponto" aria-hidden="true"></i>Comandos</a></li>`;
   return `<ul class="submenu" id="menu-monitor" aria-label="Contexto e fontes do monitor"${menuMonitorAberto ? " data-aberto" : ""}>${seletor}${itens}</ul>`;
 }
 
 // Faixa do contexto: diz em qual mercado e corretora a tela está (as telas do Forex e da Bovespa são parecidas)
 function htmlFaixaContexto(rota) {
-  if (!["monitor", "analise", "termometro", "comparar", "comandos", "historico"].includes(rota.tipo)) return "";
+  if (!["monitor", "analise", "termometro", "comparar", "comandos", "historico", "auditoria"].includes(rota.tipo)) return "";
   if (rota.tipo === "comparar") return `<p class="ctx-faixa" data-ctx="todos"><b>Todos</b><span>Forex × Bovespa lado a lado · ${rota.visao === "efetiva" ? "ordens executadas" : "placar teórico"} · resultado em R</span></p>`;
   const c = CONTEXTOS[ctxLente];
   const texto = ctxLente === "forex" ? `dados Capital.com · execução ${corretoraExec()}` : c.corretora;
@@ -3493,6 +3511,8 @@ function vistaComandos(foco) {
       ${fx ? cmd("Consenso", "Ligado: só sai sinal quando vários canais concordam. Desligado: cada canal gera o seu sinal.",
         `<button class="btn pequeno" data-acao="consenso" data-ligar="${!e.consensoLigado}" aria-pressed="${e.consensoLigado ? "true" : "false"}">${ico("radio")} Consenso: ${e.consensoLigado ? "ligado" : "desligado"}</button>`) : ""}
       ${fx ? cmd("Sala do Zoom", "Sala de análise em teste: seg a sex 09:15–11:15 e seg a qui a partir das 20:00 (Brasília). Ligada, o monitor entra e guarda prints.", htmlBotaoZoom(e)) : ""}
+      ${typeof audLigado === "function" ? cmd("Auditor das lives", `Revê no vídeo gravado cada canal do YouTube com sinal no dia, ${ctxLente === "bovespa" ? "às 20:00 de Brasília nos dias de pregão" : "às 19:00 de Nova York, de segunda a sexta"}. Usa a assinatura do Claude só com a trava saudável.`,
+        `<button class="btn pequeno" data-acao="auditor" data-ligar="${!audLigado(e, ctxLente)}" aria-pressed="${audLigado(e, ctxLente)}">${ico("power")} Auditor: ${audLigado(e, ctxLente) ? "ligado" : "desligado"}</button> <a class="btn pequeno" href="${hrefCtx(ctxLente, "auditoria")}">Ver auditoria</a>`) : ""}
     </dl></section>`;
   const blocoExec = !temExec ? "" : `<section class="painel" aria-labelledby="h-cmd-exec"><h2 id="h-cmd-exec">${ico("power")} Execução</h2>
     <p class="meta">Quem abre ordem na ${esc(corretoraExec())} quando sai um sinal novo. As ordens já abertas não mudam: seguem até o stop ou o alvo.</p>
@@ -3943,7 +3963,7 @@ function render(forcar = true) {
   rotaRenderizada = chaveRota(rota);
   if (nova) { histFiltro = "padrao"; histLimite = HIST_PASSO; histOrdem = { col: null, dir: -1 }; histAtivo = ""; histLado = ""; histOrigem = ""; listasAbertas.clear(); }  // cada página abre o histórico do início
   // contexto da tela (lente) e do menu: nas telas do monitor os dois coincidem; nas outras o menu segue o último contexto escolhido
-  const doMonitor = ["monitor", "analise", "termometro", "comparar", "comandos", "historico"].includes(rota.tipo);
+  const doMonitor = ["monitor", "analise", "termometro", "comparar", "comandos", "historico", "auditoria"].includes(rota.tipo);
   ctxLente = rota.tipo === "comparar" ? "todos" : doMonitor ? rota.ctx : "forex";
   ctxAtual = doMonitor ? (rota.tipo === "comparar" ? "todos" : rota.ctx) : ctxLembrado;
   estado = ctxLente === "todos" ? estadoBruto : lente(estadoBruto, ctxLente);
@@ -3971,7 +3991,7 @@ function render(forcar = true) {
   const vp = `${calcularVersaoPaineis(estadoBruto)}|${comPeriodo ? periodoDias : 30}|${comCategoria ? categoriaFiltro : ""}`;
   if (vp !== versaoPaineis) { versaoPaineis = vp; memoPaineis = new Map(); }
   let corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar(rota.visao)
-    : rota.tipo === "saude" && typeof vistaSaude === "function" ? vistaSaude() : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "historico" ? vistaHistorico(rota.modo, rota.conta) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
+    : rota.tipo === "saude" && typeof vistaSaude === "function" ? vistaSaude() : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "auditoria" && typeof vistaAuditoria === "function" ? vistaAuditoria(rota.ctx) : rota.tipo === "historico" ? vistaHistorico(rota.modo, rota.conta) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
   if (comPeriodo) corpo = corpo.replaceAll("nos últimos 30 dias", periodoDias ? `nos últimos ${periodoDias} dias` : "hoje (desde 00:00)").replaceAll("últimos 30 dias", textoPeriodo()).replaceAll("· 30 dias<", `· ${periodoDias ? `${periodoDias} dias` : "hoje"}<`);
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
@@ -3984,7 +4004,7 @@ function render(forcar = true) {
   prepararRolagens(app);
   restaurarMenu(focoMenu);
   abertos?.size && detalhesComChave(app).forEach(([d, k]) => { if (abertos.has(k)) d.open = abertos.get(k); });
-  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "saude" ? "Saúde · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comandos" ? "Comandos · Central de Comando" : rota.tipo === "historico" ? "Histórico · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
+  document.title = rota.tipo === "projeto" ? `${PROJETOS[rota.id].nome} · Central de Comando` : rota.tipo === "monitor" ? "Monitor · Central de Comando" : rota.tipo === "saude" ? "Saúde · Central de Comando" : rota.tipo === "termometro" ? "Termômetro · Central de Comando" : rota.tipo === "comandos" ? "Comandos · Central de Comando" : rota.tipo === "auditoria" ? "Auditoria · Central de Comando" : rota.tipo === "historico" ? "Histórico · Central de Comando" : rota.tipo === "comparar" ? "Comparar mercados · Central de Comando" : rota.tipo === "analise" ? `${FONTES[rota.fonte] ?? "Consolidado"}${rota.ctx === "forex" ? "" : ` · ${NOME_CTX[rota.ctx]}`} · Central de Comando` : "Central de Comando";
   if (nova) {
     const main = app.querySelector("main");
     main.classList.add("entrada");
@@ -4186,6 +4206,12 @@ document.addEventListener("click", (ev) => {
     if (desfazerPrioridade) setTimeout(() => { if (desfazerPrioridade && Date.now() >= desfazerPrioridade.ate) { desfazerPrioridade = null; render(); } }, 8200);
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarPrioridade(modo), { texto: `Lives: ${(PRIORIDADES.find(([k]) => k === modo) ?? [0, modo])[1]}`, ctx: "todos" });
+  }
+  if (acao === "auditor") {
+    const ligar = b.dataset.ligar === "true", ctx = ctxLente;
+    if (ctx !== "forex" && ctx !== "bovespa") return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarAuditor(ctx, ligar), { texto: `Auditor das lives (${NOME_CTX[ctx]}) ${ligar ? "ligado" : "desligado"}` });
   }
   if (acao === "zoom") {
     const ligar = b.dataset.ligar === "true";
