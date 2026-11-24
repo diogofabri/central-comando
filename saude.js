@@ -109,9 +109,13 @@ function svgFolga(pontos) {
     }
     return d.trim();
   };
-  const maxB = Math.max(1, ...pontos.map(folgaBloq)), larg = Math.max(3, Math.min(14, (W - E - D) / pontos.length - 2));
-  const barras = pontos.map((p) => { const n = folgaBloq(p); if (!n) return ""; const h = (n / maxB) * HB;
-    return `<rect class="bloq" x="${(x(p) - larg / 2).toFixed(1)}" y="${(B - h).toFixed(1)}" width="${larg.toFixed(1)}" height="${h.toFixed(1)}"><title>${n} abertura(s) barrada(s)</title></rect>`; }).join("");
+  // cada barra é "a hora antes da medição": termina no ponto e começa na medição anterior (no máximo 1 h antes), para
+  // medições próximas não se sobreporem e a última não passar da borda
+  const maxB = Math.max(1, ...pontos.map(folgaBloq));
+  const barras = pontos.map((p, k) => { const n = folgaBloq(p); if (!n) return ""; const h = (n / maxB) * HB;
+    const fim = new Date(p.em).getTime(), ini = Math.max(fim - 36e5, k ? new Date(pontos[k - 1].em).getTime() : -Infinity, t0);
+    const xi = x({ em: ini }) + 1, xf = x(p), larg = Math.max(2, xf - xi);
+    return `<rect class="bloq" x="${(xf - larg).toFixed(1)}" y="${(B - h).toFixed(1)}" width="${larg.toFixed(1)}" height="${h.toFixed(1)}"><title>${quando(p.em)}: ${n} abertura(s) de live barrada(s) na hora anterior</title></rect>`; }).join("");
   const grade = [0, 50, 85, 100].map((v) => `<line class="${v === 85 ? "guarda" : "grade"}" x1="${E}" x2="${W - D}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>
     <text class="eixo" x="${E - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${v}%</text>`).join("");
   // rótulos em horas redondas (passo de 1 a 24 h para caber até 7), com a data só no primeiro e quando o dia muda
