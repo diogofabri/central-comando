@@ -908,10 +908,11 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 .aud-tempo-caixa { overflow-x: auto; margin: 8px 0 4px; }
 .aud-tempo { display: block; width: 100%; min-width: 480px; max-width: 640px; height: auto; overflow: visible; }
 .aud-tempo .eixo { stroke: var(--line-2); stroke-width: 1.5; }
-.aud-tempo text { font-size: 11px; fill: var(--ink-2); font-variant-numeric: tabular-nums; }
+.aud-tempo text { font-size: 11px; fill: var(--ink-2); font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 .aud-tempo .aud-t-canal circle { fill: var(--ink-2); } .aud-tempo .aud-t-canal line { stroke: var(--ink-2); }
 .aud-tempo .aud-t-nos circle { fill: var(--monitor); } .aud-tempo .aud-t-nos line { stroke: var(--monitor); }
 .aud-tempo .aud-t-nos text { fill: var(--monitor); font-weight: 600; }
+.aud-tempo .fio { stroke-width: 1; stroke-dasharray: 2 2; }
 .aud-fatos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 6px 18px; margin: 8px 0; font-size: 14px; }
 .aud-fatos dt { color: var(--ink-2); font-size: 12px; } .aud-fatos dd { margin: 0; font-variant-numeric: tabular-nums; }
 .aud-texto { font-size: 14px; max-width: 78ch; margin: 6px 0 0; text-wrap: pretty; }
@@ -968,7 +969,7 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
 <script src="saude.js?v=1"></script>
-<script src="auditoria.js?v=2"></script>
+<script src="auditoria.js?v=3"></script>
 <script src="app.js?v=138"></script>
 </body>
 </html>

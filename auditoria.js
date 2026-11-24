@@ -186,20 +186,33 @@ function svgAudTempo(op) {
   if (cs != null) pts.push(["canal sai", cs, "canal"]);
   for (const s of op.atrasos_saida ?? []) if (cs != null && s.atraso_s != null) pts.push([`nossa saída${(op.atrasos_saida ?? []).length > 1 ? ` ${s.parcial}` : ""}`, cs + s.atraso_s * 1e3, "nos"]);
   if (pts.length < 2) return "";
-  const t0 = Math.min(...pts.map((p) => p[1])), t1 = Math.max(...pts.map((p) => p[1])), W = 560, M = 14, Y = 40;
+  const t0 = Math.min(...pts.map((p) => p[1])), t1 = Math.max(...pts.map((p) => p[1])), W = 560, M = 14;
   const x = (t) => M + ((t - t0) / Math.max(1, t1 - t0)) * (W - 2 * M);
   pts.sort((a, b) => a[1] - b[1]);
-  // rótulos do canal em cima e os nossos embaixo; perto demais do anterior do mesmo lado, desce (sobe) uma linha
-  const ultimo = { canal: [-1e9, 0], nos: [-1e9, 0] };
-  const marcas = pts.map(([rot, t, quem], k) => {
-    const xp = x(t), u = ultimo[quem], linha = xp - u[0] < 150 ? (u[1] + 1) % 2 : 0;
-    ultimo[quem] = [xp, linha];
-    const y = quem === "canal" ? 20 - linha * 13 : 60 + linha * 13;
-    const ancora = xp < 70 ? "start" : xp > W - 70 ? "end" : "middle";
-    return `<g class="aud-t-${quem}"><line x1="${xp.toFixed(1)}" x2="${xp.toFixed(1)}" y1="${Y - 6}" y2="${Y + 6}"/><circle cx="${xp.toFixed(1)}" cy="${Y}" r="4"/>
-      <text x="${xp.toFixed(1)}" y="${y}" text-anchor="${ancora}">${esc(rot)} ${esc(audHora(new Date(t).toISOString()))}</text></g>`;
-  }).join("");
-  return `<div class="aud-tempo-caixa"><svg class="aud-tempo" viewBox="0 0 ${W} 80" role="img" aria-label="${esc(pts.map(([r, t]) => `${r} ${audHora(new Date(t).toISOString())}`).join(", "))}">
+  // Rótulos do canal em cima e os nossos embaixo. Cada um vai para a 1.ª linha do seu lado em que cabe sem encostar
+  // no anterior (largura estimada pelo número de letras), com quantas linhas forem precisas; um fio liga o rótulo ao
+  // ponto. 24/11/2026: três saídas a minutos uma da outra escreviam por cima umas das outras.
+  const LETRA = 6.4, FOLGA = 10, PASSO = 15;
+  const linhas = { canal: [], nos: [] };
+  const rotulos = pts.map(([rot, t, quem]) => {
+    const texto = `${rot} ${audHora(new Date(t).toISOString())}`, larg = texto.length * LETRA, xp = x(t);
+    const ancora = xp - larg / 2 < 2 ? "start" : xp + larg / 2 > W - 2 ? "end" : "middle";
+    const ini = ancora === "start" ? xp : ancora === "end" ? xp - larg : xp - larg / 2;
+    const ocup = linhas[quem];
+    let linha = ocup.findIndex((fim) => ini > fim + FOLGA);
+    if (linha < 0) { linha = ocup.length; ocup.push(0); }
+    ocup[linha] = ini + larg;
+    return { texto, xp, quem, linha, ancora };
+  });
+  const nCima = Math.max(1, linhas.canal.length), nBaixo = Math.max(1, linhas.nos.length);
+  const Y = 8 + nCima * PASSO + 6, H = Y + 10 + nBaixo * PASSO + 4;
+  // fios e pontos primeiro, textos por cima (com contorno da cor do fundo): um fio de fora nunca risca o texto de dentro
+  const yt = ({ quem, linha }) => (quem === "canal" ? Y - 12 - linha * PASSO : Y + 20 + linha * PASSO);
+  const marcas = rotulos.map((r) => {
+    const fio = r.quem === "canal" ? [yt(r) + 3, Y - 5] : [Y + 5, yt(r) - 11];
+    return `<g class="aud-t-${r.quem}"><line class="fio" x1="${r.xp.toFixed(1)}" x2="${r.xp.toFixed(1)}" y1="${fio[0]}" y2="${fio[1]}"/><circle cx="${r.xp.toFixed(1)}" cy="${Y}" r="4"/></g>`;
+  }).join("") + rotulos.map((r) => `<g class="aud-t-${r.quem}"><text x="${r.xp.toFixed(1)}" y="${yt(r)}" text-anchor="${r.ancora}">${esc(r.texto)}</text></g>`).join("");
+  return `<div class="aud-tempo-caixa"><svg class="aud-tempo" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(rotulos.map((r) => r.texto).join(", "))} (horário de Brasília)">
     <line class="eixo" x1="${M}" x2="${W - M}" y1="${Y}" y2="${Y}"/>${marcas}</svg></div>`;
 }
 
@@ -259,6 +272,7 @@ async function audAbrir(id) {
     <p class="aud-frase">${htmlBadge(s[1], s[0], s[2])} ${esc(AUD_MOTIVO[a.motivo] ?? a.motivo ?? "")} · resultado ${audDinheiro(a.resultado, a.moeda)} · perda do canal ${audDinheiro(a.perda_canal, a.moeda)} · perda nossa ${audDinheiro(a.perda_nossa, a.moeda)}
       · ${audNum(a.prints_video)} prints do vídeo em ${audNum((a.duracao_s ?? 0) / 60)} min</p>
     ${perfil ? `<p class="aud-nota">Perfil do canal (${audNum(perfil.operacoes)} operações revistas): parciais em média ${audNum(perfil.parciais_media, 1)}, move o stop em ${audNum(100 * (perfil.move_stop ?? 0))}% das operações, segura além da live em ${audNum(100 * (perfil.segura_alem_da_live ?? 0))}%, atraso mediano nosso na entrada ${audSeg(perfil.atraso_entrada_mediano_s)} e na saída ${audSeg(perfil.atraso_saida_mediano_s)}.</p>` : ""}
+    <p class="aud-nota">Horas no horário de Brasília (UTC−3). Os textos "O que aconteceu" e "Melhoria sugerida" são da revisão pela IA e citam as horas em UTC, 3 h à frente.</p>
     ${comOrdem.length ? `<h3>Operações com ordem (${comOrdem.length})</h3>${comOrdem.map((o) => htmlAudOp(o, a.moeda)).join("")}` : ""}
     ${semOrdem.length ? `<h3>Sinais sem ordem (${semOrdem.length})</h3>${semOrdem.map((o) => htmlAudOp(o, a.moeda)).join("")}` : ""}
     ${!ops.length ? `<p class="vazio">Nenhuma operação gravada para esta revisão.</p>` : ""}
@@ -456,7 +470,11 @@ function demoAuditoriaOps(a) {
   if (a.n_ordens === 0) return [{ sinal_id: 4391, instrumento: "WDO", direcao: "venda", categoria: "atraso_leitura", atrasado: true, r_teorico: -1, status_placar: "stop",
     canal_entrou_em: new Date(base).toISOString(), atraso_entrada_s: 1980, atrasos_saida: [], calibracao: "relogio", ajuste_video_s: -5, prints_video: 31, prints_locais: 2,
     o_que_aconteceu: "O canal já estava vendido havia 33 min quando o nosso print leu a posição." }];
+  const z = (hms) => new Date(`${a.dia}T${hms}Z`).toISOString();
   return [
+    { sinal_id: 5, ordens: [1, 2, 3], instrumento: "WDO", direcao: "venda", resultado: -890, categoria: "leitura_errada", canal_entrou_em: z("12:15:09"), atraso_entrada_s: 790,
+      canal_saiu_em: z("12:32:49"), atrasos_saida: [{ parcial: 1, atraso_s: 7320 }, { parcial: 2, atraso_s: 7512 }, { parcial: 3, atraso_s: 7512 }], calibracao: "relogio", ajuste_video_s: -5,
+      prints_video: 68, prints_locais: 2, o_que_aconteceu: "O monitor abriu a venda às 12:28:18 sobre um sinal de 12:27:24; nesse momento o canal estava zerado." },
     { sinal_id: 3238, ordens: [1036], instrumento: "WDO", direcao: "venda", resultado: -345, categoria: "entrada_tardia", canal_entrou_em: new Date(base).toISOString(), atraso_entrada_s: 3743,
       canal_saiu_em: new Date(base + 3748e3).toISOString(), atrasos_saida: [{ parcial: 1, atraso_s: 1200 }], calibracao: "relogio", ajuste_video_s: 199, prints_video: 74, prints_locais: 1,
       o_que_aconteceu: "O canal entrou vendido 20 às 12:01 e zerou às 13:04:12; a nossa venda abriu às 13:04:07, cinco segundos antes de ele sair.",
