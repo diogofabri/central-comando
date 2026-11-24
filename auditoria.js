@@ -20,7 +20,7 @@ const AUD_MELHORIA = { sugerida: ["sugerida", "muted"], aprovada: ["aprovada", "
   descartada: ["descartada", "muted"], revertida: ["revertida", "muted"] };
 let audDia = null, audDialogo = null;
 
-const audNum = (v, casas = 0) => (v == null || !Number.isFinite(Number(v)) ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas, minimumFractionDigits: casas }));
+const audNum = (v, casas = 0) => (v == null || !Number.isFinite(Number(v)) ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas, minimumFractionDigits: casas }).replace("-", "−"));
 const audHora = (iso) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—");
 const audSeg = (s) => (s == null ? "—" : Math.abs(s) < 120 ? `${s > 0 ? "+" : s < 0 ? "−" : ""}${Math.abs(Math.round(s))} s` : `${s > 0 ? "+" : "−"}${Math.round(Math.abs(s) / 60)} min`);
 const audDiaFmt = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—");
@@ -293,11 +293,122 @@ function vistaAuditoria(ctx) {
     ${dia ? `<div class="aud-dia">${seletor}${dias.length === 1 ? `<span class="aud-nota">Dia auditado: ${audDiaFmt(dia)}</span>` : ""}</div>
       ${htmlAudCanais(e, ctx, dia)}${htmlAudResumo(e, ctx, dia)}` : `<section class="painel"><p class="vazio">Nenhum dia auditado ainda neste mercado.</p></section>`}
     ${htmlAudMelhorias(e, ctx)}
+    ${htmlAudAntesDepois(e, ctx)}
+    ${htmlAudAtrasados(e, ctx)}
   </main>`;
+}
+
+// ---------- etapa 5 (24/11/2026): marcas na curva, antes × depois por melhoria e tendência dos atrasados ----------
+// Melhoria aplicada é uma mudança: entra na curva como marco de comando (losango, lista e "antes × depois" da própria
+// curva). A rodada do auditor só observa: entra como marca discreta no eixo, sem antes × depois.
+function audMarcosCurva(ctx) {
+  const out = [];
+  for (const m of estadoBruto?.melhorias ?? []) {
+    if (m.contexto !== ctx && m.contexto !== "todos") continue;
+    const canais = (m.aplicada_canais?.length ? m.aplicada_canais : [m.canal]).filter(Boolean).map(audCanal).join(", ");
+    const alvo = m.escopo === "global" ? "todos os canais" : canais;
+    const titulo = String(m.titulo ?? "").replace(/ · ▶️ .*$/, "");
+    if (m.aplicada_em) out.push({ em: m.aplicada_em, texto: `Melhoria #${m.id} aplicada (${alvo}): ${titulo}`, ctx, fonte: "youtube" });
+    if (m.revertida_em) out.push({ em: m.revertida_em, texto: `Melhoria #${m.id} revertida: ${titulo}`, ctx, fonte: "youtube" });
+  }
+  return out;
+}
+
+function audRodadasCurva(ctx) {
+  const porDia = new Map();
+  for (const a of estadoBruto?.auditorias ?? []) {
+    if (a.contexto !== ctx || a.situacao !== "concluida" || !a.terminado_em) continue;
+    const g = porDia.get(a.dia) ?? { em: a.terminado_em, canais: 0, nossa: 0, moeda: a.moeda };
+    g.canais += 1;
+    g.nossa += Number(a.perda_nossa ?? 0);
+    if (a.terminado_em > g.em) g.em = a.terminado_em;
+    porDia.set(a.dia, g);
+  }
+  return [...porDia].map(([dia, g]) => ({ em: g.em,
+    texto: `Auditoria de ${audDiaFmt(dia)}: ${g.canais} ${g.canais > 1 ? "canais revistos" : "canal revisto"}, perda de causa nossa ${audNum(g.nossa, 2)} ${g.moeda ?? ""}` }));
+}
+
+// R por operação e quantas operações tiveram a causa, nos canais do escopo, 14 dias antes × depois da aplicação
+const AUD_JANELA_DIAS = 14;
+function audAntesDepois(m, linhasDia) {
+  if (!m.aplicada_em) return null;
+  const quandoAp = m.aplicada_em.slice(0, 10), d0 = new Date(`${quandoAp}T12:00:00`);
+  const inicio = new Date(d0 - AUD_JANELA_DIAS * 864e5).toISOString().slice(0, 10);
+  const canais = m.escopo === "global" ? null : new Set((m.aplicada_canais?.length ? m.aplicada_canais : [m.canal]).filter(Boolean));
+  const excl = new Set(m.excluidos ?? []);
+  const doEscopo = linhasDia.filter((x) => (m.contexto === "todos" || x.contexto === m.contexto) && (!canais || canais.has(x.canal)) && !excl.has(x.canal));
+  const soma = (xs) => ({ ops: xs.reduce((s, x) => s + Number(x.operacoes ?? 0), 0), r: xs.reduce((s, x) => s + Number(x.r_total ?? 0), 0),
+    causa: xs.reduce((s, x) => s + Number(x.por_categoria?.[m.categoria]?.ordens ?? 0), 0) });
+  return { antes: soma(doEscopo.filter((x) => x.dia >= inicio && x.dia < quandoAp)), depois: soma(doEscopo.filter((x) => x.dia > quandoAp)) };
+}
+
+function htmlAudAntesDepois(e, ctx) {
+  const aplicadas = (e.melhorias ?? []).filter((m) => (m.contexto === ctx || m.contexto === "todos") && m.aplicada_em && !m.revertida_em);
+  if (!aplicadas.length) return "";
+  const lado = (j) => (j.ops ? `${audNum(j.r / j.ops, 2)} R/op <span class="meta">em ${audNum(j.ops)} operações, causa em ${audNum(j.causa)}</span>` : `<span class="meta">sem operações</span>`);
+  const linhas = aplicadas.map((m) => {
+    const ad = audAntesDepois(m, e.auditoriaCanalDia ?? []);
+    const pouco = !ad || ad.depois.ops < 10;
+    const dif = ad && ad.antes.ops && ad.depois.ops ? ad.depois.r / ad.depois.ops - ad.antes.r / ad.antes.ops : null;
+    const difTxt = dif == null ? "—" : `<b class="${dif < 0 ? "neg" : dif > 0 ? "pos" : ""}">${dif > 0 ? "+" : dif < 0 ? "−" : ""}${audNum(Math.abs(dif), 2)} R/op</b>`;
+    return `<tr><td class="esq"><b>${esc(String(m.titulo).replace(/ · ▶️ .*$/, ""))}</b><div class="meta">#${m.id} · aplicada ${esc(quando(m.aplicada_em))}</div></td>
+      <td class="esq">${ad ? lado(ad.antes) : "—"}</td><td class="esq">${ad ? lado(ad.depois) : "—"}</td>
+      <td>${difTxt}${pouco ? `<div class="meta">cedo para concluir</div>` : ""}</td></tr>`;
+  }).join("");
+  return `<section class="painel" aria-labelledby="h-aud-ad">
+    <h2 id="h-aud-ad">${ico("activity")} Antes × depois das melhorias aplicadas</h2>
+    <p class="aud-nota">Nos canais do escopo de cada melhoria: ${AUD_JANELA_DIAS} dias antes da aplicação contra os dias depois, só dos dias auditados. Com menos de 10 operações depois é cedo para concluir; outras coisas mudam junto, então a diferença é indício, não prova.</p>
+    <div class="rolagem"><table class="tabela vira-lista"><thead><tr><th scope="col" class="esq">Melhoria</th><th scope="col" class="esq">Antes</th><th scope="col" class="esq">Depois</th><th scope="col">Diferença</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div>
+  </section>`;
+}
+
+// Atrasados por canal, dia a dia: a tendência esperada é cair (decisão do Diogo, 24/11/2026, opção B)
+function htmlAudAtrasados(e, ctx) {
+  const linhas = (e.auditoriaCanalDia ?? []).filter((x) => x.contexto === ctx && /^youtube/.test(x.fonte));
+  const dias = [...new Set(linhas.map((x) => x.dia))].sort().slice(-7);
+  if (dias.length < 2) return "";
+  const porCanal = new Map();
+  for (const x of linhas) {
+    if (!dias.includes(x.dia)) continue;
+    const m = porCanal.get(x.canal) ?? new Map();
+    m.set(x.dia, x);
+    porCanal.set(x.canal, m);
+  }
+  const sinais = (x) => Number(x.operacoes ?? 0) + Number(x.atrasados_sem_ordem ?? 0) + Number(x.sem_execucao ?? 0);
+  const meio = Math.floor(dias.length / 2);
+  const canais = [...porCanal].map(([canal, m]) => {
+    const tot = [...m.values()].reduce((s, x) => s + Number(x.atrasados ?? 0), 0);
+    const parte = (ds) => {
+      const xs = ds.map((d) => m.get(d)).filter(Boolean), s = xs.reduce((a, x) => a + sinais(x), 0);
+      return s ? xs.reduce((a, x) => a + Number(x.atrasados ?? 0), 0) / s : null;
+    };
+    return { canal, m, tot, p0: parte(dias.slice(0, meio)), p1: parte(dias.slice(meio)) };
+  }).filter((c) => c.tot > 0).sort((a, b) => b.tot - a.tot);
+  if (!canais.length) return "";
+  const tend = (c) => (c.p0 == null || c.p1 == null ? htmlBadge("muted", "poucos dias") : c.p1 < c.p0 - 0.05 ? htmlBadge("good", "caindo", "baixa")
+    : c.p1 > c.p0 + 0.05 ? htmlBadge("critical", "subindo", "alta") : htmlBadge("muted", "estável"));
+  const cab = dias.map((d) => `<th scope="col">${new Date(`${d}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</th>`).join("");
+  const corpo = canais.map((c) => `<tr><td class="esq"><b>${esc(audCanal(c.canal))}</b></td>${dias.map((d) => {
+    const x = c.m.get(d);
+    return `<td>${x ? `${audNum(x.atrasados)} <small class="aud-de">de ${audNum(sinais(x))}</small>` : `<span class="meta">—</span>`}</td>`;
+  }).join("")}<td class="esq">${tend(c)}</td></tr>`).join("");
+  return `<section class="painel" aria-labelledby="h-aud-atr">
+    <h2 id="h-aud-atr">${ico("clock")} Atrasados por canal</h2>
+    <p class="aud-nota">Sinais que saíram atrasados (a posição do canal já corria no nosso print), de todos os sinais do canal no dia. A tendência compara a parte atrasada da 1.ª metade dos dias com a da 2.ª; com as melhorias de leitura, o esperado é cair.</p>
+    <div class="rolagem"><table class="tabela aud-atrasos"><thead><tr><th scope="col" class="esq">Canal</th>${cab}<th scope="col" class="esq">Tendência</th></tr></thead><tbody>${corpo}</tbody></table></div>
+  </section>`;
 }
 
 // ---------- dados de exemplo (modo demonstração) ----------
 function demoAuditoria(agora) {
+  const r = demoAuditoriaBase(agora);
+  r.auditoriaCanalDia = [...r.auditoriaCanalDia, ...r.auditoriaCanalDiaExtra];
+  delete r.auditoriaCanalDiaExtra;
+  return r;
+}
+
+function demoAuditoriaBase(agora) {
   const dia = new Date(agora - 864e5).toISOString().slice(0, 10), h = 3600e3;
   const aud = (id, canal, motivo, resultado, canalP, nossa, extra = {}) => ({ id, contexto: "bovespa", dia, canal: `▶️ ${canal}`, motivo, situacao: "concluida", resultado, moeda: "BRL",
     n_ordens: 6, n_operacoes: 4, perda_canal: canalP, perda_nossa: nossa, progresso: 1, duracao_s: 2400, prints_video: 310,
@@ -310,13 +421,26 @@ function demoAuditoria(agora) {
       { contexto: "bovespa", dia, fonte: "youtube@bovespa", canal: "▶️ canal.win", ordens: 3, operacoes: 3, resultado: 310, moeda: "BRL", atrasados: 0, atrasados_sem_ordem: 0, sem_execucao: 0 },
       { contexto: "bovespa", dia, fonte: "youtube@bovespa", canal: "▶️ canal.acoes", ordens: 0, operacoes: 0, resultado: 0, moeda: "BRL", atrasados: 2, atrasados_sem_ordem: 2, sem_execucao: 0 },
     ],
+    // dias anteriores (tendência dos atrasados e antes × depois): menos atrasados depois da melhoria #6
+    ...(() => {
+      const extra = [];
+      for (let k = 2; k <= 7; k++) {
+        const d = new Date(agora - k * 864e5).toISOString().slice(0, 10), depois = k <= 3;
+        extra.push({ contexto: "bovespa", dia: d, fonte: "youtube@bovespa", canal: "▶️ canal.wdo", ordens: 5, operacoes: 4, resultado: depois ? 120 : -300, r_total: depois ? 0.8 : -1.6,
+          moeda: "BRL", atrasados: depois ? 1 : 4, atrasados_sem_ordem: depois ? 1 : 3, sem_execucao: 1, por_categoria: { atraso_leitura: { ordens: depois ? 0 : 2, resultado: 0 } } });
+        extra.push({ contexto: "bovespa", dia: d, fonte: "youtube@bovespa", canal: "▶️ canal.win", ordens: 3, operacoes: 3, resultado: 60, r_total: 0.4, moeda: "BRL",
+          atrasados: 1, atrasados_sem_ordem: 0, sem_execucao: 0, por_categoria: {} });
+      }
+      return { auditoriaCanalDiaExtra: extra };
+    })(),
     canaisPerfil: [
       { contexto: "bovespa", canal: "▶️ canal.wdo", operacoes: 9, parciais_media: 2.1, move_stop: 0.8, segura_alem_da_live: 0.2, atraso_entrada_mediano_s: 150, atraso_saida_mediano_s: 62, mostra_relogio: 1, ultimo_ajuste_s: 199 },
       { contexto: "bovespa", canal: "▶️ canal.win", operacoes: 3, parciais_media: 1, move_stop: 0.3, segura_alem_da_live: 0, atraso_entrada_mediano_s: 40, atraso_saida_mediano_s: 20, mostra_relogio: 0, ultimo_ajuste_s: -5 },
     ],
     melhorias: [
       { id: 2, contexto: "bovespa", titulo: "Zerar a cópia quando a posição do canal some, diminui por último ou vira de lado", escopo: "canal", canal: "▶️ canal.wdo", categoria: "saida_do_canal", ocorrencias: 2, impacto: -1460, situacao: "sugerida" },
-      { id: 6, contexto: "bovespa", titulo: "Reduzir o atraso entre a operação do canal e o nosso sinal", escopo: "global", categoria: "atraso_leitura", ocorrencias: 7, impacto: 0, situacao: "aplicada" },
+      { id: 6, contexto: "bovespa", titulo: "Reduzir o atraso entre a operação do canal e o nosso sinal", escopo: "global", categoria: "atraso_leitura", ocorrencias: 7, impacto: 0, situacao: "aplicada",
+        aplicada_em: new Date(agora - 3.5 * 864e5).toISOString() },
       { id: 4, contexto: "bovespa", titulo: "Segurar a última parcial enquanto o canal segue posicionado", escopo: "canal", canal: "▶️ canal.wdo", categoria: "saida_cedo", ocorrencias: 2, impacto: 385, situacao: "sugerida", contradiz: 2 },
     ],
     auditorEstado: { bovespa: { ligado: true, situacao: "concluida", dia, relatorios: 3, duracao_min: 64, terminado_em: new Date(agora - 14 * h).toISOString(), proxima: new Date(agora + 8 * h).toISOString() },

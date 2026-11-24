@@ -874,6 +874,9 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* Auditor das lives (#/<mercado>/auditoria, auditoria.js; 24/11/2026) */
 .aud-nota { font-size: 14px; color: var(--ink-2); margin: 6px 0 0; max-width: 60ch; text-wrap: pretty; }
 .aud-nota code { font-size: 13px; }
+.grafico .marco-aud circle, .amostra-aud { fill: var(--surface); stroke: var(--monitor); stroke-width: 2; }
+.grafico .marco-aud { cursor: help; }
+.aud-de { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
 .aud-detalhe { margin: 6px 0 4px; font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .aud-prog { flex: 1 1 160px; max-width: 280px; }
 .aud-trava { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -965,7 +968,7 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
 <script src="saude.js?v=1"></script>
-<script src="auditoria.js?v=1"></script>
-<script src="app.js?v=137"></script>
+<script src="auditoria.js?v=2"></script>
+<script src="app.js?v=138"></script>
 </body>
 </html>

@@ -317,7 +317,7 @@ function fonteSupabase(cfg) {
         sb.from("monitor_auditorias").select("id,contexto,dia,canal,fonte,motivo,situacao,etapa,progresso,erro,resultado,moeda,n_ordens,n_operacoes,perda_canal,perda_nossa,por_categoria,prints_video,duracao_s,iniciado_em,terminado_em")
           .gte("dia", ha30d().slice(0, 10)).order("dia", { ascending: false }).order("id").then(ok).catch(() => []),
         sb.from("monitor_auditoria_canal_dia").select("*").gte("dia", ha30d().slice(0, 10)).then(ok).catch(() => []),
-        sb.from("monitor_melhorias").select("id,contexto,titulo,escopo,canal,padrao,categoria,ocorrencias,impacto,situacao,contradiz,aplicada_em").order("id", { ascending: false }).then(ok).catch(() => []),
+        sb.from("monitor_melhorias").select("id,contexto,titulo,escopo,canal,padrao,categoria,ocorrencias,impacto,situacao,contradiz,aplicada_em,revertida_em,aplicada_canais,excluidos").order("id", { ascending: false }).then(ok).catch(() => []),
         sb.from("monitor_canais_perfil").select("*").then(ok).catch(() => []),
       ]);
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
@@ -2534,12 +2534,18 @@ function svgSaldo(a) {
   const W = estreito ? 360 : 640, H = estreito ? 180 : 210, L = 52, R = curvaTeoricaDaPagina ? 54 : 12, T = 12, B = 26, w = W - L - R, h = H - T - B;
   // marcos de comando: os deste mercado; numa página de fonte, os gerais e os dela (no Consolidado, todos)
   const fonteDaPagina = rotaAtual().fonte, dataHoraMarco = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
-  const comandos = (estadoBruto?.comandosHistorico ?? []).filter((m) => m?.em && m.texto && (!m.ctx || m.ctx === "todos" || m.ctx === ctxLente)
+  // melhorias do auditor aplicadas ou revertidas também são mudanças (etapa 5, 24/11/2026): marco com antes × depois
+  const historicoCmd = [...(estadoBruto?.comandosHistorico ?? []), ...(typeof audMarcosCurva === "function" ? audMarcosCurva(ctxLente) : [])];
+  const comandos = historicoCmd.filter((m) => m?.em && m.texto && (!m.ctx || m.ctx === "todos" || m.ctx === ctxLente)
     && (!m.fonte || !fonteDaPagina || fonteDaPagina === CONSOLIDADO || m.fonte === fonteDaPagina))
     .filter((m) => !m.auto)  // a troca automática da prioridade (2 por dia) fica só no histórico
     .map((m) => [new Date(m.em).getTime(), String(m.texto)]).filter(([tm]) => tm >= pts[0][0]).sort((p, q) => p[0] - q[0]);
-  // a curva acaba na última operação resolvida; o eixo vai até o último comando, para ele caber
-  const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0] || t0 + 1, ...comandos.map(([tm]) => tm));
+  // rodadas do auditor (etapa 5): só observação, marca discreta no eixo, nas páginas do YouTube e no Resultado; rodam
+  // depois do pregão, então o eixo também vai até a última delas (senão a do último dia nunca aparece)
+  const rodadas = (fonteDaPagina === "youtube" || fonteDaPagina === CONSOLIDADO) && typeof audRodadasCurva === "function"
+    ? audRodadasCurva(ctxLente).map((r) => [new Date(r.em).getTime(), r.texto]).filter(([tm]) => tm >= pts[0][0]) : [];
+  // a curva acaba na última operação resolvida; o eixo vai até o último comando ou rodada, para eles caberem
+  const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0] || t0 + 1, ...comandos.map(([tm]) => tm), ...rodadas.map(([tm]) => tm));
   let yMin = Math.min(0, ...pts.map((p) => p[1])), yMax = Math.max(0, ...pts.map((p) => p[1]));
   // curva teórica (páginas de corretora): outra moeda, então escala própria. O zero das duas fica na mesma altura e a
   // maior oscilação de cada uma ocupa a mesma altura; a área do gráfico cresce para caber as duas.
@@ -2643,10 +2649,11 @@ function svgSaldo(a) {
       ${rotFundo}
       <circle class="ponto-real" cx="${x(ult[0]).toFixed(1)}" cy="${y(ult[1]).toFixed(1)}" r="4"/>
       ${marcos.map(([xm, rot]) => `<g class="marco-cmd"><title>${esc(rot)}</title><line x1="${xm}" x2="${xm}" y1="${T}" y2="${T + h}"/><rect x="${xm - 4}" y="${T - 4}" width="8" height="8" transform="rotate(45 ${xm} ${T})"/></g>`).join("")}
+      ${rodadas.map(([tm, texto]) => `<g class="marco-aud"><title>${esc(texto)}</title><circle cx="${x(tm).toFixed(1)}" cy="${T + h}" r="4"/></g>`).join("")}
       <g class="cursor" display="none" aria-hidden="true"><line class="cursor-linha" y1="${T}" y2="${T + h}"/><circle class="cursor-ponto" r="4"/><text class="cursor-rot" y="${T - 2}"/></g>
       ${dias.length >= 2 ? "" : `<text x="${L}" y="${H - 6}">${dataCurta(a.curva[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dataCurta(a.curva[a.curva.length - 1][0])}</text>`}
     </svg>
-    <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}${marcos.length ? `<span><svg viewBox="0 0 22 10"><rect x="7" y="1" width="8" height="8" transform="rotate(45 11 5)" class="amostra-marco"/></svg>mudança de comando (passe o mouse)</span>` : ""}${legendaTeorica}</div>
+    <div class="legenda"><span><svg viewBox="0 0 22 10"><line x1="1" x2="21" y1="5" y2="5" class="amostra-saldo"/></svg>${a.legenda ? esc(a.legenda) : a.unidade === "r" ? "saldo acumulado em R (múltiplos do risco)" : `saldo acumulado (lote ${String(estado.agentesPainel?.lote ?? 0.01).replace(".", ",")}, líquido de spread)`}</span>${trocas.length ? `<span><svg viewBox="0 0 22 10"><line x1="11" x2="11" y1="0" y2="10" class="amostra-troca"/></svg>troca de versão do self-learning</span>` : ""}${marcos.length ? `<span><svg viewBox="0 0 22 10"><rect x="7" y="1" width="8" height="8" transform="rotate(45 11 5)" class="amostra-marco"/></svg>mudança de comando (passe o mouse)</span>` : ""}${rodadas.length ? `<span><svg viewBox="0 0 22 10"><circle cx="11" cy="5" r="4" class="amostra-aud"/></svg>auditoria do dia (passe o mouse)</span>` : ""}${legendaTeorica}</div>
     ${listaMarcos}${antesDepois}
   </div>`;
 }
