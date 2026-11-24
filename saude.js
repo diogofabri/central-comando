@@ -88,6 +88,87 @@ function htmlSaude(s) {
     }).join("")}`;
 }
 
+// Folga do VPS (24/11/2026, pedido do Diogo): medição de hora em hora por 00-central-comando/cliente/folga.py (tarefa
+// central-folga, sem IA), publicada em controle.saude:folga. Responde "dá para pôr mais coisas em paralelo?": CPU da
+// máquina contra a linha de 85% da guarda das lives, uso da janela de 5 h da assinatura do Claude e as aberturas de live
+// barradas pela guarda em cada hora.
+const FOLGA_NIVEL = { folga: { c: "good", t: "há folga", i: "check" }, justo: { c: "warning", t: "justo", i: "alert" },
+  limite: { c: "critical", t: "no limite", i: "x" } };
+const folgaBloq = (p) => Object.values(p.bloqueios ?? {}).reduce((s, b) => s + (b.total ?? 0), 0);
+function svgFolga(pontos) {
+  const W = 1200, H = 240, E = 40, D = 10, T = 10, HB = 34, B = H - 22, Y0 = B - HB - 8;
+  const t0 = new Date(pontos[0].em).getTime(), t1 = Math.max(new Date(pontos[pontos.length - 1].em).getTime(), t0 + 36e5);
+  const x = (p) => E + ((new Date(p.em).getTime() - t0) / (t1 - t0)) * (W - E - D);
+  const y = (v) => Y0 - (Math.min(v, 100) / 100) * (Y0 - T);
+  const linha = (campo) => {
+    let d = "", aberto = false;
+    for (const p of pontos) {
+      if (p[campo] == null) { aberto = false; continue; }
+      d += `${aberto ? "L" : "M"}${x(p).toFixed(1)},${y(p[campo]).toFixed(1)} `; aberto = true;
+    }
+    return d.trim();
+  };
+  const maxB = Math.max(1, ...pontos.map(folgaBloq)), larg = Math.max(3, Math.min(14, (W - E - D) / pontos.length - 2));
+  const barras = pontos.map((p) => { const n = folgaBloq(p); if (!n) return ""; const h = (n / maxB) * HB;
+    return `<rect class="bloq" x="${(x(p) - larg / 2).toFixed(1)}" y="${(B - h).toFixed(1)}" width="${larg.toFixed(1)}" height="${h.toFixed(1)}"><title>${n} abertura(s) barrada(s)</title></rect>`; }).join("");
+  const grade = [0, 50, 85, 100].map((v) => `<line class="${v === 85 ? "guarda" : "grade"}" x1="${E}" x2="${W - D}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>
+    <text class="eixo" x="${E - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${v}%</text>`).join("");
+  const nTicks = Math.min(6, pontos.length), ticks = [];
+  for (let k = 0; k < nTicks; k++) {
+    const p = pontos[Math.round((k * (pontos.length - 1)) / Math.max(1, nTicks - 1))];
+    const d = new Date(p.em), rot = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}h`;
+    ticks.push(`<text class="eixo" x="${x(p).toFixed(1)}" y="${H - 6}" text-anchor="middle">${rot}</text>`);
+  }
+  const pontosCpu = pontos.filter((p) => p.cpu != null).map((p) => `<circle class="pt ${p.veredito ?? ""}" cx="${x(p).toFixed(1)}" cy="${y(p.cpu).toFixed(1)}" r="4">
+    <title>${quando(p.em)}: CPU ${saudeNum(p.cpu)}%, Claude 5 h ${p.claude_5h == null ? "—" : saudeNum(p.claude_5h) + "%"}, ${folgaBloq(p)} bloqueio(s) · ${FOLGA_NIVEL[p.veredito]?.t ?? ""}</title></circle>`).join("");
+  return `<svg class="folga-grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="CPU do VPS e uso da assinatura do Claude nas últimas medições, com as aberturas de live barradas">
+    ${grade}
+    <line class="grade" x1="${E}" x2="${W - D}" y1="${B}" y2="${B}"/>${barras}
+    <path class="cpu" d="${linha("cpu")}"/><path class="claude" d="${linha("claude_5h")}"/>${pontosCpu}${ticks.join("")}</svg>`;
+}
+function htmlFolga(f) {
+  const pontos = (f?.pontos ?? []).slice(-7 * 24);
+  if (!pontos.length) {
+    return `<section class="painel"><h2>${ico("activity")} Folga do VPS</h2><p class="vazio">Ainda sem medição. Roda de hora em hora no VPS
+      (<code>python 00-central-comando/cliente/folga.py medir</code>; tarefa <code>central-folga</code>).</p></section>`;
+  }
+  const u = pontos[pontos.length - 1], n = FOLGA_NIVEL[u.veredito] ?? FOLGA_NIVEL.justo;
+  const lives = Object.entries(u.lives ?? {}).filter(([k]) => k !== "erro").map(([k, v]) => `${esc(k.replace("@bovespa", " da Bovespa").replace("youtube", "YouTube").replace("tiktok", "TikTok"))} ${v}`).join(" · ") || "nenhuma";
+  const bloq = Object.entries(u.bloqueios ?? {}).filter(([, b]) => b.total).map(([k, b]) => `${esc(k)} ${b.total}`).join(" · ") || "nenhum";
+  const bv = u.bovespa ?? {};
+  return `<section class="painel" aria-labelledby="h-folga">
+    <h2 id="h-folga">${ico("activity")} Folga do VPS ${htmlBadge(n.c, n.t, n.i)}</h2>
+    <p class="meta">Medido ${quando(u.em)}, de hora em hora (amostra de ${f.amostra_s ?? 30} s). Há folga com CPU abaixo de 80%, nenhuma live barrada e assinatura abaixo de 70% da janela de 5 h; aí dá para pensar em mais faixas de leitura ou mais lives (decisão do Diogo).</p>
+    <p class="folga-motivos">${(u.motivos ?? []).map(esc).join(" · ")}</p>
+    <div class="folga-legenda"><span><i class="cpu"></i>CPU do VPS</span><span><i class="claude"></i>Claude, janela de 5 h</span><span><i class="bloq"></i>lives barradas na hora</span><span><i class="guarda"></i>guarda das lives (85%)</span></div>
+    ${svgFolga(pontos)}
+    <div class="folga-agora">
+      <div><h3>CPU por programa</h3><table class="folga-tab"><tbody>${(u.programas ?? []).slice(0, 8).map((p) =>
+        `<tr><td>${esc(p.nome)}</td><td class="num">${saudeNum(p.nucleos)} núcleo</td><td class="num">${(p.ram_mb ?? 0).toLocaleString("pt-BR")} MB</td></tr>`).join("")}</tbody></table></div>
+      <div><h3>Agora</h3><dl class="folga-dl">
+        <dt>CPU</dt><dd>${u.cpu == null ? "—" : saudeNum(u.cpu) + "%"}</dd>
+        <dt>RAM livre</dt><dd>${u.ram_livre_gb == null ? "—" : saudeNum(u.ram_livre_gb) + " GB"}</dd>
+        <dt>Lives abertas</dt><dd>${lives}</dd>
+        <dt>Barradas na última hora</dt><dd>${bloq}</dd>
+        <dt>Leitura contínua da Bovespa</dt><dd>${bv.vezes ?? 0} vezes em ${bv.canais ?? 0} canais · volta mediana ${bv.volta_s == null ? "—" : bv.volta_s + " s"}</dd>
+        <dt>Assinatura do Claude</dt><dd>${u.claude_5h == null ? "—" : saudeNum(u.claude_5h) + "%"} da janela de 5 h · ${u.claude_7d == null ? "—" : saudeNum(u.claude_7d) + "%"} da semana</dd>
+        <dt>Disk IO do Supabase</dt><dd>${u.iops_pct == null ? "—" : saudeNum(u.iops_pct) + "% da base"}</dd>
+      </dl></div>
+    </div>
+  </section>`;
+}
+function demoFolga(agora) {
+  const pontos = Array.from({ length: 30 }, (_, k) => {
+    const cpu = Math.round(70 + 22 * Math.sin(k / 3)), bl = cpu > 88 ? 2 : 0;
+    return { em: new Date(agora - (29 - k) * 36e5).toISOString(), cpu, ram_livre_gb: 4.4, claude_5h: Math.round(40 + 30 * Math.sin(k / 5 + 1)),
+      claude_7d: 63, iops_pct: 80, bloqueios: { "YouTube Bovespa": { total: bl } }, lives: { "youtube@bovespa": 9, youtube: 1 },
+      bovespa: { vezes: 206, canais: 9, volta_s: 80 }, veredito: cpu >= 85 || bl ? "limite" : cpu < 80 ? "folga" : "justo",
+      motivos: [cpu >= 85 ? `CPU em ${cpu}% (a guarda barra a partir de 85%)` : "CPU abaixo de 80%, nenhum bloqueio e assinatura abaixo de 70% da janela de 5 h"],
+      programas: [{ nome: "Chrome YouTube Bovespa", nucleos: 1.6, ram_mb: 3700 }, { nome: "Python do monitor", nucleos: 1.1, ram_mb: 900 }, { nome: "MT5", nucleos: 0.5, ram_mb: 340 }] };
+  });
+  return { pontos, amostra_s: 30 };
+}
+
 function vistaSaude() {
   return `<main class="uma">
     ${avisoErro()}
@@ -98,6 +179,7 @@ function vistaSaude() {
         <div class="meta"><span>Uso de cada limite que pode parar a aplicação: banco, corretoras de dados, transcrição, máquina e backup.</span></div>
       </div>
     </div>
+    ${htmlFolga(estado.saudeFolga)}
     ${htmlSaude(estado.saude)}
   </main>`;
 }

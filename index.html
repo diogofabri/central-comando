@@ -860,6 +860,28 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 .saude-item[data-nivel="teto"] .saude-uso { background: var(--ink-3); }
 .saude-marca { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink-3); }
 .saude-marca.forte { width: 2px; background: var(--ink-2); }
+.folga-motivos { margin: 6px 0 0; font-size: 14px; color: var(--ink-2); }
+.folga-legenda { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 12px 0 2px; font-size: 13px; color: var(--ink-2); }
+.folga-legenda i { display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+.folga-legenda i.cpu { background: var(--accent); } .folga-legenda i.claude { background: var(--warning); }
+.folga-legenda i.bloq { height: 10px; width: 8px; background: var(--critical); }
+.folga-legenda i.guarda { height: 0; border-top: 2px dashed var(--critical); }
+.folga-grafico { display: block; width: 100%; height: auto; overflow: visible; }
+.folga-grafico .grade { stroke: var(--line); stroke-width: 1; }
+.folga-grafico .guarda { stroke: var(--critical); stroke-width: 1; stroke-dasharray: 4 4; }
+.folga-grafico .eixo { font-size: 12px; fill: var(--ink-2); font-variant-numeric: tabular-nums; }
+.folga-grafico .guarda-rot { fill: var(--critical); }
+.folga-grafico .cpu { fill: none; stroke: var(--accent); stroke-width: 2; }
+.folga-grafico .claude { fill: none; stroke: var(--warning); stroke-width: 2; stroke-dasharray: 6 3; }
+.folga-grafico .bloq { fill: var(--critical); opacity: .85; }
+.folga-grafico .pt { stroke: var(--surface); stroke-width: 1.5; fill: var(--accent); }
+.folga-grafico .pt.limite { fill: var(--critical); } .folga-grafico .pt.folga { fill: var(--good); } .folga-grafico .pt.justo { fill: var(--warning); }
+.folga-agora { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px 32px; margin-top: 16px; }
+.folga-agora h3 { margin: 0 0 6px; font-size: 14px; text-transform: none; letter-spacing: 0; }
+.folga-tab { width: 100%; border-collapse: collapse; font-size: 14px; }
+.folga-tab td { padding: 4px 0; border-bottom: 1px solid var(--line); } .folga-tab td.num { text-align: right; font-variant-numeric: tabular-nums; padding-left: 12px; white-space: nowrap; }
+.folga-dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 14px; }
+.folga-dl dt { color: var(--ink-2); } .folga-dl dd { margin: 0; font-variant-numeric: tabular-nums; }
 .saude-serie { grid-column: 2; width: 132px; height: 30px; justify-self: end; overflow: visible; }
 .saude-serie path { fill: none; stroke: var(--ink-2); stroke-width: 1.5; stroke-linejoin: round; }
 .saude-serie .lim { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 3 3; }
@@ -968,8 +990,8 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="saude.js?v=1"></script>
+<script src="saude.js?v=2"></script>
 <script src="auditoria.js?v=3"></script>
-<script src="app.js?v=143"></script>
+<script src="app.js?v=144"></script>
 </body>
 </html>
