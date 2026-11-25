@@ -325,7 +325,7 @@ function fonteSupabase(cfg) {
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
-               saude: ctl["saude:painel"] ?? null, saudeFolga: ctl["saude:folga"] ?? null,
+               saude: ctl["saude:painel"] ?? null, saudeFolga: ctl["saude:folga"] ?? null, alertas: ctl["alertas:painel"] ?? null,
                auditorias, auditoriaCanalDia, melhorias, canaisPerfil, aprendizados, auditorTrava: ctl["auditor:trava"] ?? null,
                auditorEstado: { bovespa: ctl["auditor:bovespa:estado"] ?? null, forex: ctl["auditor:forex:estado"] ?? null },
                auditorControle: { bovespa: ctl["auditor:bovespa"] ?? null, forex: ctl["auditor:forex"] ?? null },
@@ -502,6 +502,9 @@ function fonteDemo() {
     termometro: demoTermometro(agora),
     saude: typeof demoSaude === "function" ? demoSaude(agora) : null,
     saudeFolga: typeof demoFolga === "function" ? demoFolga(agora) : null,
+    alertas: { medido_em: new Date(agora).toISOString(), forex: [
+      { id: "abertura:YouTube", nivel: "critico", titulo: "YouTube: nenhuma live nova abre", detalhe: "14 falhas em 30 min (@canal.a, @canal.b): [WinError 183] Não é possível criar um arquivo já existente" },
+      { id: "melhorias:forex", nivel: "decisao", titulo: "8 melhorias do auditor esperam decisão", detalhe: "Página Auditoria: aplicar, recusar ou monitorar (N1)." }], bovespa: [] },
     ...(typeof demoAuditoria === "function" ? demoAuditoria(agora) : {}),
     consensoLigado: false,
     monitorOrdens: demoOrdens(agora),
@@ -2453,9 +2456,29 @@ function htmlResumoPainel(e) {
   return `<section class="faixa-totais resumo-painel" aria-label="Resumo do ${esc(CONTEXTOS[ctxLente].nome)} agora">
     ${PREGOES[ctxLente] ? item("Mercado", `<div class="pregao-b3" data-pregao="${ctxLente}" data-sessoes="1">${htmlPregao(ctxLente, true)}</div>`, "rp-mercado") : ""}
     ${item("Fontes", `<b class="num">${noAr} de ${niveis.length}</b><span>no ar${paradas ? ` · ${paradas} ${paradas > 1 ? "paradas" : "parada"}` : ""}${atencao ? ` · ${atencao} com atenção` : ""}${inativas ? ` · ${inativas} ${inativas > 1 ? "inativas" : "inativa"} (fim de semana ou desligada)` : ""}</span>`, paradas ? "rp-alerta" : "")}
+    ${htmlAtencao(e, niveis, item)}
     ${item("Sinais abertos", `<b class="num">${abertos}</b><span>${abertos === 1 ? "sinal ativo agora" : "sinais ativos agora"}</span>`)}
     ${contas}
   </section>`;
+}
+
+// Atenção (25/11/2026, pedido do Diogo): o que está falhando agora ou espera decisão dele, por mercado. Vem do
+// coletor `00-central-comando/cliente/alertas.py` (logs das fontes e pontes + banco, a cada 15 min), mais as fontes
+// paradas que a própria tela já conhece. Em 24/11 o YouTube da Bovespa passou ~20 h sem abrir live e nada avisava.
+const AT_NIVEL = { critico: ["critical", "crítico", "x"], atencao: ["warning", "analisar", "alert"], decisao: ["muted", "sua decisão", "clock"] };
+function htmlAtencao(e, niveis, item) {
+  const lista = [...(e.alertas?.[ctxLente] ?? [])];
+  const paradas = fontesDoCtx().filter((f, i) => niveis[i] === "parada");
+  if (paradas.length) lista.unshift({ id: "paradas", nivel: "critico", titulo: `${paradas.length} ${paradas.length > 1 ? "fontes paradas" : "fonte parada"}`, detalhe: paradas.map((f) => FONTES[f] ?? f).join(", ") });
+  const medido = e.alertas?.medido_em, velho = !medido || Date.now() - new Date(medido).getTime() > 45 * 60e3;
+  const nErros = lista.filter((x) => x.nivel !== "decisao").length, nDec = lista.length - nErros;
+  const topo = nErros ? `<b class="num">${nErros}</b><span>${nErros === 1 ? "problema agora" : "problemas agora"}${nDec ? ` · ${nDec} ${nDec === 1 ? "decisão" : "decisões"} sua${nDec === 1 ? "" : "s"}` : ""}</span>`
+    : `${htmlBadge("good", "nada falhando", "check")}<span>${nDec ? `${nDec} ${nDec === 1 ? "decisão espera" : "decisões esperam"} você` : "nada esperando você"}</span>`;
+  const linhas = lista.slice(0, 4).map((x) => { const [c, r, i] = AT_NIVEL[x.nivel] ?? AT_NIVEL.atencao;
+    return `<li class="at-item">${htmlBadge(c, r, i)}<span class="at-tit">${esc(x.titulo)}</span>${x.detalhe ? `<span class="at-det" title="${esc(x.detalhe)}">${esc(x.detalhe)}</span>` : ""}</li>`; }).join("");
+  const mais = lista.length > 4 ? `<span class="meta">+${lista.length - 4} outros</span>` : "";
+  const rodape = `<span class="meta">${velho ? "coletor sem medição recente" : `medido ${Date.now() - new Date(medido).getTime() < 6e4 ? "agora" : haQuanto(medido)}`}</span>`;
+  return item("Atenção", `${topo}${linhas ? `<ul class="at-lista">${linhas}</ul>` : ""}${mais}${rodape}`, nErros ? "rp-alerta" : "");
 }
 
 function vistaMonitor() {
