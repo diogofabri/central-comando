@@ -73,7 +73,7 @@ function htmlAudAgente(e, ctx) {
   if (!ligado) { situacao = htmlBadge("muted", "desligado", "power"); detalhe = "Não roda até ser ligado na página Comandos."; }
   else if (st.situacao === "rodando") {
     situacao = htmlBadge("warning", "rodando", "loader");
-    const pct = total ? Math.round((100 * (feitas + rodandos.reduce((s, a) => s + (a.progresso ?? 0), 0))) / total) : null;
+    const pct = total ? Math.round((100 * (feitas + rodandos.reduce((s, a) => s + audPct(a), 0))) / total) : null;
     detalhe = `Dia ${audDiaFmt(st.dia)} · ${feitas} de ${total || "?"} canais prontos${rodandos.length ? ` · agora: ${rodandos.map((a) => `${esc(audCanal(a.canal))} ${htmlAudEtapa(a)}`).join(" · ")}` : ""} · começou ${esc(haQuanto(st.iniciado_em))}`
       + (pct != null ? `<span class="progresso aud-prog" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Andamento da rodada"><i style="width:${pct}%"></i></span>` : "");
   } else if (st.situacao === "erro") { situacao = htmlBadge("critical", "parou com erro", "x"); detalhe = `Dia ${audDiaFmt(st.dia)}: ${esc(st.erro ?? "sem detalhe")}`; }
@@ -137,6 +137,18 @@ const AUD_ETAPAS = [
   [/na fila/i, "Na fila"], [/^canal \d+ de|iniciando|começando/i, "Preparação"], [/revisando as ordens/i, "Revisão das ordens"],
   [/localizando os vídeos/i, "Vídeos gravados"], [/calibrando/i, "Calibração do relógio"], [/capturando/i, "Captura das janelas"],
   [/saída/i, "Busca da saída"], [/entrada/i, "Busca da entrada"], [/comparando/i, "Comparação"], [/gravando/i, "Gravação"]];
+// andamento do canal (24/11/2026): sai da etapa e da operação ("operação 3 de 7"), sem voltar para trás. Etapas 1-4 vão
+// até 40%; 5 a 8 se repetem por operação e vão de 40% a 85%; a comparação até 95%; a gravação 97%; concluída 100%.
+function audPct(a) {
+  if (!a) return 0;
+  if (a.situacao === "concluida") return 1;
+  if (a.situacao !== "rodando") return 0;
+  const txt = a.etapa ?? "", k = AUD_ETAPAS.findIndex(([re]) => re.test(txt));
+  const op = txt.match(/operação (\d+) de (\d+)/), i = op ? Number(op[1]) : 1, n = op ? Math.max(1, Number(op[2])) : 1;
+  if (k >= 4 && k <= 7) return (40 + 45 * ((i - 1 + (k - 4) / 4) / n)) / 100;
+  if (k === 8) return (85 + 10 * ((i - 1) / n)) / 100;
+  return [0, 0.05, 0.15, 0.3, 0, 0, 0, 0, 0, 0.97][k] ?? 0;
+}
 function htmlAudEtapa(a) {
   if (a?.situacao !== "rodando" && a?.situacao !== "fila") return "";
   const txt = a.situacao === "fila" ? "na fila" : a.etapa ?? "";
@@ -172,7 +184,7 @@ function htmlAudCanais(e, ctx, dia) {
   const corpo = linhas.map((l) => {
     const a = aud.get(l.canal), s = a ? AUD_SITUACAO[a.situacao] ?? [a.situacao, "muted"] : null;
     const sit = !a ? htmlBadge("muted", "não revisto", "clock")
-      : a.situacao === "rodando" ? `${htmlBadge(s[1], `${s[0]} ${Math.round(100 * (a.progresso ?? 0))}%`, s[2])} ${htmlAudEtapa(a)}<div class="meta">${esc(a.etapa ?? "começando")}</div>`
+      : a.situacao === "rodando" ? `${htmlBadge(s[1], `${s[0]} ${Math.round(100 * audPct(a))}%`, s[2])} ${htmlAudEtapa(a)}<div class="meta">${esc(a.etapa ?? "começando")}</div>`
       : a.situacao === "fila" ? `${htmlBadge(s[1], s[0], s[2])} ${htmlAudEtapa(a)}`
       : htmlBadge(s[1], s[0], s[2]);
     const semOrdem = Number(l.atrasados_sem_ordem ?? 0) + Number(l.sem_execucao ?? 0);
