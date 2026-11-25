@@ -97,6 +97,15 @@ function htmlAudCalibracao(p) {
     : `${htmlBadge("warning", "só pela API", "alert")}<span class="meta" title="Sem relógio na tela: a hora vem do início da live pela API e o vídeo gravado deriva">${aj}</span>`;
 }
 
+// tempo de cada canal na rodada (24/11/2026, pedido do Diogo): início, fim e duração; rodando, o tempo corrido
+const audHoraMin = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+const audDur = (s) => (s == null ? "—" : s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")} min`);
+function htmlAudTempo(a) {
+  if (!a?.iniciado_em) return "—";
+  if (a.situacao === "rodando") return `${audDur((Date.now() - new Date(a.iniciado_em).getTime()) / 1e3)}<div class="meta">desde ${audHoraMin(a.iniciado_em)}</div>`;
+  const s = a.duracao_s ?? (a.terminado_em ? (new Date(a.terminado_em) - new Date(a.iniciado_em)) / 1e3 : null);
+  return `${audDur(s)}<div class="meta">${audHoraMin(a.iniciado_em)}${a.terminado_em ? ` → ${audHoraMin(a.terminado_em)}` : ""}</div>`;
+}
 function htmlAudCanais(e, ctx, dia) {
   const linhas = (e.auditoriaCanalDia ?? []).filter((c) => c.contexto === ctx && c.dia === dia && /^youtube/.test(c.fonte));
   const aud = new Map((e.auditorias ?? []).filter((a) => a.contexto === ctx && a.dia === dia).map((a) => [a.canal, a]));
@@ -107,12 +116,13 @@ function htmlAudCanais(e, ctx, dia) {
   const corpo = linhas.map((l) => {
     const a = aud.get(l.canal), s = a ? AUD_SITUACAO[a.situacao] ?? [a.situacao, "muted"] : null;
     const sit = !a ? htmlBadge("muted", "não revisto", "clock")
-      : a.situacao === "rodando" ? `${htmlBadge(s[1], `${s[0]} ${Math.round(100 * (a.progresso ?? 0))}%`, s[2])}`
+      : a.situacao === "rodando" ? `${htmlBadge(s[1], `${s[0]} ${Math.round(100 * (a.progresso ?? 0))}%`, s[2])}<div class="meta">${esc(a.etapa ?? "começando")}</div>`
       : htmlBadge(s[1], s[0], s[2]);
     const semOrdem = Number(l.atrasados_sem_ordem ?? 0) + Number(l.sem_execucao ?? 0);
     return `<tr>
       <td class="esq"><b>${esc(audCanal(l.canal))}</b>${a?.motivo ? `<div class="meta">${esc(AUD_MOTIVO[a.motivo] ?? a.motivo)}</div>` : ""}</td>
       <td class="esq">${sit}${a?.situacao === "erro" && a.erro ? `<div class="meta">${esc(a.erro)}</div>` : ""}</td>
+      <td>${htmlAudTempo(a)}</td>
       <td>${audNum(l.operacoes ?? l.ordens)}</td>
       <td>${Number(l.ordens ?? 0) ? audDinheiro(l.resultado, l.moeda ?? a?.moeda) : "—"}</td>
       <td>${a ? audDinheiro(a.perda_canal, a.moeda) : "—"}</td>
@@ -125,7 +135,7 @@ function htmlAudCanais(e, ctx, dia) {
     <h2 id="h-aud-canais">${ico("list")} Canais do dia</h2>
     <p class="aud-nota">Todo canal do YouTube com sinal no dia, o pior primeiro. "Do canal" é a perda que o próprio canal teve; "nossa" é a que veio de atraso, entrada, execução, saída ou leitura. Sem ordem: sinais atrasados ou não executados, revistos só na entrada.</p>
     <div class="rolagem"><table class="tabela vira-lista aud-tabela">
-      <thead><tr><th scope="col" class="esq">Canal</th><th scope="col" class="esq">Revisão</th><th scope="col">Operações</th><th scope="col">Resultado</th>
+      <thead><tr><th scope="col" class="esq">Canal</th><th scope="col" class="esq">Revisão</th><th scope="col">Tempo</th><th scope="col">Operações</th><th scope="col">Resultado</th>
         <th scope="col">Perda do canal</th><th scope="col">Perda nossa</th><th scope="col">Sem ordem</th><th scope="col" class="esq">Hora medida por</th><th scope="col" aria-label="Ação"></th></tr></thead>
       <tbody>${corpo}</tbody></table></div>
   </section>`;
