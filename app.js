@@ -314,7 +314,7 @@ function fonteSupabase(cfg) {
       // auditor das lives (24/11/2026, auditoria.js): tabelas pequenas, uma linha por canal e dia; o relatório em texto e
       // as operações só são lidos ao abrir o modal de detalhes
       const [auditorias, auditoriaCanalDia, melhorias, canaisPerfil] = await Promise.all([
-        sb.from("monitor_auditorias").select("id,contexto,dia,canal,fonte,motivo,situacao,etapa,progresso,erro,resultado,moeda,n_ordens,n_operacoes,perda_canal,perda_nossa,por_categoria,prints_video,duracao_s,iniciado_em,terminado_em")
+        sb.from("monitor_auditorias").select("id,contexto,dia,canal,fonte,motivo,situacao,etapa,progresso,erro,resultado,moeda,n_ordens,n_operacoes,perda_canal,perda_nossa,por_categoria,prints_video,duracao_s,iniciado_em,terminado_em,tempos")
           .gte("dia", ha30d().slice(0, 10)).order("dia", { ascending: false }).order("id").then(ok).catch(() => []),
         sb.from("monitor_auditoria_canal_dia").select("*").gte("dia", ha30d().slice(0, 10)).then(ok).catch(() => []),
         sb.from("monitor_melhorias").select("id,contexto,titulo,escopo,canal,padrao,categoria,ocorrencias,impacto,situacao,contradiz,aplicada_em,revertida_em,aplicada_canais,excluidos").order("id", { ascending: false }).then(ok).catch(() => []),

@@ -88,6 +88,12 @@ function htmlAudAgente(e, ctx) {
 }
 
 // ---------- canais do dia ----------
+function htmlAudComo(p) {
+  const c = p?.como_auditar;
+  if (!c?.ops) return "";
+  const det = `Visto em ${c.ops} operações: boleta legível em ${c.ops_com_boleta ?? 0}, relógio lido em ${c.calibracoes_ok ?? 0} de ${c.calibracoes ?? 0} calibrações${c.seg_por_print ? `, ${c.seg_por_print} s por print` : ""}.`;
+  return `<div class="meta aud-como" title="${esc(det)}"><b>Próxima rodada:</b> ${(c.proxima ?? []).map(esc).join("; ") || "rodada completa"}</div>`;
+}
 function htmlAudCalibracao(p) {
   if (!p) return `<span class="meta">sem perfil</span>`;
   const relogio = p.mostra_relogio == null ? null : Number(p.mostra_relogio) >= 0.5;
@@ -104,7 +110,17 @@ function htmlAudTempo(a) {
   if (!a?.iniciado_em) return "—";
   if (a.situacao === "rodando") return `${audDur((Date.now() - new Date(a.iniciado_em).getTime()) / 1e3)}<div class="meta">desde ${audHoraMin(a.iniciado_em)}</div>`;
   const s = a.duracao_s ?? (a.terminado_em ? (new Date(a.terminado_em) - new Date(a.iniciado_em)) / 1e3 : null);
-  return `${audDur(s)}<div class="meta">${audHoraMin(a.iniciado_em)}${a.terminado_em ? ` → ${audHoraMin(a.terminado_em)}` : ""}</div>`;
+  return `${audDur(s)}<div class="meta">${audHoraMin(a.iniciado_em)}${a.terminado_em ? ` → ${audHoraMin(a.terminado_em)}` : ""}</div>${htmlAudOndeFoi(a.tempos)}`;
+}
+// onde o tempo foi (24/11/2026): vídeo (captura) × Claude, por etapa, e o que o aprendido do canal pulou
+const AUD_ETAPA = { calibrar: "relógio", capturar: "janelas", saida: "busca da saída", entrada: "busca da entrada", comparar: "comparação" };
+const AUD_PULO = { calibracao: "relógio", varredura: "busca da saída", entrada: "busca da entrada" };
+function htmlAudOndeFoi(t) {
+  if (!t || !t.total_s) return "";
+  const pior = Object.entries(t.etapas ?? {}).sort((x, y) => y[1].s - x[1].s)[0];
+  const det = Object.entries(t.etapas ?? {}).map(([k, e]) => `${AUD_ETAPA[k] ?? k}: ${audDur(e.s)} (Claude ${audDur(e.ia_s)}, ${e.ia_n} chamadas)`).join(" · ");
+  const pulos = Object.entries(t.pulos ?? {}).map(([k, n]) => `${AUD_PULO[k] ?? k} ×${n}`).join(", ");
+  return `<div class="meta" title="${esc(det)}">vídeo ${audDur(t.captura_s)} · Claude ${audDur(t.ia_s)}${pior ? ` · mais lento: ${esc(AUD_ETAPA[pior[0]] ?? pior[0])}` : ""}${t.prints_falhos ? ` · ${t.prints_falhos} de ${t.prints} prints falharam` : ""}</div>${pulos ? `<div class="meta">pulou: ${esc(pulos)}</div>` : ""}`;
 }
 function htmlAudCanais(e, ctx, dia) {
   const linhas = (e.auditoriaCanalDia ?? []).filter((c) => c.contexto === ctx && c.dia === dia && /^youtube/.test(c.fonte));
@@ -128,7 +144,7 @@ function htmlAudCanais(e, ctx, dia) {
       <td>${a ? audDinheiro(a.perda_canal, a.moeda) : "—"}</td>
       <td>${a ? audDinheiro(a.perda_nossa, a.moeda) : "—"}</td>
       <td>${semOrdem ? `${audNum(semOrdem)}<div class="meta">${audNum(l.atrasados_sem_ordem)} atrasados · ${audNum(l.sem_execucao)} sem execução</div>` : "0"}</td>
-      <td class="esq">${htmlAudCalibracao(perfil.get(l.canal))}</td>
+      <td class="esq">${htmlAudCalibracao(perfil.get(l.canal))}${htmlAudComo(perfil.get(l.canal))}</td>
       <td>${a && a.situacao !== "rodando" ? `<button type="button" class="btn pequeno" data-aud="abrir" data-id="${a.id}">Detalhes</button>` : ""}</td></tr>`;
   }).join("");
   return `<section class="painel" aria-labelledby="h-aud-canais">
@@ -136,7 +152,7 @@ function htmlAudCanais(e, ctx, dia) {
     <p class="aud-nota">Todo canal do YouTube com sinal no dia, o pior primeiro. "Do canal" é a perda que o próprio canal teve; "nossa" é a que veio de atraso, entrada, execução, saída ou leitura. Sem ordem: sinais atrasados ou não executados, revistos só na entrada.</p>
     <div class="rolagem"><table class="tabela vira-lista aud-tabela">
       <thead><tr><th scope="col" class="esq">Canal</th><th scope="col" class="esq">Revisão</th><th scope="col">Tempo</th><th scope="col">Operações</th><th scope="col">Resultado</th>
-        <th scope="col">Perda do canal</th><th scope="col">Perda nossa</th><th scope="col">Sem ordem</th><th scope="col" class="esq">Hora medida por</th><th scope="col" aria-label="Ação"></th></tr></thead>
+        <th scope="col">Perda do canal</th><th scope="col">Perda nossa</th><th scope="col">Sem ordem</th><th scope="col" class="esq">Hora medida por · como auditar</th><th scope="col" aria-label="Ação"></th></tr></thead>
       <tbody>${corpo}</tbody></table></div>
   </section>`;
 }
@@ -240,6 +256,7 @@ function htmlAudOp(op, moeda) {
       <div><dt>Atraso nas saídas</dt><dd>${(op.atrasos_saida ?? []).map((s) => audSeg(s.atraso_s)).join(" · ") || "—"}</dd></div>
       <div><dt>Hora medida por</dt><dd>${esc(calib)}${op.ajuste_video_s != null ? ` <span class="meta">(vídeo ${audSeg(Number(op.ajuste_video_s))})</span>` : ""}</dd></div>
       <div><dt>Prints</dt><dd>${audNum(op.prints_video)} do vídeo · ${audNum(op.prints_locais)} nossos</dd></div>
+      ${op.tempos?.total_s ? `<div><dt>Tempo</dt><dd>${audDur(op.tempos.total_s)}: ${Object.entries(op.tempos.etapas ?? {}).map(([k, e]) => `${AUD_ETAPA[k] ?? k} ${audDur(e.s)}`).join(" · ")}${(op.tempos.pulos ?? []).length ? ` · pulou ${op.tempos.pulos.map((x) => AUD_PULO[x] ?? x).join(", ")}` : ""}</dd></div>` : ""}
     </dl>
     ${op.o_que_aconteceu ? `<p class="aud-texto"><b>O que aconteceu.</b> ${esc(op.o_que_aconteceu)}</p>` : ""}
     ${op.melhoria ? `<p class="aud-texto"><b>Melhoria sugerida.</b> ${esc(op.melhoria)}</p>` : ""}
