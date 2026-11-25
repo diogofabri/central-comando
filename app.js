@@ -325,7 +325,7 @@ function fonteSupabase(cfg) {
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
-               saude: ctl["saude:painel"] ?? null, saudeFolga: ctl["saude:folga"] ?? null, alertas: ctl["alertas:painel"] ?? null,
+               saude: ctl["saude:painel"] ?? null, saudeFolga: ctl["saude:folga"] ?? null, alertas: ctl["alertas:painel"] ?? null, reparoAgente: ctl["reparo:agente"] === true,
                auditorias, auditoriaCanalDia, melhorias, canaisPerfil, aprendizados, auditorTrava: ctl["auditor:trava"] ?? null,
                auditorEstado: { bovespa: ctl["auditor:bovespa:estado"] ?? null, forex: ctl["auditor:forex:estado"] ?? null },
                auditorControle: { bovespa: ctl["auditor:bovespa"] ?? null, forex: ctl["auditor:forex"] ?? null },
@@ -359,6 +359,7 @@ function fonteSupabase(cfg) {
       sb.from("controle").upsert(fontes.map((f) => ({ chave: `monitor:${f}`, valor: ligar }))).then(ok),
     // liga/desliga o self-learning do executor dos agentes (lido a cada execução, a cada 5 min)
     comandarSelfLearning: (ligar) => sb.from("controle").upsert({ chave: "agentes:self_learning", valor: ligar }).then(ok),
+    comandarReparo: (ligar) => sb.from("controle").upsert({ chave: "reparo:agente", valor: ligar }).then(ok),
     // modo consenso do TikTok e do YouTube: true = vários canais precisam concordar; false (padrão) = cada canal gera o seu sinal
     comandarConsenso: (ligar) => sb.from("controle").upsert({ chave: "consenso:modo", valor: ligar }).then(ok),
     // escutar o áudio da live (feature flag por fonte e contexto, 16/11/2026): controle.audio:<fonte>[@contexto]
@@ -502,6 +503,7 @@ function fonteDemo() {
     termometro: demoTermometro(agora),
     saude: typeof demoSaude === "function" ? demoSaude(agora) : null,
     saudeFolga: typeof demoFolga === "function" ? demoFolga(agora) : null,
+    reparoAgente: true,
     alertas: { medido_em: new Date(agora).toISOString(), forex: [
       { id: "abertura:YouTube", nivel: "critico", titulo: "YouTube: nenhuma live nova abre", detalhe: "14 falhas em 30 min (@canal.a, @canal.b): [WinError 183] Não é possível criar um arquivo já existente" },
       { id: "melhorias:forex", nivel: "decisao", titulo: "8 melhorias do auditor esperam decisão", detalhe: "Página Auditoria: aplicar, recusar ou monitorar (N1)." }], bovespa: [],
@@ -574,6 +576,7 @@ function fonteDemo() {
       });
     },
     async comandarSelfLearning(ligar) { s.selfLearning = ligar; s.agentesPainel.self_learning.ligado = ligar; },
+    async comandarReparo(ligar) { s.reparoAgente = ligar; },
     async comandarConsenso(ligar) { s.consensoLigado = ligar; },
     async comandarAudio(fonteCtx, ligar) { s.audio = { ...(s.audio ?? {}), [fonteCtx]: ligar }; },
     async comandarExecucao(modo, selecao, suf = "") { (suf ? s.execucaoBovespa : s.execucao).selecao[modo] = selecao; },
@@ -4260,6 +4263,12 @@ document.addEventListener("click", (ev) => {
     if (ligar) mapa[chave] = true; else delete mapa[chave];
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarSwing(sufixoDe(ctxLente), mapa));
+  }
+  if (acao === "reparo") {
+    const ligar = b.dataset.ligar === "true";
+    if (ligar && !confirm("Ligar o agente de reparo? Com um erro crítico ou que persiste, um agente Claude corrige o código, testa, faz commit e push e reinicia a fonte sozinho, sem revisão. O sensível (credenciais, login, dinheiro real, apagar dados) fica PENDENTE para você.")) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarReparo(ligar), { texto: `Agente de reparo ${ligar ? "ligado" : "desligado"}` });
   }
   if (acao === "self-learning") {
     const ligar = b.dataset.ligar === "true";

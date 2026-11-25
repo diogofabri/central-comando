@@ -178,6 +178,24 @@ function demoFolga(agora) {
   return { pontos, amostra_s: 30 };
 }
 
+// Agente de reparo (25/11/2026, pedido do Diogo): liga e desliga aqui (controle.reparo:agente) e mostra o que ele está
+// fazendo nos dois mercados. O remédio conhecido (reiniciar a fonte) roda sempre; a chave só vale para o agente Claude.
+function htmlReparo(e) {
+  const ligado = e.reparoAgente === true;
+  const reps = e.alertas?.reparos ?? [];
+  const RS = { remedio: "reparando", agente: "agente analisando", resolvido: "resolvido", pendente: "PENDENTE · aguardando você", falhou: "falhou", aguardando: "na fila" };
+  const lista = reps.length ? `<ul class="at-lista">${reps.map((r) => `<li class="at-item at-rep">${htmlBadge(r.situacao === "resolvido" ? "good" : r.situacao === "pendente" || r.situacao === "falhou" ? "critical" : "warning", RS[r.situacao] ?? r.situacao, "activity")}
+      <span class="at-tit">${esc(CONTEXTOS[r.mercado]?.nome ?? r.mercado)} · ${esc(r.titulo)}</span>${r.resumo ? `<span class="at-det">${esc(r.resumo)}</span>` : ""}
+      ${r.situacao === "pendente" && r.mensagem ? `<span class="at-det at-pend">${esc(r.pendente ?? "")}</span><span class="at-msg">Crie uma sessão nova e envie: <code>${esc(r.mensagem)}</code></span>` : ""}</li>`).join("")}</ul>`
+    : `<p class="meta">Nenhum reparo nas últimas 24 h.</p>`;
+  return `<section class="painel" aria-labelledby="h-reparo">
+    <h2 id="h-reparo">${ico("activity")} Agente de reparo ${ligado ? htmlBadge("good", "ligado", "check") : htmlBadge("muted", "desligado", "pause")}</h2>
+    <p class="meta">Com um erro crítico ou que persiste no monitor, primeiro o remédio conhecido (reiniciar a fonte); se não resolver, um agente Claude acha a causa, corrige, testa, faz commit e reinicia. O sensível (credenciais, login, dinheiro real, apagar dados) fica PENDENTE para você.</p>
+    <div style="margin:8px 0 4px"><button class="btn pequeno ${ligado ? "" : "primario"}" data-acao="reparo" data-ligar="${!ligado}">${ico(ligado ? "pause" : "play")} ${ligado ? "Desligar o agente" : "Ligar o agente"}</button></div>
+    ${lista}
+  </section>`;
+}
+
 function vistaSaude() {
   return `<main class="uma">
     ${avisoErro()}
@@ -188,6 +206,7 @@ function vistaSaude() {
         <div class="meta"><span>Uso de cada limite que pode parar a aplicação: banco, corretoras de dados, transcrição, máquina e backup.</span></div>
       </div>
     </div>
+    ${htmlReparo(estado)}
     ${htmlFolga(estado.saudeFolga)}
     ${htmlSaude(estado.saude)}
   </main>`;
