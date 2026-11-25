@@ -49,11 +49,12 @@ function htmlSaudeItem(i) {
       ${marca(i.atencao, false)}${marca(i.critico, true)}</div>`;
   return `<li class="saude-item" data-nivel="${noTeto ? "teto" : esc(i.nivel)}">
     <div class="saude-topo"><b>${esc(i.nome)}</b>${htmlBadge(n.c, n.t, n.i)}${i.avisar ? "" : `<span class="meta" title="Teto nosso: bater o limite é o funcionamento normal, não um risco">sem aviso</span>`}</div>
-    <div class="saude-valor">${pct == null ? `<span class="meta">${esc(i.detalhe || "sem medição")}</span>`
+    <div class="saude-valor">${pct == null && i.valor != null ? `<b>${saudeNum(i.valor)}</b><span>${esc(i.unidade)}</span>`
+      : pct == null ? `<span class="meta">${esc(i.detalhe || "sem medição")}</span>`
       : `<b>${saudeNum(pct)}%</b><span>${saudeNum(i.valor)} de ${saudeNum(i.limite)} ${esc(i.unidade)}</span><span class="meta">${folga}</span>`}</div>
     ${barra}
     ${svgSaudeSerie(i.serie, i.atencao, i.critico)}
-    ${pct == null ? "" : `<p class="saude-detalhe">${esc(i.detalhe)}${i.origem ? ` <span class="meta">Limite: ${esc(i.origem)}.</span>` : ""}</p>`}
+    ${pct == null && i.valor == null ? "" : `<p class="saude-detalhe">${esc(i.detalhe)}${i.origem ? ` <span class="meta">Limite: ${esc(i.origem)}.</span>` : ""}</p>`}
   </li>`;
 }
 
@@ -232,6 +233,8 @@ function demoSaude(agora) {
     it("groq.dia:groq", "Groq (transcrição do Escutar live)", "Áudio em 24 h (groq)", 10582, 28800, "s", "Limite da chave no Groq (7.200 s/h e 28.800 s/dia). No limite a fala deixa de ser transcrita; não gera aviso.", { avisar: false }),
     it("maquina.memoria", "Máquina (vps)", "Memória", 9192, 12282, "MB", "Com pouca memória livre a guarda de recursos barra a abertura de lives.", { atencao: 88, critico: 95, serie: serie(76, 5) }),
     it("maquina.disco", "Máquina (vps)", "Disco", 82.4, 200, "GB", "Disco onde ficam o repositório, os prints e os bancos locais.", { atencao: 85, critico: 93, serie: serie(41, 0.2) }),
+    { id: "claude.login", grupo: "Claude", nome: "Login do Claude Code (agente de reparo)", valor: 6.2, limite: null, unidade: "dias até a janela de vencimento", pct: null, nivel: "atencao", avisar: true,
+      detalhe: "Vence entre 01/12 e 04/12. Renovar no terminal do VPS: claude setup-token (indicado para tarefa automática) ou claude auth login. Só você." },
     it("backup.idade", "Backup do banco", "Dias desde o último backup", 2.1, 7, "dias", "Último: 20261123-093846. Rotina semanal (supabase/ROLLBACK.md).", { atencao: 100, critico: 200 }),
   ] };
 }
