@@ -15,7 +15,7 @@ const AUD_CAT = {
 };
 const AUD_NOSSAS = new Set(["entrada_tardia", "atraso_leitura", "execucao", "saida_do_canal", "leitura_errada", "saida_cedo"]);
 const AUD_MOTIVO = { pior: "pior do dia", todos: "canal do dia", rodizio: "rodízio", sem_ordem: "só sinais sem ordem", atrasados: "só atrasados", pedido: "pedido à mão" };
-const AUD_SITUACAO = { concluida: ["concluída", "good", "check"], rodando: ["rodando", "warning", "loader"], erro: ["erro", "critical", "x"], sem_dados: ["sem vídeo", "muted", "clock"] };
+const AUD_SITUACAO = { concluida: ["concluída", "good", "check"], rodando: ["rodando", "warning", "loader"], fila: ["na fila", "muted", "clock"], erro: ["erro", "critical", "x"], sem_dados: ["sem vídeo", "muted", "clock"] };
 const AUD_MELHORIA = { sugerida: ["sugerida", "muted"], aprovada: ["aprovada", "warning"], aplicada: ["aplicada", "good"], monitorando: ["monitorando", "good"],
   descartada: ["descartada", "muted"], revertida: ["revertida", "muted"] };
 let audDia = null, audDialogo = null;
@@ -65,16 +65,16 @@ function htmlAudTrava(t) {
 function htmlAudAgente(e, ctx) {
   const st = e.auditorEstado?.[ctx] ?? {}, ligado = audLigado(e, ctx);
   const hoje = (e.auditorias ?? []).filter((a) => a.contexto === ctx && a.dia === st.dia);
-  const rodando = hoje.find((a) => a.situacao === "rodando");
+  const rodandos = hoje.filter((a) => a.situacao === "rodando");  // até 2 canais ao mesmo tempo (24/11/2026)
   const total = (e.auditoriaCanalDia ?? []).filter((c) => c.contexto === ctx && c.dia === st.dia && /^youtube/.test(c.fonte)
     && (c.ordens > 0 || c.atrasados_sem_ordem > 0 || c.sem_execucao > 0)).length;
-  const feitas = hoje.filter((a) => a.situacao !== "rodando").length;
+  const feitas = hoje.filter((a) => a.situacao !== "rodando" && a.situacao !== "fila").length;
   let situacao, detalhe = "";
   if (!ligado) { situacao = htmlBadge("muted", "desligado", "power"); detalhe = "Não roda até ser ligado na página Comandos."; }
   else if (st.situacao === "rodando") {
     situacao = htmlBadge("warning", "rodando", "loader");
-    const pct = total ? Math.round((100 * (feitas + (rodando?.progresso ?? 0))) / total) : null;
-    detalhe = `Dia ${audDiaFmt(st.dia)} · canal ${feitas + 1}${total ? ` de ${total}` : ""}${rodando ? `: ${esc(audCanal(rodando.canal))}, ${esc(rodando.etapa ?? "começando")}` : ""} · começou ${esc(haQuanto(st.iniciado_em))}`
+    const pct = total ? Math.round((100 * (feitas + rodandos.reduce((s, a) => s + (a.progresso ?? 0), 0))) / total) : null;
+    detalhe = `Dia ${audDiaFmt(st.dia)} · ${feitas} de ${total || "?"} canais prontos${rodandos.length ? ` · agora: ${rodandos.map((a) => `${esc(audCanal(a.canal))} (${esc(a.etapa ?? "começando")})`).join("; ")}` : ""} · começou ${esc(haQuanto(st.iniciado_em))}`
       + (pct != null ? `<span class="progresso aud-prog" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Andamento da rodada"><i style="width:${pct}%"></i></span>` : "");
   } else if (st.situacao === "erro") { situacao = htmlBadge("critical", "parou com erro", "x"); detalhe = `Dia ${audDiaFmt(st.dia)}: ${esc(st.erro ?? "sem detalhe")}`; }
   else { situacao = htmlBadge("good", "aguardando a próxima rodada", "clock"); detalhe = st.dia ? `Última rodada: dia ${audDiaFmt(st.dia)}, ${audNum(st.relatorios)} canais em ${audNum(st.duracao_min)} min, terminou ${esc(quando(st.terminado_em))}.` : "Ainda não rodou."; }
