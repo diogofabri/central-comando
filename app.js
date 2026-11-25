@@ -1351,8 +1351,7 @@ function htmlSessoesFx(agora = new Date()) {
     const x = sessaoFx(s, agora);
     if (!x) return "";
     return `<li class="fx-sessao${x.aberta ? " aberta" : ""}">
-      <span class="fx-nome">${esc(s[0])}</span>
-      <span class="fx-horas num">${hm(x.abre)}–${hm(x.fecha)}</span>
+      <span class="fx-id"><span class="fx-nome">${esc(s[0])}</span> <span class="fx-horas num">${hm(x.abre)}–${hm(x.fecha)}</span></span>
       ${x.aberta ? htmlBadge("good", "aberta", "check") : htmlBadge("muted", "fechada", "clock")}
       <span class="fx-timer meta">${x.aberta ? "fecha em" : "abre em"} <b class="num">${textoPrazoLongo(x.ate)}</b></span></li>`;
   }).join("");
