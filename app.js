@@ -1815,6 +1815,9 @@ function situacaoDe(i) {
   if ((i.analisando && ["fila", "lido", "ao_vivo", "gravando"].includes(k)) || k === "analisando") k = "lendo";
   else if (k === "gravando" && i.proxima_analise && new Date(i.proxima_analise) - Date.now() > 5000) k = "espera";
   else if (k === "fila") k = "sem_aba";
+  // 25/11/2026 (pedido do Diogo): "lido" sem leitura recente não é "já lido nesta volta": a live está no ar sem aba
+  // (no Forex, com a Prioridade Bovespa, ficavam 21 cinza com a última leitura de 25 h atrás)
+  else if (k === "lido" && (!i.ultima_analise || Date.now() - new Date(i.ultima_analise) > 30 * 60e3)) k = "sem_aba";
   return SITUACAO_LIVE[k] ?? { cls: "muted", t: ROTULO_ESTADO[i.estado] ?? i.estado, ordem: 9 };
 }
 function categoriaDoItem(f, e, i) {
@@ -1857,7 +1860,11 @@ function htmlAoVivo(e) {
     vivos.forEach(({ s }) => { const k = `${s.cls}|${s.t}|${s.vivo ? 1 : 0}`; porSit.set(k, (porSit.get(k) ?? { s, n: 0 })); porSit.get(k).n++; });
     const situacoes = [...porSit.values()].sort((a, b) => a.s.ordem - b.s.ordem)
       .map(({ s, n }) => `<span class="badge ${s.cls}">${s.vivo ? `<i class="ponto vivo" aria-hidden="true"></i>` : ""}<b class="num">${n}</b> ${esc(s.t)}</span>`).join("");
-    const avisos = [login ? htmlBadge("critical", `${login} pede${login > 1 ? "m" : ""} login`, "alert") : "",
+    // o mercado sem prioridade fica com 1 live de propósito: diz isso no cartão (25/11/2026)
+    const semPrio = ["forex", "bovespa"].includes(e.prioridade) && e.prioridade !== ctxLente
+      && (e.prioridade === "forex" || pregaoB3()?.aberto);  // Prioridade Bovespa só vale no pregão
+    const avisos = [semPrio ? `<span>Prioridade ${esc(CONTEXTOS[e.prioridade]?.nome ?? e.prioridade)}: este mercado fica com 1 live aberta</span>` : "",
+      login ? htmlBadge("critical", `${login} pede${login > 1 ? "m" : ""} login`, "alert") : "",
                     desc ? `<span title="o detector não conseguiu dizer se está no ar">${desc} sem resposta</span>` : "",
                     foraDaLeitura ? `<span title="a chave de leitura do YouTube está em ${ROT_LEITURA[leitura]} (página Comandos)">lendo ${ROT_LEITURA[leitura]}: ${foraDaLeitura} outra${foraDaLeitura > 1 ? "s" : ""} no ar fora da leitura</span>` : ""].join("");
     return `<div class="cartao"><div class="titulo"><span class="nome-fonte">${FONTES[f]}</span> <span class="count">${vivos.length}</span></div>
