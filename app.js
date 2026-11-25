@@ -504,7 +504,9 @@ function fonteDemo() {
     saudeFolga: typeof demoFolga === "function" ? demoFolga(agora) : null,
     alertas: { medido_em: new Date(agora).toISOString(), forex: [
       { id: "abertura:YouTube", nivel: "critico", titulo: "YouTube: nenhuma live nova abre", detalhe: "14 falhas em 30 min (@canal.a, @canal.b): [WinError 183] Não é possível criar um arquivo já existente" },
-      { id: "melhorias:forex", nivel: "decisao", titulo: "8 melhorias do auditor esperam decisão", detalhe: "Página Auditoria: aplicar, recusar ou monitorar (N1)." }], bovespa: [] },
+      { id: "melhorias:forex", nivel: "decisao", titulo: "8 melhorias do auditor esperam decisão", detalhe: "Página Auditoria: aplicar, recusar ou monitorar (N1)." }], bovespa: [],
+      reparos: [{ mercado: "forex", titulo: "YouTube: nenhuma live nova abre", situacao: "pendente", resumo: "A chave da API do YouTube expirou; o resto foi corrigido.",
+        pendente: "Gerar uma chave nova no Google Cloud e pôr no arquivo de ambiente do monitor.", mensagem: "Prossiga com o agente de reparo forex-abertura-youtube" }] },
     ...(typeof demoAuditoria === "function" ? demoAuditoria(agora) : {}),
     consensoLigado: false,
     monitorOrdens: demoOrdens(agora),
@@ -2477,8 +2479,16 @@ function htmlAtencao(e, niveis, item) {
   const linhas = lista.slice(0, 4).map((x) => { const [c, r, i] = AT_NIVEL[x.nivel] ?? AT_NIVEL.atencao;
     return `<li class="at-item">${htmlBadge(c, r, i)}<span class="at-tit">${esc(x.titulo)}</span>${x.detalhe ? `<span class="at-det" title="${esc(x.detalhe)}">${esc(x.detalhe)}</span>` : ""}</li>`; }).join("");
   const mais = lista.length > 4 ? `<span class="meta">+${lista.length - 4} outros</span>` : "";
+  const reparos = (e.alertas?.reparos ?? []).filter((r) => r.mercado === ctxLente);
+  const RP = { remedio: ["warning", "reparando", "activity"], agente: ["warning", "agente analisando", "activity"], resolvido: ["good", "resolvido", "check"],
+    pendente: ["critical", "PENDENTE · aguardando você", "alert"], falhou: ["critical", "reparo falhou", "x"], aguardando: ["muted", "na fila do reparo", "clock"] };
+  const htmlRep = reparos.length ? `<span class="rp-sub at-sub">Reparo automático</span><ul class="at-lista">${reparos.map((r) => {
+    const [c, rot, i] = RP[r.situacao] ?? RP.aguardando;
+    const msg = r.situacao === "pendente" && r.mensagem ? `<span class="at-det at-pend">${esc(r.pendente ?? "")}</span><span class="at-msg">Crie uma sessão nova e envie: <code>${esc(r.mensagem)}</code></span>` : "";
+    return `<li class="at-item at-rep">${htmlBadge(c, rot, i)}<span class="at-tit">${esc(r.titulo)}</span>${r.resumo ? `<span class="at-det" title="${esc(r.resumo)}">${esc(r.resumo)}</span>` : ""}${msg}</li>`; }).join("")}</ul>` : "";
   const rodape = `<span class="meta">${velho ? "coletor sem medição recente" : `medido ${Date.now() - new Date(medido).getTime() < 6e4 ? "agora" : haQuanto(medido)}`}</span>`;
-  return item("Atenção", `${topo}${linhas ? `<ul class="at-lista">${linhas}</ul>` : ""}${mais}${rodape}`, nErros ? "rp-alerta" : "");
+  const pend = reparos.some((r) => r.situacao === "pendente");
+  return item("Atenção", `${topo}${linhas ? `<ul class="at-lista">${linhas}</ul>` : ""}${mais}${htmlRep}${rodape}`, nErros || pend ? "rp-alerta" : "");
 }
 
 function vistaMonitor() {
