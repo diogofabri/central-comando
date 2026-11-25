@@ -313,19 +313,20 @@ function fonteSupabase(cfg) {
       const comandosLog = await sb.from("monitor_comandos").select("*").gte("em", ha30d()).order("em").then(ok).catch(() => []);
       // auditor das lives (24/11/2026, auditoria.js): tabelas pequenas, uma linha por canal e dia; o relatório em texto e
       // as operações só são lidos ao abrir o modal de detalhes
-      const [auditorias, auditoriaCanalDia, melhorias, canaisPerfil] = await Promise.all([
+      const [auditorias, auditoriaCanalDia, melhorias, canaisPerfil, aprendizados] = await Promise.all([
         sb.from("monitor_auditorias").select("id,contexto,dia,canal,fonte,motivo,situacao,etapa,progresso,erro,resultado,moeda,n_ordens,n_operacoes,perda_canal,perda_nossa,por_categoria,prints_video,duracao_s,iniciado_em,terminado_em,tempos")
           .gte("dia", ha30d().slice(0, 10)).order("dia", { ascending: false }).order("id").then(ok).catch(() => []),
         sb.from("monitor_auditoria_canal_dia").select("*").gte("dia", ha30d().slice(0, 10)).then(ok).catch(() => []),
         sb.from("monitor_melhorias").select("id,contexto,titulo,escopo,canal,padrao,categoria,ocorrencias,impacto,situacao,contradiz,aplicada_em,revertida_em,aplicada_canais,excluidos").order("id", { ascending: false }).then(ok).catch(() => []),
         sb.from("monitor_canais_perfil").select("*").then(ok).catch(() => []),
+        sb.from("monitor_auditoria_aprendizados").select("*").order("id").then(ok).catch(() => []),
       ]);
       return { projetos, pendentes, resolvidas, instrucoes, eventos, taxa: cambio[0]?.brl ?? 5, pausado: ctl.pausa === true,
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
                saude: ctl["saude:painel"] ?? null, saudeFolga: ctl["saude:folga"] ?? null,
-               auditorias, auditoriaCanalDia, melhorias, canaisPerfil, auditorTrava: ctl["auditor:trava"] ?? null,
+               auditorias, auditoriaCanalDia, melhorias, canaisPerfil, aprendizados, auditorTrava: ctl["auditor:trava"] ?? null,
                auditorEstado: { bovespa: ctl["auditor:bovespa:estado"] ?? null, forex: ctl["auditor:forex:estado"] ?? null },
                auditorControle: { bovespa: ctl["auditor:bovespa"] ?? null, forex: ctl["auditor:forex"] ?? null },
                termometro: ctl["termometro:painel"] ?? null, cotacoes: ctl["cotacoes:sinais"] ?? null,

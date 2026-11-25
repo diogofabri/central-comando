@@ -87,6 +87,35 @@ function htmlAudAgente(e, ctx) {
   </section>`;
 }
 
+// ---------- como auditar (24/11/2026, pedido do Diogo) ----------
+// Aprendizados do auditor (monitor_auditoria_aprendizados): o que vale para toda auditoria e o como de cada canal, com o
+// histórico. Só acrescenta: um item corrigido aparece riscado no histórico, com o que o substituiu e o motivo.
+const AUD_TIPO = { particularidade: ["particularidade", "muted", "info"], erro: ["erro aprendido", "warning", "alert"],
+  regra: ["regra", "good", "check"] };
+function htmlAudItensAprendidos(vig, hist) {
+  const item = (x) => `<li><span class="aud-tipo">${htmlBadge(AUD_TIPO[x.tipo]?.[1] ?? "muted", AUD_TIPO[x.tipo]?.[0] ?? x.tipo)}</span>
+    <span>${esc(x.texto)}${x.motivo ? `<span class="meta"> ${esc(x.motivo)}</span>` : ""}<span class="meta"> · ${x.origem === "auditor" ? "medido pelo auditor" : x.origem === "diogo" ? "Diogo" : "Claude"}, ${esc(quando(x.criado_em))}</span></span></li>`;
+  const ordem = { regra: 0, particularidade: 1, erro: 2 };
+  return `<ul class="aud-aprendidos">${vig.sort((a, b) => (ordem[a.tipo] ?? 9) - (ordem[b.tipo] ?? 9)).map(item).join("")}</ul>
+    ${hist.length ? `<details class="aud-hist"><summary>Histórico (${hist.length} substituídos)</summary><ul class="aud-aprendidos antigos">${hist.map((x) =>
+      `<li><span class="aud-tipo">${htmlBadge("muted", AUD_TIPO[x.tipo]?.[0] ?? x.tipo)}</span><span><s>${esc(x.texto)}</s><span class="meta"> · ${esc(quando(x.criado_em))} · substituído pelo #${x.substituido_por}</span></span></li>`).join("")}</ul></details>` : ""}`;
+}
+function htmlAudComoAuditar(e, ctx) {
+  const todos = e.aprendizados ?? [];
+  if (!todos.length) return "";
+  const vig = (x) => !x.substituido_por;
+  const gerais = todos.filter((x) => x.escopo === "geral" && (!x.contexto || x.contexto === ctx));
+  const canais = [...new Set(todos.filter((x) => x.escopo === "canal" && x.contexto === ctx).map((x) => x.canal))].sort();
+  const cartao = (titulo, itens) => `<details class="aud-como-canal"><summary><b>${esc(titulo)}</b> <span class="meta">${itens.filter(vig).length} vigentes${itens.some((x) => !vig(x)) ? ` · ${itens.filter((x) => !vig(x)).length} no histórico` : ""}</span></summary>
+    ${htmlAudItensAprendidos(itens.filter(vig), itens.filter((x) => !vig(x)))}</details>`;
+  return `<section class="painel" aria-labelledby="h-aud-como">
+    <h2 id="h-aud-como">${ico("list")} Como auditar</h2>
+    <p class="aud-nota">O que o auditor aprendeu: o que vale para toda auditoria (Geral) e o como de cada canal. Antes de cada canal ele lê isto, segue as regras e manda as particularidades do canal junto das leituras do Claude; no fim grava o que mudou. Nada é apagado: o item corrigido vai para o histórico com o motivo.</p>
+    ${cartao("Geral (todos os canais, os dois mercados)", gerais)}
+    ${canais.map((c) => cartao(audCanal(c), todos.filter((x) => x.escopo === "canal" && x.contexto === ctx && x.canal === c))).join("")}
+  </section>`;
+}
+
 // ---------- canais do dia ----------
 function htmlAudComo(p) {
   const c = p?.como_auditar;
@@ -333,6 +362,7 @@ function vistaAuditoria(ctx) {
     ${htmlAudAgente(e, ctx)}
     ${dia ? `<div class="aud-dia">${seletor}${dias.length === 1 ? `<span class="aud-nota">Dia auditado: ${audDiaFmt(dia)}</span>` : ""}</div>
       ${htmlAudCanais(e, ctx, dia)}${htmlAudResumo(e, ctx, dia)}` : `<section class="painel"><p class="vazio">Nenhum dia auditado ainda neste mercado.</p></section>`}
+    ${htmlAudComoAuditar(e, ctx)}
     ${htmlAudMelhorias(e, ctx)}
     ${htmlAudAntesDepois(e, ctx)}
     ${htmlAudAtrasados(e, ctx)}

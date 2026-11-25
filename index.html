@@ -860,6 +860,13 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 .saude-item[data-nivel="teto"] .saude-uso { background: var(--ink-3); }
 .saude-marca { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink-3); }
 .saude-marca.forte { width: 2px; background: var(--ink-2); }
+.aud-como-canal { border-top: 1px solid var(--line); padding: 10px 0; }
+.aud-como-canal > summary { cursor: pointer; font-size: 15px; }
+.aud-aprendidos { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.aud-aprendidos li { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 12px; align-items: start; }
+.aud-aprendidos.antigos { color: var(--ink-2); }
+.aud-hist { margin-top: 10px; } .aud-hist > summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
+@media (max-width: 640px) { .aud-aprendidos li { grid-template-columns: 1fr; } }
 .folga-motivos { margin: 6px 0 0; font-size: 14px; color: var(--ink-2); }
 .folga-legenda { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 12px 0 2px; font-size: 13px; color: var(--ink-2); }
 .folga-legenda i { display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
@@ -991,7 +998,7 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
 <script src="saude.js?v=4"></script>
-<script src="auditoria.js?v=6"></script>
-<script src="app.js?v=145"></script>
+<script src="auditoria.js?v=7"></script>
+<script src="app.js?v=146"></script>
 </body>
 </html>
