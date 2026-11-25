@@ -78,7 +78,7 @@ function htmlAudAgente(e, ctx) {
       + (pct != null ? `<span class="progresso aud-prog" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Andamento da rodada"><i style="width:${pct}%"></i></span>` : "");
   } else if (st.situacao === "erro") { situacao = htmlBadge("critical", "parou com erro", "x"); detalhe = `Dia ${audDiaFmt(st.dia)}: ${esc(st.erro ?? "sem detalhe")}`; }
   else { situacao = htmlBadge("good", "aguardando a próxima rodada", "clock"); detalhe = st.dia ? `Última rodada: dia ${audDiaFmt(st.dia)}, ${audNum(st.relatorios)} canais em ${audNum(st.duracao_min)} min, terminou ${esc(quando(st.terminado_em))}.` : "Ainda não rodou."; }
-  const hora = ctx === "bovespa" ? "19:00 de Brasília nos dias de pregão (30 min depois do fecho)" : "22:00 do Pacífico (PT), de segunda a sexta";
+  const hora = ctx === "bovespa" ? "19:00 de Brasília nos dias de pregão (30 min depois do fecho)" : "18:00 de Nova York, de segunda a sexta (1 h depois do fecho, a hora mais calma)";
   return `<section class="painel" aria-labelledby="h-aud-agora">
     <h2 id="h-aud-agora">${ico("activity")} Agora ${situacao}</h2>
     <p class="aud-detalhe">${detalhe}</p>

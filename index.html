@@ -631,6 +631,14 @@ details.como[open] > summary .ico { transform: rotate(90deg); }
 /* pregão da B3 no Consolidado da Bovespa (20/11/2026): OPENED/CLOSED + quanto falta para fechar/abrir */
 .pregao-b3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 2px 0 10px; }
 .pregao-b3 .badge { font-weight: 700; letter-spacing: .04em; }
+.fx-sessoes { list-style: none; margin: 10px 0 0; padding: 0; width: 100%; display: grid; gap: 8px; }
+.fx-sessao { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0 8px; font-size: 13px; }
+.fx-sessao .fx-nome { font-weight: 600; white-space: nowrap; }
+.fx-sessao .fx-horas { white-space: nowrap; color: var(--ink-2); }
+.fx-sessao .badge { font-weight: 600; letter-spacing: 0; font-size: 12px; }
+.fx-sessao .fx-timer { grid-column: 1 / -1; display: block; font-size: 12px; white-space: nowrap; }
+.fx-sessao:not(.aberta) .fx-nome { color: var(--ink-2); }
+.fx-nota { width: 100%; margin: 6px 0 0; font-size: 12px; display: block; }
 .exec-unidade { white-space: nowrap; text-align: right; }
 .exec-unidade .btn + .btn { margin-left: 6px; }
 .btn.exec .estado-exec { font-weight: 400; color: var(--ink-2); }
@@ -998,7 +1006,7 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
 <script src="saude.js?v=4"></script>
-<script src="auditoria.js?v=10"></script>
-<script src="app.js?v=146"></script>
+<script src="auditoria.js?v=11"></script>
+<script src="app.js?v=147"></script>
 </body>
 </html>

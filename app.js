@@ -1311,17 +1311,50 @@ const PREGOES = {
   bovespa: { calc: pregaoB3, tz: "America/Sao_Paulo", onde: "de Brasília", nome: "Pregão da B3" },
   forex: { calc: pregaoForex, tz: "Europe/Lisbon", onde: "de Lisboa", nome: "Mercado do Forex (CFDs)" },
 };
-function htmlPregao(ctx) {
+function htmlPregao(ctx, sessoes = false) {
   const cfg = PREGOES[ctx], p = cfg?.calc();
   if (!p) return "";
   const hora = p.ate.toLocaleString("pt-BR", { timeZone: cfg.tz, weekday: "short", hour: "2-digit", minute: "2-digit" });
   return `${p.aberto ? htmlBadge("good", "OPENED", "check") : htmlBadge("critical", "CLOSED", "x")}
-    <span class="meta">${p.aberto ? "fecha em" : "abre em"} <b class="num">${textoPrazoLongo(p.ate)}</b> (${esc(hora)} ${cfg.onde})</span>`;
+    <span class="meta">${p.aberto ? "fecha em" : "abre em"} <b class="num">${textoPrazoLongo(p.ate)}</b> (${esc(hora)} ${cfg.onde})</span>
+    ${sessoes && ctx === "forex" ? htmlSessoesFx() : ""}`;
+}
+
+// Sessões do Forex (25/11/2026, pedido do Diogo): horário de cada sessão em Lisboa, situação e contador. Horas locais
+// usuais de cada praça (com o horário de verão de cada fuso pelo Intl); só de segunda a sexta no fuso da praça.
+const SESSOES_FX = [["Sydney", "Australia/Sydney", 7, 16], ["Tóquio", "Asia/Tokyo", 9, 18],
+  ["Londres", "Europe/London", 8, 17], ["Nova York", "America/New_York", 8, 17]];
+function sessaoFx([, tz, hAbre, hFecha], agora = new Date()) {
+  const hoje = partesNoFuso(agora, tz);
+  let primeira = null;
+  for (let i = -1; i < 8; i++) {
+    const dia = new Date(Date.UTC(hoje.a, hoje.m - 1, hoje.d + i)), sem = dia.getUTCDay();
+    if (sem === 0 || sem === 6) continue;
+    const [a, m, d] = [dia.getUTCFullYear(), dia.getUTCMonth() + 1, dia.getUTCDate()];
+    const abre = horaNoFuso(a, m, d, hAbre, 0, tz), fecha = horaNoFuso(a, m, d, hFecha, 0, tz);
+    if (agora >= abre && agora < fecha) return { aberta: true, ate: fecha, abre, fecha };
+    if (abre > agora && !primeira) primeira = { aberta: false, ate: abre, abre, fecha };
+  }
+  return primeira;
+}
+function htmlSessoesFx(agora = new Date()) {
+  const hm = (d) => d.toLocaleTimeString("pt-BR", { timeZone: "Europe/Lisbon", hour: "2-digit", minute: "2-digit" });
+  const linhas = SESSOES_FX.map((s) => {
+    const x = sessaoFx(s, agora);
+    if (!x) return "";
+    return `<li class="fx-sessao${x.aberta ? " aberta" : ""}">
+      <span class="fx-nome">${esc(s[0])}</span>
+      <span class="fx-horas num">${hm(x.abre)}–${hm(x.fecha)}</span>
+      ${x.aberta ? htmlBadge("good", "aberta", "check") : htmlBadge("muted", "fechada", "clock")}
+      <span class="fx-timer meta">${x.aberta ? "fecha em" : "abre em"} <b class="num">${textoPrazoLongo(x.ate)}</b></span></li>`;
+  }).join("");
+  return `<ul class="fx-sessoes" aria-label="Sessões do Forex, horas de Lisboa">${linhas}</ul>
+    <p class="meta fx-nota">Horas de Lisboa. Mais movimento: Londres com Nova York. Mais calma: depois do fecho de Nova York e na de Tóquio, quando roda a auditoria do Forex (18:00 de Nova York).</p>`;
 }
 
 function atualizarContadores() {
   if (document.hidden) return;  // aba escondida: nada a atualizar (auditoria de 17/11/2026)
-  document.querySelectorAll("[data-pregao]").forEach((el) => { el.innerHTML = htmlPregao(el.dataset.pregao); });
+  document.querySelectorAll("[data-pregao]").forEach((el) => { el.innerHTML = htmlPregao(el.dataset.pregao, el.dataset.sessoes === "1"); });
   document.querySelectorAll("[data-ate]").forEach((el) => { el.textContent = textoContador(el.dataset.ate); });
   document.querySelectorAll("[data-desde]").forEach((el) => { el.textContent = textoDesde(el.dataset.desde); });
   document.querySelectorAll("[data-decorrido]").forEach((el) => { el.textContent = textoDecorrido(el.dataset.decorrido); });
@@ -2418,7 +2451,7 @@ function htmlResumoPainel(e) {
       <span class="meta"><a href="${hrefConta}">ver o resultado desta conta</a></span>`);
   }).join("");
   return `<section class="faixa-totais resumo-painel" aria-label="Resumo do ${esc(CONTEXTOS[ctxLente].nome)} agora">
-    ${PREGOES[ctxLente] ? item("Mercado", `<div class="pregao-b3" data-pregao="${ctxLente}">${htmlPregao(ctxLente)}</div>`, "rp-mercado") : ""}
+    ${PREGOES[ctxLente] ? item("Mercado", `<div class="pregao-b3" data-pregao="${ctxLente}" data-sessoes="1">${htmlPregao(ctxLente, true)}</div>`, "rp-mercado") : ""}
     ${item("Fontes", `<b class="num">${noAr} de ${niveis.length}</b><span>no ar${paradas ? ` · ${paradas} ${paradas > 1 ? "paradas" : "parada"}` : ""}${atencao ? ` · ${atencao} com atenção` : ""}${inativas ? ` · ${inativas} ${inativas > 1 ? "inativas" : "inativa"} (fim de semana ou desligada)` : ""}</span>`, paradas ? "rp-alerta" : "")}
     ${item("Sinais abertos", `<b class="num">${abertos}</b><span>${abertos === 1 ? "sinal ativo agora" : "sinais ativos agora"}</span>`)}
     ${contas}
