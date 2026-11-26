@@ -2488,7 +2488,8 @@ function htmlAtencao(e, niveis, item) {
   const linhas = lista.slice(0, 4).map((x) => { const [c, r, i] = AT_NIVEL[x.nivel] ?? AT_NIVEL.atencao;
     return `<li class="at-item">${htmlBadge(c, r, i)}<span class="at-tit">${esc(x.titulo)}</span>${x.detalhe ? `<span class="at-det" title="${esc(x.detalhe)}">${esc(x.detalhe)}</span>` : ""}</li>`; }).join("");
   const mais = lista.length > 4 ? `<span class="meta">+${lista.length - 4} outros</span>` : "";
-  const reparos = (e.alertas?.reparos ?? []).filter((r) => r.mercado === ctxLente);
+  // só o que ainda pede atenção (26/11/2026, pedido do Diogo): reparo resolvido fica na página Saúde, não no Atenção
+  const reparos = (e.alertas?.reparos ?? []).filter((r) => r.mercado === ctxLente && r.situacao !== "resolvido");
   const RP = { remedio: ["warning", "reparando", "activity"], agente: ["warning", "agente analisando", "activity"], resolvido: ["good", "resolvido", "check"],
     pendente: ["critical", "PENDENTE · aguardando você", "alert"], falhou: ["critical", "reparo falhou", "x"], aguardando: ["muted", "na fila do reparo", "clock"] };
   const htmlRep = reparos.length ? `<span class="rp-sub at-sub">Reparo automático</span><ul class="at-lista">${reparos.map((r) => {
