@@ -343,6 +343,8 @@ function fonteSupabase(cfg) {
                prioridade: ["bovespa", "forex"].includes(ctl["prioridade:navegadores"]) ? ctl["prioridade:navegadores"] : "normal",
                // categoria de canal que o YouTube do Forex lê (22/11/2026): controle.leitura:youtube = todos | robo | trader
                leituraYoutube: ["robo", "trader"].includes(ctl["leitura:youtube"]) ? ctl["leitura:youtube"] : "todos",
+               modeloLeitura: ["hy4", "nemotron"].includes(ctl["modelo_leitura"]) ? ctl["modelo_leitura"] : "sonnet",
+               modoCustos: ctl["modo_custos"] === "no_money" ? "no_money" : "standard",
                // sala de análise pelo Zoom (22/11/2026): só `true` liga; o monitor publica o que fez por último
                zoomLigado: ctl["zoom:ligado"] === true, zoomEstado: ctl["zoom:estado"] ?? null,
                // histórico de comandos (22/11/2026): cada mudança feita em Comandos, com data e hora, para marcar na curva
@@ -371,6 +373,8 @@ function fonteSupabase(cfg) {
     // prioridade dos navegadores entre Forex e Bovespa (lida pelas fontes de vídeo a cada ~10 s)
     comandarPrioridade: (modo) => sb.from("controle").upsert({ chave: "prioridade:navegadores", valor: modo }).then(ok),
     comandarLeituraYoutube: (modo) => sb.from("controle").upsert({ chave: "leitura:youtube", valor: modo }).then(ok),
+    comandarModeloLeitura: (modo) => sb.from("controle").upsert({ chave: "modelo_leitura", valor: modo }).then(ok),
+    comandarModoCustos: (modo) => sb.from("controle").upsert({ chave: "modo_custos", valor: modo }).then(ok),
     comandarZoom: (ligar) => sb.from("controle").upsert({ chave: "zoom:ligado", valor: ligar }).then(ok),
     // auditor das lives (24/11/2026): o agendador do VPS lê controle.auditor:<mercado> a cada 10 min
     comandarAuditor: (ctx, ligar) => sb.from("controle").upsert({ chave: `auditor:${ctx}`, valor: { ligado: ligar, em: new Date().toISOString() } }).then(ok),
@@ -585,6 +589,8 @@ function fonteDemo() {
     async pedirTroca(maquina) { s.maquinasPedido = { operar: maquina, em: new Date().toISOString() }; },
     async comandarPrioridade(modo) { s.prioridade = modo; },
     async comandarLeituraYoutube(modo) { s.leituraYoutube = modo; },
+    async comandarModeloLeitura(modo) { s.modeloLeitura = modo; },
+    async comandarModoCustos(modo) { s.modoCustos = modo; },
     async comandarZoom(ligar) { s.zoomLigado = ligar; },
     async comandarAuditor(ctx, ligar) { s.auditorControle = { ...(s.auditorControle ?? {}), [ctx]: { ligado: ligar } }; },
     async acrescentarComando(item) { s.comandosHistorico = [...(s.comandosHistorico ?? []), item]; },
@@ -2163,6 +2169,20 @@ function htmlLeituraYoutube(e) {
     `<button type="button" data-acao="leitura-youtube" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(`${dica} Vale em segundos para as próximas lives; as já abertas saem ao fim da passagem.`)}">${rot}</button>`).join("")}</span>`;
 }
 
+const MODELOS_LEITURA = [["sonnet", "Sonnet", "Claude Sonnet (assinatura/API)."], ["hy4", "Hy4", "OpenCode Hy4-flash-free (grátis, ~5s)."], ["nemotron", "Nemotron", "OpenCode Nemotron 3.5 Super VL (grátis, lento)."]];
+function htmlModeloLeitura(e) {
+  const atual = e.modeloLeitura ?? "sonnet";
+  return `<span class="segmentado" role="group" aria-label="Modelo de leitura dos prints"><span class="seg-rot">Leitura</span>${MODELOS_LEITURA.map(([k, rot, dica]) =>
+    `<button type="button" data-acao="modelo-leitura" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(dica)}">${rot}</button>`).join("")}</span>`;
+}
+
+const MODOS_CUSTOS = [["standard", "Standard", "Modo normal: Claude na leitura e confirmação."], ["no_money", "No Money", "Modo sem custo: Hy4 na leitura, confirmação desligada, auditor desligado."]];
+function htmlModoCustos(e) {
+  const atual = e.modoCustos ?? "standard";
+  return `<span class="segmentado" role="group" aria-label="Modo de custos"><span class="seg-rot">Custos</span>${MODOS_CUSTOS.map(([k, rot, dica]) =>
+    `<button type="button" data-acao="modo-custos" data-modo="${k}" aria-pressed="${k === atual}" title="${esc(dica)}">${rot}</button>`).join("")}</span>`;
+}
+
 // Sala de análise pelo Zoom (22/11/2026, pedido do Diogo): liga e desliga o monitor que entra na sala e guarda os
 // prints (05-monitor-lives/monitor_lives/sala_zoom.py). Desligado por padrão; só `controle.zoom:ligado = true` liga.
 function htmlBotaoZoom(e) {
@@ -3646,7 +3666,7 @@ function vistaComandos(foco) {
         <div class="meta"><span>O único lugar que liga, desliga e escolhe. Painel, Consolidado e as páginas das fontes só mostram o estado.</span></div>
       </div>
     </div>
-    ${blocoFontes}${blocoLeitura}${blocoExec}${blocoAgentes}${blocoMaquina}${htmlHistoricoComandos(8)}
+    ${blocoFontes}<div class="bloco"><h2>Modo de custos</h2><p class="meta">Standard usa Claude; No Money troca a leitura para Hy4, desliga a confirmação e o auditor.</p>${htmlModoCustos(e)}</div><div class="bloco"><h2>Leitura dos prints</h2><p class="meta">Troca o modelo usado na leitura das imagens (só este processo). O Sonnet continua na confirmação e nos agentes.</p>${htmlModeloLeitura(e)}</div>${blocoLeitura}${blocoExec}${blocoAgentes}${blocoMaquina}${htmlHistoricoComandos(8)}
   </main>`;
 }
 
@@ -4346,6 +4366,19 @@ document.addEventListener("click", (ev) => {
     if (modo !== "todos" && !confirm(`O YouTube do Forex passa a ler ${modo === "robo" ? "só os robôs" : "só os traders"}? Os outros canais param de abrir live até voltar para Tudo. Os sinais já abertos continuam.`)) return;
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarLeituraYoutube(modo), { texto: `YouTube lê ${{ todos: "todos os canais", robo: "só os robôs", trader: "só os traders" }[modo]}`, fonte: "youtube" });
+  }
+  if (acao === "modelo-leitura") {
+    const modo = b.dataset.modo;
+    if (modo === (estado.modeloLeitura ?? "sonnet")) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarModeloLeitura(modo), { texto: `Leitura dos prints: ${{ sonnet: "Claude Sonnet", hy4: "Hy4 (OpenCode)", nemotron: "Nemotron (OpenCode)" }[modo]}` });
+  }
+  if (acao === "modo-custos") {
+    const modo = b.dataset.modo;
+    if (modo === (estado.modoCustos ?? "standard")) return;
+    if (modo === "no_money" && !confirm("Ativar modo No Money? Desliga auditor e troca a leitura para Hy4. Agentes com revisão por IA podem parar.")) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.comandarModoCustos(modo), { texto: `Modo de custos: ${{ standard: "Standard", "no_money": "No Money" }[modo]}` });
   }
   if (acao === "trocar-maquina") {
     const alvo = b.dataset.maquina, nome = NOME_MAQUINA[alvo];
