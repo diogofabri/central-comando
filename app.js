@@ -344,7 +344,7 @@ function fonteSupabase(cfg) {
                // categoria de canal que o YouTube do Forex lê (22/11/2026): controle.leitura:youtube = todos | robo | trader
                leituraYoutube: ["robo", "trader"].includes(ctl["leitura:youtube"]) ? ctl["leitura:youtube"] : "todos",
                modeloLeitura: ["hy4", "nemotron"].includes(ctl["modelo_leitura"]) ? ctl["modelo_leitura"] : "sonnet",
-               modoCustos: ctl["modo_custos"] === "no_money" ? "no_money" : "standard",
+               modoCustos: ctl["modo_custos"] === "standard" ? "standard" : "no_money",
                // sala de análise pelo Zoom (22/11/2026): só `true` liga; o monitor publica o que fez por último
                zoomLigado: ctl["zoom:ligado"] === true, zoomEstado: ctl["zoom:estado"] ?? null,
                // histórico de comandos (22/11/2026): cada mudança feita em Comandos, com data e hora, para marcar na curva
