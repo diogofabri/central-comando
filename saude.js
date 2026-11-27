@@ -71,18 +71,23 @@ function htmlSaudeModelos(s) {
   if (!itens.length) return "";
   const teste = estado?.modelosSaude ?? null, pedido = estado?.modelosTeste?.em ?? null;
   const pendente = !!pedido && pedido !== (teste?.pedido_em ?? null);
+  const relogioPendente = teste?.estado === "rodando" && teste?.pedido_em === pedido ? teste.em : pedido;
+  const semResposta = pendente && relogioPendente && Date.now() - new Date(relogioPendente).getTime() > 7 * 60e3;
+  const aguardando = pendente && !semResposta;
   const ok = itens.filter((i) => i.estado === "ok").length;
   const falhas = itens.filter((i) => i.estado === "falhou").length;
-  const selo = pendente ? htmlBadge("warning", "teste a caminho", "loader")
+  const selo = aguardando ? htmlBadge("warning", "teste a caminho", "loader")
+    : semResposta ? htmlBadge("warning", "pedido sem resposta", "alert")
     : falhas ? htmlBadge("critical", `${falhas} falharam`, "x")
       : teste ? htmlBadge("good", `${ok} ok`, "check") : htmlBadge("muted", "sem teste", "clock");
-  const resumo = teste
+  const resumo = semResposta ? "O pedido anterior não teve retorno. Você pode solicitar um novo teste."
+    : teste
     ? `Último teste ${quando(teste.em)} · ${itens.length} modelos · uso real em cada linha`
     : "Sem teste: só uso real abaixo";
   return `<section class="saude-modelos" aria-label="Saúde dos modelos de IA">
     <div><b>${ico("bulb")} Modelos de IA</b> ${selo}<p class="meta">${esc(resumo)}. Uma chamada mínima por modelo; leva ~1 min.</p></div>
-    <button class="btn pequeno" data-acao="testar-modelos" ${pendente ? "disabled" : ""}
-      aria-label="Testar os modelos agora">${ico("play")} ${pendente ? "Testando..." : "Testar agora"}</button>
+    <button class="btn pequeno" data-acao="testar-modelos" ${aguardando ? "disabled" : ""}
+      aria-label="${semResposta ? "Tentar novamente" : "Testar os modelos agora"}">${ico("play")} ${aguardando ? "Testando..." : semResposta ? "Tentar novamente" : "Testar agora"}</button>
   </section>`;
 }
 
