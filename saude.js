@@ -41,14 +41,18 @@ function svgSaudeSerie(serie, atencao, critico) {
 function htmlSaudeItem(i) {
   // Teto nosso (sem aviso) perto do limite não é risco: selo neutro "no teto", nunca vermelho
   const noTeto = !i.avisar && (i.nivel === "atencao" || i.nivel === "critico");
-  const n = noTeto ? { c: "muted", t: i.pct >= 100 ? "no teto" : "perto do teto", i: "clock" } : SAUDE_NIVEL[i.nivel] ?? SAUDE_NIVEL.sem_dado, pct = i.pct;
+  // Modelos de IA (27/11/2026): o selo vem do teste ("ok"/"falhou"), não do % de latência — um teste que falhou não
+  // tem barra, tem motivo no detalhe.
+  const doTeste = i.estado ? (i.estado === "ok" ? SAUDE_NIVEL.ok : i.estado === "falhou" ? SAUDE_NIVEL.critico : SAUDE_NIVEL.sem_dado) : null;
+  const n = doTeste ?? (noTeto ? { c: "muted", t: i.pct >= 100 ? "no teto" : "perto do teto", i: "clock" } : SAUDE_NIVEL[i.nivel] ?? SAUDE_NIVEL.sem_dado), pct = i.pct;
   const marca = (v, forte) => (v > 0 && v < 100 ? `<i class="saude-marca${forte ? " forte" : ""}" style="left:${v}%" title="${forte ? "crítico" : "atenção"} a partir de ${v}%"></i>` : "");
   const folga = pct == null ? "" : pct >= 100 ? `${saudeNum(pct - 100)}% acima do limite` : `${saudeNum(100 - pct)}% de folga`;
   const barra = pct == null ? "" : `<div class="saude-trilho" role="img" aria-label="${saudeNum(pct)}% do limite">
       <i class="saude-uso" style="width:${Math.min(100, Math.max(1, pct)).toFixed(1)}%"></i>
       ${marca(i.atencao, false)}${marca(i.critico, true)}</div>`;
-  return `<li class="saude-item" data-nivel="${noTeto ? "teto" : esc(i.nivel)}">
-    <div class="saude-topo"><b>${esc(i.nome)}</b>${htmlBadge(n.c, n.t, n.i)}${i.avisar ? "" : `<span class="meta" title="Teto nosso: bater o limite é o funcionamento normal, não um risco">sem aviso</span>`}</div>
+  const nivelItem = i.estado === "falhou" ? "critico" : i.estado === "ok" ? "ok" : noTeto ? "teto" : esc(i.nivel);
+  return `<li class="saude-item" data-nivel="${nivelItem}">
+    <div class="saude-topo"><b>${esc(i.nome)}</b>${htmlBadge(n.c, n.t, n.i)}${i.avisar || i.estado ? "" : `<span class="meta" title="Teto nosso: bater o limite é o funcionamento normal, não um risco">sem aviso</span>`}</div>
     <div class="saude-valor">${pct == null && i.valor != null ? `<b>${saudeNum(i.valor)}</b><span>${esc(i.unidade)}</span>`
       : pct == null ? `<span class="meta">${esc(i.detalhe || "sem medição")}</span>`
       : `<b>${saudeNum(pct)}%</b><span>${saudeNum(i.valor)} de ${saudeNum(i.limite)} ${esc(i.unidade)}</span><span class="meta">${folga}</span>`}</div>
@@ -56,6 +60,30 @@ function htmlSaudeItem(i) {
     ${svgSaudeSerie(i.serie, i.atencao, i.critico)}
     ${pct == null && i.valor == null ? "" : `<p class="saude-detalhe">${esc(i.detalhe)}${i.origem ? ` <span class="meta">Limite: ${esc(i.origem)}.</span>` : ""}</p>`}
   </li>`;
+}
+
+// Modelos de IA (27/11/2026, pedido do Diogo): o uso real ja vem do coletor; o teste so acontece quando clica.
+// O botao grava controle.modelos:teste e o seguidor (`maquinas seguir`, a cada minuto) publica o resultado em
+// controle.modelos:saude. Enquanto o pedido e mais novo que o resultado, o botao fica desligado (nao gasta cota
+// duas vezes). Sem teste, os modelos que nunca rodam em producao aparecem com "sem teste" - nunca como "ok".
+function htmlSaudeModelos(s) {
+  const itens = (s?.itens ?? []).filter((i) => i.grupo === "Modelos de IA");
+  if (!itens.length) return "";
+  const teste = estado?.modelosSaude ?? null, pedido = estado?.modelosTeste?.em ?? null;
+  const pendente = !!pedido && pedido !== (teste?.pedido_em ?? null);
+  const ok = itens.filter((i) => i.estado === "ok").length;
+  const falhas = itens.filter((i) => i.estado === "falhou").length;
+  const selo = pendente ? htmlBadge("warning", "teste a caminho", "loader")
+    : falhas ? htmlBadge("critical", `${falhas} falharam`, "x")
+      : teste ? htmlBadge("good", `${ok} ok`, "check") : htmlBadge("muted", "sem teste", "clock");
+  const resumo = teste
+    ? `Último teste ${quando(teste.em)} · ${itens.length} modelos · uso real em cada linha`
+    : "Sem teste: só uso real abaixo";
+  return `<section class="saude-modelos" aria-label="Saúde dos modelos de IA">
+    <div><b>${ico("bulb")} Modelos de IA</b> ${selo}<p class="meta">${esc(resumo)}. Uma chamada mínima por modelo; leva ~1 min.</p></div>
+    <button class="btn pequeno" data-acao="testar-modelos" ${pendente ? "disabled" : ""}
+      aria-label="Testar os modelos agora">${ico("play")} ${pendente ? "Testando..." : "Testar agora"}</button>
+  </section>`;
 }
 
 function htmlSaude(s) {
@@ -78,6 +106,7 @@ function htmlSaude(s) {
   return `<section class="painel saude-resumo" aria-labelledby="h-saude-resumo">
       <h2 id="h-saude-resumo">${ico("activity")} Agora ${resumo}</h2>
       <p class="meta">Medido há ${duracao(s.medido_em)} (${quando(s.medido_em)}) em ${esc(s.maquina ?? "?")}, a cada ${s.intervalo_min ?? 15} min. Aviso no Telegram quando um item passa de 80% (atenção) ou de 90% (crítico) do limite, e quando volta ao normal.</p>
+      ${htmlSaudeModelos(s)}
       ${parado ? `<p class="saude-alerta">${ico("alert")} Sem medição nova há mais de ${3 * (s.intervalo_min ?? 15)} min: os números abaixo são os últimos conhecidos. Conferir a tarefa <code>central-saude</code> no VPS.</p>` : ""}
     </section>
     ${grupos.map((g, k) => {
@@ -236,5 +265,14 @@ function demoSaude(agora) {
     { id: "claude.login", grupo: "Claude", nome: "Login do Claude Code (agente de reparo)", valor: 6.2, limite: null, unidade: "dias até a janela de vencimento", pct: null, nivel: "atencao", avisar: true,
       detalhe: "Vence entre 01/12 e 04/12. Renovar no terminal do VPS: claude setup-token (indicado para tarefa automática) ou claude auth login. Só você." },
     it("backup.idade", "Backup do banco", "Dias desde o último backup", 2.1, 7, "dias", "Último: 20261123-093846. Rotina semanal (supabase/ROLLBACK.md).", { atencao: 100, critico: 200 }),
+    ...[["sonnet", "Claude Sonnet", 2.4, true], ["opus", "Claude Opus", 6.1, true],
+        ["hy4", "Hy4 Flash Free", null, false], ["nemotron", "Nemotron", 41.3, true],
+        ["codex", "Codex", 8.7, true]].map(([id, nome, seg, ok]) => ({
+      id: `modelos:${id}`, grupo: "Modelos de IA", nome, valor: seg, limite: 120, unidade: "s",
+      pct: seg == null ? null : +((100 * seg) / 120).toFixed(1), nivel: seg == null ? "sem_dado" : "ok",
+      detalhe: ok ? "Teste ok · 14 chamada(s) em 24 h · Papel: leitura dos prints"
+                  : "Sem teste desde o último pedido · Sem chamadas em 24 h",
+      avisar: false, atencao: 101, critico: 102, serie: [], estado: ok ? "ok" : "sem_teste"
+    })),
   ] };
 }

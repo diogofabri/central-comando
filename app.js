@@ -325,7 +325,7 @@ function fonteSupabase(cfg) {
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
-               saude: ctl["saude:painel"] ?? null, saudeFolga: ctl["saude:folga"] ?? null, alertas: ctl["alertas:painel"] ?? null, reparoAgente: ctl["reparo:agente"] === true,
+               saude: ctl["saude:painel"] ?? null, saudeFolga: ctl["saude:folga"] ?? null, modelosSaude: ctl["modelos:saude"] ?? null, modelosTeste: ctl["modelos:teste"] ?? null, alertas: ctl["alertas:painel"] ?? null, reparoAgente: ctl["reparo:agente"] === true,
                auditorias, auditoriaCanalDia, melhorias, canaisPerfil, aprendizados, auditorTrava: ctl["auditor:trava"] ?? null,
                auditorEstado: { bovespa: ctl["auditor:bovespa:estado"] ?? null, forex: ctl["auditor:forex:estado"] ?? null },
                auditorControle: { bovespa: ctl["auditor:bovespa"] ?? null, forex: ctl["auditor:forex"] ?? null },
@@ -374,6 +374,9 @@ function fonteSupabase(cfg) {
     comandarPrioridade: (modo) => sb.from("controle").upsert({ chave: "prioridade:navegadores", valor: modo }).then(ok),
     comandarLeituraYoutube: (modo) => sb.from("controle").upsert({ chave: "leitura:youtube", valor: modo }).then(ok),
     comandarModeloLeitura: (modo) => sb.from("controle").upsert({ chave: "modelo_leitura", valor: modo }).then(ok),
+    // Saúde dos modelos (27/11/2026): pedido manual de teste; o seguidor lê `modelos:teste` a cada minuto e publica
+    // `modelos:saude` com tempo/erro de cada modelo. Sem este clique nenhuma chamada extra é feita.
+    testarModelos: () => sb.from("controle").upsert({ chave: "modelos:teste", valor: { em: new Date().toISOString() } }).then(ok),
     comandarModoCustos: (modo) => sb.from("controle").upsert({ chave: "modo_custos", valor: modo }).then(ok),
     comandarZoom: (ligar) => sb.from("controle").upsert({ chave: "zoom:ligado", valor: ligar }).then(ok),
     // auditor das lives (24/11/2026): o agendador do VPS lê controle.auditor:<mercado> a cada 10 min
@@ -507,6 +510,9 @@ function fonteDemo() {
     termometro: demoTermometro(agora),
     saude: typeof demoSaude === "function" ? demoSaude(agora) : null,
     saudeFolga: typeof demoFolga === "function" ? demoFolga(agora) : null,
+    modelosTeste: { em: new Date(agora - 3 * 6e4).toISOString() },
+    modelosSaude: { em: new Date(agora - 2 * 6e4).toISOString(), pedido_em: new Date(agora - 3 * 6e4).toISOString(),
+      resultados: ["sonnet", "opus", "nemotron", "codex"].map((id) => ({ id, rotulo: id, ok: true, segundos: 3 })) },
     reparoAgente: true,
     alertas: { medido_em: new Date(agora).toISOString(), forex: [
       { id: "abertura:YouTube", nivel: "critico", titulo: "YouTube: nenhuma live nova abre", detalhe: "14 falhas em 30 min (@canal.a, @canal.b): [WinError 183] Não é possível criar um arquivo já existente" },
@@ -591,6 +597,7 @@ function fonteDemo() {
     async comandarLeituraYoutube(modo) { s.leituraYoutube = modo; },
     async comandarModeloLeitura(modo) { s.modeloLeitura = modo; },
     async comandarModoCustos(modo) { s.modoCustos = modo; },
+    async testarModelos() { s.modelosTeste = { em: new Date().toISOString() }; },
     async comandarZoom(ligar) { s.zoomLigado = ligar; },
     async comandarAuditor(ctx, ligar) { s.auditorControle = { ...(s.auditorControle ?? {}), [ctx]: { ligado: ligar } }; },
     async acrescentarComando(item) { s.comandosHistorico = [...(s.comandosHistorico ?? []), item]; },
@@ -4366,6 +4373,11 @@ document.addEventListener("click", (ev) => {
     if (modo !== "todos" && !confirm(`O YouTube do Forex passa a ler ${modo === "robo" ? "só os robôs" : "só os traders"}? Os outros canais param de abrir live até voltar para Tudo. Os sinais já abertos continuam.`)) return;
     b.disabled = true; b.classList.add("ocupado");
     return agir(() => fonte.comandarLeituraYoutube(modo), { texto: `YouTube lê ${{ todos: "todos os canais", robo: "só os robôs", trader: "só os traders" }[modo]}`, fonte: "youtube" });
+  }
+  if (acao === "testar-modelos") {
+    if (b.disabled) return;
+    b.disabled = true; b.classList.add("ocupado");
+    return agir(() => fonte.testarModelos(), { texto: "Teste dos modelos pedido (resultado em ~1 min)" });
   }
   if (acao === "modelo-leitura") {
     const modo = b.dataset.modo;

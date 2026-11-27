@@ -864,6 +864,13 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 .grafico.comparar .legenda svg .serie { stroke-width: 2.25; } .grafico.comparar > svg { max-width: 1200px; } .grafico.comparar .legenda svg { width: 22px; height: 10px; vertical-align: middle; margin-right: 6px; }
 
 /* Saúde das integrações (#/saude, saude.js; 23/11/2026) */
+.saude-modelos { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--chip); }
+.saude-modelos b { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.saude-modelos .meta { margin: 3px 0 0; max-width: 72ch; text-wrap: pretty; }
+.saude-resumo > p.meta { max-width: 76ch; text-wrap: pretty; }
+.saude-item .saude-detalhe { max-width: 76ch; text-wrap: pretty; }
+.saude-modelos .badge { margin-left: 6px; }
+.saude-modelos .btn[disabled] { opacity: .65; cursor: progress; }
 .saude-resumo h2 .badge, .saude-lista-topo .badge { margin-left: 4px; }
 .saude-alerta { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--critical-soft); color: var(--critical); font-size: 14px; }
 .saude-alerta .ico { flex: none; margin-top: 2px; }
@@ -1019,8 +1026,8 @@ a.nome-fonte:hover { text-decoration: underline; text-underline-offset: 3px; }
 </div>
 <script src="config.js?v=2" onerror="window.CENTRAL_CONFIG = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
-<script src="saude.js?v=6"></script>
+<script src="saude.js?v=7"></script>
 <script src="auditoria.js?v=12"></script>
-<script src="app.js?v=156"></script>
+<script src="app.js?v=157"></script>
 </body>
 </html>
