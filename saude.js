@@ -226,8 +226,47 @@ function htmlReparo(e) {
   </section>`;
 }
 
-function vistaSaude() {
+const ETAPAS_NIVEL = {
+  ok: { c: "good", t: "ok", i: "check" }, atencao: { c: "warning", t: "atenção", i: "alert" },
+  pausada: { c: "muted", t: "pausada", i: "pause" }, sem_atividade: { c: "muted", t: "sem atividade", i: "clock" },
+  sem_dados: { c: "muted", t: "sem dados", i: "clock" },
+};
+function saudeEtapasProblemas(s) {
+  if (!s) return 0;
+  if (Date.now() - new Date(s.medido_em).getTime() > 60 * 60e3) return 1;
+  return Object.values(s.contextos ?? {}).flatMap((c) => c.itens ?? []).concat(s.banco ?? [])
+    .filter((i) => i.estado === "atencao").length;
+}
+function htmlEtapa(i) {
+  const n = ETAPAS_NIVEL[i.estado] ?? ETAPAS_NIVEL.sem_dados;
+  return `<li class="saude-etapa"><div class="saude-etapa-topo"><b>${esc(i.etapa)}</b>${htmlBadge(n.c, n.t, n.i)}</div>
+    <p>${esc(i.detalhe ?? "")}</p>${i.modelo ? `<span class="meta">Modelo: ${esc(i.modelo)}</span>` : ""}
+    ${i.ultimo_evento ? `<span class="meta">Último evento: ${quando(i.ultimo_evento)}</span>` : ""}</li>`;
+}
+function htmlSaudeEtapas(s) {
+  if (!s) return `<section class="painel"><p class="vazio">Aguardando a primeira checagem. O coletor <code>central-etapas</code> roda a cada 20 minutos.</p></section>`;
+  const idade = Date.now() - new Date(s.medido_em).getTime(), atrasado = idade > 60 * 60e3;
+  const problemas = saudeEtapasProblemas(s);
+  const selo = atrasado ? htmlBadge("critical", "checagem atrasada", "x") : problemas
+    ? htmlBadge("warning", `${problemas} etapa(s) em atenção`, "alert") : htmlBadge("good", "etapas sem bloqueio", "check");
+  return `<section class="painel saude-resumo"><h2>${ico("activity")} Fluxo do monitor ${selo}</h2>
+    <p class="meta">Checado ${quando(s.medido_em)} · ciclo de ${s.intervalo_min ?? 20} min. “Sem atividade” é esperado quando não há live ou leitura candidata. Esta checagem só observa; não altera controles nem envia ordens.</p>
+    ${atrasado ? `<p class="saude-alerta">${ico("alert")} Sem atualização há mais de 60 minutos. Confira a tarefa <code>central-etapas</code> no VPS.</p>` : ""}</section>
+    ${Object.values(s.contextos ?? {}).map((c) => `<section class="painel"><h2>${esc(c.nome)}</h2><ul class="saude-etapas-lista">${(c.itens ?? []).map(htmlEtapa).join("")}</ul></section>`).join("")}
+    <section class="painel"><h2>Banco único</h2><ul class="saude-etapas-lista">${htmlEtapa(s.banco ?? { etapa: "Banco único", estado: "sem_dados", detalhe: "Sem informação" })}</ul></section>`;
+}
+
+function vistaSaude(aba = "") {
+  const etapas = aba === "etapas";
+  const abas = `<nav class="saude-abas" aria-label="Seções de Saúde"><a class="${etapas ? "" : "ativa"}" href="#/saude">Recursos e integrações</a><a class="${etapas ? "ativa" : ""}" href="#/saude?aba=etapas">Etapas do processo</a></nav>`;
+  if (etapas) return `<main class="uma">${abas}${avisoErro()}
+    <div class="cabecalho-proj compacto" style="--cor:var(--global)"><div class="bloco">
+      <a class="voltar" href="#/">${ico("back")} Visão geral</a>
+      <h1><i class="ponto" aria-hidden="true"></i>Saúde das etapas</h1>
+      <div class="meta"><span>Estado do caminho das lives até a validação e execução.</span></div>
+    </div></div>${htmlSaudeEtapas(estado?.saudeEtapas)}</main>`;
   return `<main class="uma">
+    ${abas}
     ${avisoErro()}
     <div class="cabecalho-proj compacto" style="--cor:var(--global)">
       <div class="bloco">

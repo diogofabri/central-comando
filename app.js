@@ -325,7 +325,7 @@ function fonteSupabase(cfg) {
                painel: ctl.painel ?? null, kpis, lancamentos, monitorFontes, monitorItens, monitorSinais, monitorResultados,
                monitorComando: Object.fromEntries(Object.entries(ctl).filter(([k]) => k.startsWith("monitor:")).map(([k, v]) => [k.slice(8), v !== false])),
                agentesPainel: ctl["agentes:painel"] ?? null, selfLearning: ctl["agentes:self_learning"] !== false,
-               saude: ctl["saude:painel"] ?? null, saudeFolga: ctl["saude:folga"] ?? null, modelosSaude: ctl["modelos:saude"] ?? null, modelosTeste: ctl["modelos:teste"] ?? null, alertas: ctl["alertas:painel"] ?? null, reparoAgente: ctl["reparo:agente"] === true,
+               saude: ctl["saude:painel"] ?? null, saudeEtapas: ctl["saude:etapas"] ?? null, saudeFolga: ctl["saude:folga"] ?? null, modelosSaude: ctl["modelos:saude"] ?? null, modelosTeste: ctl["modelos:teste"] ?? null, alertas: ctl["alertas:painel"] ?? null, reparoAgente: ctl["reparo:agente"] === true,
                auditorias, auditoriaCanalDia, melhorias, canaisPerfil, aprendizados, auditorTrava: ctl["auditor:trava"] ?? null,
                auditorEstado: { bovespa: ctl["auditor:bovespa:estado"] ?? null, forex: ctl["auditor:forex:estado"] ?? null },
                auditorControle: { bovespa: ctl["auditor:bovespa"] ?? null, forex: ctl["auditor:forex"] ?? null },
@@ -748,7 +748,7 @@ function rotaAtual() {
   if (m && PROJETOS[m[1]]) return m[1] === "monitor" ? doMonitor({ tipo: "monitor" }) : { tipo: "projeto", id: m[1], ctx: "forex" };
   if (h.startsWith("#/monitor")) return doMonitor({ tipo: "monitor" });
   if (h.startsWith("#/termometro")) return doMonitor({ tipo: "termometro" });
-  if (h.startsWith("#/saude")) return { tipo: "saude", ctx: "forex" };  // saúde das integrações (saude.js)
+  if (h.startsWith("#/saude")) return { tipo: "saude", ctx: "forex", aba: new URLSearchParams(h.split("?")[1] ?? "").get("aba") ?? "" };  // saúde das integrações e etapas
   if (h.startsWith("#/historico")) {
     const q = new URLSearchParams(h.split("?")[1] ?? ""), m = q.get("m");
     return doMonitor({ tipo: "historico", modo: MODOS_VALIDOS.has(m) ? m : "padrao", conta: q.get("c") === "real" ? "real" : "demo" });
@@ -763,7 +763,7 @@ function rotaAtual() {
   }
   return { tipo: "geral", ctx: "forex" };
 }
-const chaveRota = (r) => r.tipo + (r.ctx ?? "") + (r.fonte ?? "") + (r.id ?? "") + (r.modo ?? "") + (r.conta ?? "") + (r.visao ?? "");
+const chaveRota = (r) => r.tipo + (r.ctx ?? "") + (r.fonte ?? "") + (r.id ?? "") + (r.modo ?? "") + (r.conta ?? "") + (r.visao ?? "") + (r.aba ?? "");
 
 // ---------- componentes ----------
 
@@ -1100,7 +1100,7 @@ function htmlTopo(rota) {
       return aba(`#/p/${id}`, rota.tipo === "projeto" && rota.id === id, `<i class="ponto"></i>${esc(PROJETOS[id].nome)}${pend ? `<span class="count alerta">${pend}</span>` : ""}`, cor(id));
     }))
     // Saúde das integrações e dos limites (23/11/2026, saude.js): a contagem são os itens em atenção ou críticos
-    .concat([aba("#/saude", rota.tipo === "saude", `${ico("activity")} Saúde${typeof saudeProblemas === "function" && saudeProblemas(e.saude) ? `<span class="count alerta">${saudeProblemas(e.saude)}</span>` : ""}`, "var(--global)")]);
+    .concat([aba("#/saude", rota.tipo === "saude", `${ico("activity")} Saúde${typeof saudeProblemas === "function" && (saudeProblemas(e.saude) + (typeof saudeEtapasProblemas === "function" ? saudeEtapasProblemas(e.saudeEtapas) : 0)) ? `<span class="count alerta">${saudeProblemas(e.saude) + (typeof saudeEtapasProblemas === "function" ? saudeEtapasProblemas(e.saudeEtapas) : 0)}</span>` : ""}`, "var(--global)")]);
   return `<header class="topo">
     <div class="topo-linha">
       <div class="marca"><span class="logo">${ico("zap")}</span><div><p class="marca-nome">Central de comando</p><small>${semana ? `Semana ${semana} do roteiro · ` : ""}${fonte.demo ? "modo demonstração" : "banco único"}</small></div></div>
@@ -4132,7 +4132,7 @@ function render(forcar = true) {
   const vp = `${calcularVersaoPaineis(estadoBruto)}|${comPeriodo ? periodoDias : 30}|${comCategoria ? categoriaFiltro : ""}`;
   if (vp !== versaoPaineis) { versaoPaineis = vp; memoPaineis = new Map(); }
   let corpo = rota.tipo === "projeto" ? vistaProjeto(rota.id) : rota.tipo === "monitor" ? vistaMonitor() : rota.tipo === "comparar" ? vistaComparar(rota.visao)
-    : rota.tipo === "saude" && typeof vistaSaude === "function" ? vistaSaude() : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "auditoria" && typeof vistaAuditoria === "function" ? vistaAuditoria(rota.ctx) : rota.tipo === "historico" ? vistaHistorico(rota.modo, rota.conta) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
+    : rota.tipo === "saude" && typeof vistaSaude === "function" ? vistaSaude(rota.aba) : rota.tipo === "termometro" ? vistaTermometro() : rota.tipo === "comandos" ? vistaComandos(rota.fonte) : rota.tipo === "auditoria" && typeof vistaAuditoria === "function" ? vistaAuditoria(rota.ctx) : rota.tipo === "historico" ? vistaHistorico(rota.modo, rota.conta) : rota.tipo === "analise" ? vistaAnalise(rota.fonte, rota.id, rota.modo, rota.conta) : vistaGeral();
   if (comPeriodo) corpo = corpo.replaceAll("nos últimos 30 dias", periodoDias ? `nos últimos ${periodoDias} dias` : "hoje (desde 00:00)").replaceAll("últimos 30 dias", textoPeriodo()).replaceAll("· 30 dias<", `· ${periodoDias ? `${periodoDias} dias` : "hoje"}<`);
   const app = document.getElementById("app");
   const abertos = nova ? null : new Map(detalhesComChave(app).map(([d, k]) => [k, d.open]));
